@@ -1,7 +1,23 @@
-//! Schema utilities: parse + simple textual introspection.
+//! Schema utilities: parse + introspection using cedar-policy's structured
+//! accessors.
 
 use crate::error::{Error, Result};
+use cedar_policy::Schema;
 use serde::{Deserialize, Serialize};
+
+/// A parsed schema, paired with its source text.
+#[derive(Debug, Clone)]
+pub struct SchemaParsed {
+    pub schema: cedar_policy::Schema,
+    pub source: String,
+}
+
+/// Parse a `cedarschema` source string into a `cedar_policy::Schema`.
+pub fn parse_schema(src: &str) -> Result<cedar_policy::Schema> {
+    let (s, _w) = cedar_policy::Schema::from_cedarschema_str(src)
+        .map_err(|e| Error::Schema(e.to_string()))?;
+    Ok(s)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityDef {
@@ -30,143 +46,79 @@ pub struct SchemaSummary {
     pub actions: Vec<EntityDef>,
 }
 
-/// A parsed schema, paired with its source text.
-#[derive(Debug, Clone)]
-pub struct SchemaParsed {
-    pub schema: cedar_policy::Schema,
-    pub source: String,
-}
-
-/// Parse a `cedarschema` source string into a `cedar_policy::Schema`.
-pub fn parse_schema(src: &str) -> Result<cedar_policy::Schema> {
-    let (s, _w) = cedar_policy::Schema::from_cedarschema_str(src)
-        .map_err(|e| Error::Schema(e.to_string()))?;
-    Ok(s)
-}
-
-/// Textual scan of a `cedarschema` source. Best-effort; covers the common
-/// shapes produced by `agentguard init` and standard hand-written schemas.
+/// Build a [`SchemaSummary`] by walking cedar-policy's structured API.
 pub fn describe(src: &str) -> Result<SchemaSummary> {
-    Ok(scan(src))
+    let schema = parse_schema(src)?;
+    Ok(build_summary(&schema))
 }
 
-fn scan(src: &str) -> SchemaSummary {
+fn build_summary(schema: &Schema) -> SchemaSummary {
     let mut entities = Vec::new();
+    for et in schema.entity_types() {
+        entities.push(entity_def(et));
+    }
     let mut actions = Vec::new();
-    let mut current_entity: Option<(String, Vec<AttrDef>)> = None;
-    let mut in_entity = false;
-    let mut in_action = false;
-    let mut current_action: Option<(String, Option<String>)> = None;
+    for a in schema.actions() {
+        actions.push(action_def(a));
+    }
+    SchemaSummary { entities, actions }
+}
 
-    for raw in src.lines() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with("//") {
-            continue;
-        }
-        if line.starts_with("entity ") {
-            in_entity = true;
-            in_action = false;
-            if let Some((name, _)) = current_entity.take() {
-                entities.push(EntityDef {
-                    name,
-                    kind: EntityKind::Entity,
-                    attributes: vec![],
-                });
-            }
-            let name = line
-                .trim_start_matches("entity ")
-                .trim_end_matches('{')
-                .trim_end_matches(';')
-                .trim()
-                .split(|c: char| !c.is_alphanumeric() && c != '_')
-                .next()
-                .unwrap_or("")
-                .to_string();
-            current_entity = Some((name, Vec::new()));
-            if line.ends_with(';') || !line.contains('{') {
-                if let Some((name, _)) = current_entity.take() {
-                    entities.push(EntityDef {
-                        name,
-                        kind: EntityKind::Entity,
-                        attributes: vec![],
-                    });
-                }
-                in_entity = false;
-            }
-            continue;
-        }
-        if line.starts_with("action ") {
-            in_action = true;
-            in_entity = false;
-            // Extract action id, possibly multiple per line.
-            let rest = line.trim_start_matches("action ").trim_end_matches(';');
-            // Take only the id token (e.g. "ToolCall::send_email").
-            let id = rest
-                .split(|c: char| !c.is_alphanumeric() && c != '_' && c != ':')
-                .find(|s| !s.is_empty())
-                .unwrap_or("")
-                .to_string();
-            current_action = Some((id, None));
-            if !line.contains('{') || line.ends_with(';') {
-                if let Some((id, _)) = current_action.take() {
-                    actions.push(EntityDef {
-                        name: id,
-                        kind: EntityKind::Action,
-                        attributes: vec![],
-                    });
-                }
-                in_action = false;
-            }
-            continue;
-        }
-        if line == "}" || line == "};" {
-            if in_entity {
-                if let Some((name, _)) = current_entity.take() {
-                    entities.push(EntityDef {
-                        name,
-                        kind: EntityKind::Entity,
-                        attributes: vec![],
-                    });
-                }
-                in_entity = false;
-            } else if in_action {
-                if let Some((id, _)) = current_action.take() {
-                    actions.push(EntityDef {
-                        name: id,
-                        kind: EntityKind::Action,
-                        attributes: vec![],
-                    });
-                }
-                in_action = false;
-            }
-            continue;
-        }
-        // Attribute lines (very loose parser).
-        if in_entity || in_action {
-            if let Some((k, v)) = line.split_once(':') {
-                let k = k.trim().trim_end_matches('?').to_string();
-                let v = v
-                    .trim()
-                    .trim_end_matches(',')
-                    .trim_end_matches(';')
-                    .to_string();
-                if !k.is_empty() {
-                    let attr = AttrDef {
-                        name: k,
-                        ty: v,
-                        required: !line.contains('?'),
-                    };
-                    if in_entity {
-                        if let Some((_, ref mut attrs)) = current_entity {
-                            attrs.push(attr);
-                        }
-                    } else if in_action {
-                        // We don't add attributes to actions for now.
-                    }
-                }
-            }
-        }
+fn entity_def(et: &cedar_policy::EntityTypeName) -> EntityDef {
+    // The cedar-policy public API exposes the entity type name; attribute
+    // introspection goes through the AST-level ValidatorSchemaFragment which
+    // is gated behind unstable features. We report the type with no
+    // attributes here. Future work can extend this via the fragment API.
+    EntityDef {
+        name: et.to_string(),
+        kind: EntityKind::Entity,
+        attributes: vec![],
+    }
+}
+
+fn action_def(a: &cedar_policy::EntityUid) -> EntityDef {
+    // The cedar-policy public API exposes the action as an `EntityUid` like
+    // `Action::"ToolCall::send_email"`. Surface only the action id portion
+    // (matches the format Cedar uses in policy text).
+    let raw = a.to_string();
+    let name = raw
+        .strip_prefix("Action::\"")
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(&raw)
+        .to_string();
+    EntityDef {
+        name,
+        kind: EntityKind::Action,
+        attributes: vec![],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn describe_extracts_entity_and_action_names() {
+        let src = r#"
+entity User;
+entity Mailbox;
+action "ToolCall::send_email" appliesTo { principal: [User], resource: [Mailbox] };
+action "ToolCall::read_doc" appliesTo { principal: [User], resource: [Mailbox] };
+"#;
+        let s = describe(src).unwrap();
+        let names: Vec<&str> = s.entities.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"User"));
+        assert!(names.contains(&"Mailbox"));
+        let actions: Vec<&str> = s.actions.iter().map(|a| a.name.as_str()).collect();
+        assert!(actions.contains(&"ToolCall::send_email"));
+        assert!(actions.contains(&"ToolCall::read_doc"));
     }
 
-    SchemaSummary { entities, actions }
+    #[test]
+    fn describe_handles_malformed_schema() {
+        // parse_schema is strict; malformed input should error rather than
+        // silently producing empty results.
+        let res = describe("not a valid schema");
+        assert!(res.is_err());
+    }
 }

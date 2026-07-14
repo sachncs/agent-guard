@@ -86,6 +86,9 @@ pub fn router(state: AppState) -> Router {
         .route("/access/v1/evaluations", post(evaluations))
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
+        // Cap request bodies at 64 KB. AuthZEN requests are small JSON; anything
+        // larger is either misconfigured or an attack.
+        .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
         .with_state(state)
 }
 
