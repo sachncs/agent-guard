@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// JWT/Delegation signing algorithm (RFC 8725 §3.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
 pub enum Algorithm {
@@ -22,16 +22,7 @@ pub enum Algorithm {
     EdDSA,
 }
 
-impl Algorithm {
-    pub fn as_jose_str(&self) -> &'static str {
-        match self {
-            Algorithm::HS256 => "HS256",
-            Algorithm::RS256 => "RS256",
-            Algorithm::ES256 => "ES256",
-            Algorithm::EdDSA => "EdDSA",
-        }
-    }
-}
+impl Algorithm {}
 
 /// Standard JWS compact serialization: `base64url(header).base64url(payload).base64url(signature)`.
 ///
