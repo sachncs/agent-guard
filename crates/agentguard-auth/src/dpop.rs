@@ -162,8 +162,7 @@ mod tests {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
         h.update(b"real-token");
-        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(h.finalize());
+        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(h.finalize());
         let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(format!(
                 r#"{{"jti":"abc123","htm":"POST","htu":"https://example.com/x","ath":"{ath}","iat":{now}}}"#,

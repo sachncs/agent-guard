@@ -147,7 +147,10 @@ mod tests {
         // parentless agent must not emit the field at all (avoids ambiguity
         // between `null` and absent on the deserializing side).
         let json = serde_json::to_value(&p).unwrap();
-        assert!(json.get("parent_uid").is_none(), "parent_uid leaked: {json}");
+        assert!(
+            json.get("parent_uid").is_none(),
+            "parent_uid leaked: {json}"
+        );
     }
 
     #[test]

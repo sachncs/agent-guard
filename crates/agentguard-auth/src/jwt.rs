@@ -226,7 +226,10 @@ impl JwtValidator {
                     tracing::warn!("JWKS key without kid; auto-generating");
                     format!("jwks-{}", k.alg)
                 });
-                if let Err(e) = self.keys.add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw)) {
+                if let Err(e) = self
+                    .keys
+                    .add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw))
+                {
                     tracing::warn!(error = %e, kid = %kid, "failed to register JWKS key");
                 }
             } else {
@@ -432,11 +435,10 @@ mod tests {
         let signing_input = format!("{}.{}", header_b64, payload_b64);
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
-        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"hmac-secret")
-            .expect("hmac key");
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"hmac-secret").expect("hmac key");
         mac.update(signing_input.as_bytes());
-        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(mac.finalize().into_bytes());
+        let sig_b64 =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
         let forged = format!("{}.{}.{}", header_b64, payload_b64, sig_b64);
         let res = v.validate(&forged);
         assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
