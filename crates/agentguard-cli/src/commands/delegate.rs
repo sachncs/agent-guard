@@ -1,7 +1,8 @@
-use agentguard_core::{DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier};
+use agentguard_core::{DelegationConfig, DelegationSigner, DelegationToken};
 use anyhow::{anyhow, Result};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub fn run(
     from: &str,
@@ -18,22 +19,24 @@ pub fn run(
     let token = signer.mint(
         from,
         to,
-        "agentguard",
+        "agentguard://default", // v2: required audience (RFC 8707)
         actions,
         resources,
-        DelegationConfig { ttl_seconds: ttl },
+        DelegationConfig {
+            ttl: Duration::from_secs(ttl.max(0) as u64),
+        },
     )?;
 
-    let compact = token.to_compact();
+    let jws = token.to_jws().to_string();
     if let Some(p) = out_path {
-        std::fs::write(p, &compact)?;
+        std::fs::write(p, &jws)?;
         if output != "json" {
             println!("wrote token to {}", p);
         }
     } else if output == "json" {
         println!("{}", serde_json::to_string_pretty(&token)?);
     } else {
-        println!("{}", compact);
+        println!("{}", jws);
     }
     Ok(())
 }
@@ -45,9 +48,9 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
     } else {
         token_str.to_string()
     };
-    let token = DelegationToken::from_compact(&compact)?;
+    let _token = DelegationToken::from_jws(&compact)?;
 
-    let mut verifier = DelegationVerifier::new();
+    let mut verifier = agentguard_core::DelegationVerifier::new();
     let text = std::fs::read_to_string(keys_path)?;
     for line in text.lines() {
         let line = line.trim();
@@ -57,10 +60,23 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
         let (id, key) = line
             .split_once('=')
             .ok_or_else(|| anyhow!("expected `kid=base64pubkey` in keys file"))?;
-        verifier.add_key(id.trim(), key.trim())?;
+        let bytes = base64_decode(key.trim())?;
+        verifier
+            .add_key(
+                id.trim(),
+                agentguard_core::delegation::Algorithm::EdDSA,
+                &bytes,
+            )
+            .map_err(|e| anyhow!("add key: {}", e))?;
     }
 
-    let claims = verifier.verify(&token, agentguard_core::DelegationClaims::now())?;
+    let claims = verifier
+        .verify(
+            &compact,
+            "agentguard://default",
+            chrono::Utc::now().timestamp(),
+        )
+        .map_err(|e| anyhow!("verify: {}", e))?;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(claims)?);
@@ -81,18 +97,18 @@ fn load_signer(
     key_file: Option<&str>,
     output: &str,
 ) -> Result<Arc<DelegationSigner>> {
-    // Resolve source: either a path (`key_file`) or inline (`key_id`).
     if let Some(p) = key_file {
-        return load_signer_from_file(p, key_id);
+        return Ok(Arc::new(load_signer_from_file(p, key_id)?));
     }
     if let Some(p) = key_id {
-        // If it's a file path that exists, treat as file.
         if Path::new(p).exists() {
-            return load_signer_from_file(p, Some(p));
+            return Ok(Arc::new(load_signer_from_file(p, Some(p))?));
         }
-        // Otherwise treat as inline payload, with key_id = "imported".
         let bytes = decode_payload(p)?;
-        let s = DelegationSigner::from_bytes(&bytes)?;
+        let mut s = DelegationSigner::from_bytes(&bytes)?;
+        if !p.is_empty() {
+            s.set_key_id(p);
+        }
         return Ok(Arc::new(s));
     }
     let s = DelegationSigner::generate();
@@ -106,11 +122,9 @@ fn load_signer(
     Ok(Arc::new(s))
 }
 
-fn load_signer_from_file(path: &str, kid_hint: Option<&str>) -> Result<Arc<DelegationSigner>> {
+fn load_signer_from_file(path: &str, kid_hint: Option<&str>) -> Result<DelegationSigner> {
     let text = std::fs::read_to_string(path)?;
-    // Format: `kid=<payload>` per line. If no `=`, the entire file body is the payload.
     let payload = if let Some(idx) = text.find('=') {
-        // skip past first '='; everything after is payload
         text[idx + 1..].trim().to_string()
     } else {
         text.trim().to_string()
@@ -118,11 +132,11 @@ fn load_signer_from_file(path: &str, kid_hint: Option<&str>) -> Result<Arc<Deleg
     let bytes = decode_payload(&payload)?;
     let mut s = DelegationSigner::from_bytes(&bytes)?;
     if let Some(k) = kid_hint {
-        if !k.is_empty() {
+        if !k.is_empty() && k != payload {
             s.set_key_id(k.to_string());
         }
     }
-    Ok(Arc::new(s))
+    Ok(s)
 }
 
 fn decode_payload(s: &str) -> Result<Vec<u8>> {
@@ -147,4 +161,11 @@ fn hex_decode(s: &str) -> Result<Vec<u8>> {
         out.push(byte);
     }
     Ok(out)
+}
+
+fn base64_decode(s: &str) -> Result<Vec<u8>> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| anyhow!("base64: {}", e))
 }
