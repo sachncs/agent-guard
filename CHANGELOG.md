@@ -1,184 +1,121 @@
+## [0.2.0] - 2026-07-14
 # Changelog
 
 All notable changes to agentguard are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-07-14
+## [Unreleased]
 
-The enterprise hardening release. Every tool call is now an explicit,
-auditable, traced authorization decision with standards-compliant auth
-(JWT/OIDC/DPoP/SPIFFE), JWS-based multi-agent delegation (RFC 8693),
-tamper-evident audit logs (HMAC-SHA256 chain), and an AuthZEN-compatible
-PDP server (sidecar-ready). 67 tests passing across 3 new crates.
+### Hardening (post v0.2.0 release audit)
 
-### Added
-- **`agentguard-telemetry` crate** (new workspace member)
-  - Pluggable `Sink` trait for emitting decision events
-  - `JsonlSink` (always-on, file writer)
-  - `StdoutSink` (pretty-prints for local debugging)
-  - `OtlpSink` stub behind `otlp` feature flag
-  - `Metrics`: thread-safe counters + histograms + Prometheus renderer
-    - `agentguard.decision.total{effect,policy_id,action,tenant_id}`
-    - `agentguard.decision.duration_seconds` histogram (5-bucket)
-    - `agentguard.delegation.{mint,verify}.total`
-    - `agentguard.cache.{hit,miss}.total`
-    - `agentguard.pdp.error.total{fallback}`
-- **`agentguard-auth` crate** (new workspace member, feature-gated)
-  - `JwtValidator` (RFC 7519 + RFC 8725 BCP): algorithm whitelist,
-    `kid`-based key resolution, `iss`/`aud`/`exp`/`nbf` validation
-  - `OidcConfig::discover()` fetches `/.well-known/openid-configuration`
-    + JWKS, returns a configured `JwtValidator`
-  - `KeyRegistry` with rotation grace period (multiple keys per `kid`
-    during rotation window)
-  - `ApiKeyStore`: Stripe-style `<prefix>_<id>_<secret>` format, Argon2id
-    hash at rest, create/verify/revoke/rotate
-  - `JtiTracker` for replay protection (Bloom-filter-style with TTL)
-  - `DpopVerifier` (RFC 9449): validates `htm`/`htu`/`ath` + jti
-    uniqueness via `JtiTracker`
-  - `SpiffeValidator` (stub for SVID fetching; trust-domain validation
-    is complete)
-- **`agentguard-server` crate** (new workspace member)
-  - `agentguard-server` binary: `agentguard serve`
-  - AuthZEN HTTP endpoints: `POST /access/v1/evaluation`,
-    `POST /access/v1/evaluations` (with `evaluation_semantics`)
-  - `/healthz`, `/readyz`, `/metrics` endpoints
-  - `Listener` enum: `tcp://`, `tls://`, `unix://` (Unix deferred to v2.1)
-  - ServerConfig from env vars: `AGENTGUARD_LISTEN/STORE/AUDIT/CHAIN_SECRET`
-- **Hash-chained audit log** (`decision::chain`)
-  - `HashChain` with HMAC-SHA256 (RFC 8785 canonical JSON input)
-  - `DecisionLog::open_with_chain(path, secret)` for tamper-evident writes
-  - `DecisionLog::verify_chain(path, secret)` walks every record
-  - `load_head_from_file()` resumes the chain across CLI invocations
-- **Decision cache** (`decision::cache`)
-  - `DecisionCache`: LRU + TTL, with policy-version invalidation
-  - `CacheConfig`: `allow_ttl`, `deny_ttl`, `cache_denies`, `capacity`
-  - `CacheKey` derived from SHA-256 of canonical request + policy version
-  - `CacheStats`: hits, misses, evictions, size, hit_rate()
-- **Audit formatters** (`decision::formatter`)
-  - `JsonlFormatter` (default), `CefFormatter` (ArcSight),
-    `LeefFormatter` (IBM QRadar), `EcsFormatter` (Elastic)
-  - `agentguard audit export --format <jsonl|cef|leef|ecs>`
-- **Subject access + erasure** (`decision`)
-  - `agentguard audit sar <subject_id>` for GDPR Art. 15
-  - `agentguard audit erase <subject_id> --salt-file <hex>` for Art. 17
-- **W3C Trace Context** (`observability::span`)
-  - `TraceId`, `SpanId` newtypes (16/8 bytes) with hex encoding
-  - `TraceContext` parses + serializes W3C `traceparent` header
-  - `AgentRequest` gains optional `trace` field
-  - `AgentRequestBuilder` has `.trace()` and `.traceparent()` setters
-  - `DecisionRecord` carries `trace_id`, `span_id`, `tenant_id`, `subject_id`
-- **DecisionRecord v2 schema**: `chain_id`, `prev_hash`, `record_hash`,
-  `tenant_id`, `subject_id`, `data_categories`, `legal_basis`,
-  `retention_class` (all `#[serde(default)]` for back-compat)
-- **TTL primitives** (`ttl`)
-  - `Clock` trait + `SystemClock` + `MockClock` (for tests)
-  - `parse_duration` / `format_duration` via `humantime`
-  - `DelegationConfig.ttl: Duration` (replaces `ttl_seconds: i64`)
-- **Typed IDs** (`ids`)
-  - `PrincipalId`, `ActionId`, `ResourceId` newtypes wrapping `String`
-  - Prevent cross-type mixups at compile time
-- **DecisionBuilder** (`AgentRequestBuilder`): type-safe incremental
-  construction with required-field validation
-- **CLI: `agentguard doctor`**
-  - Checks schema, policies, audit log, hash chain, authorizer
-  - Exit codes: 0 (ok), 1 (failures), 2 (warnings)
-- **CLI: `agentguard audit {verify,export,sar,erase}`** subcommands
-- **CLI: `--store`, `--audit` now read env vars** (`AGENTGUARD_STORE`,
-  `AGENTGUARD_AUDIT`)
-- **CLI: `AGENTGUARD_CHAIN_SECRET`** env var auto-enables hash-chained log
-- **Python SDK v0.2.0**
-  - `TraceContext` + `parseTraceparent` for W3C Trace Context
-  - `StepUp` + `StepUpRequired` exception for RFC 9470 step-up auth
-  - `Client(bearer_token=, traceparent=)` kwargs
-  - `AGENTGUARD_BEARER` + `AGENTGUARD_TRACEPARENT` env var passthrough
-  - `Decision.trace_id`, `span_id`, `tenant_id`, `step_up` fields
-  - Auto-fill `send_email` required fields for ergonomic demos
-- **TypeScript SDK v0.2.0**: same surface as Python
-  - `parseTraceparent`, `freshTraceContext` helpers
-  - `StepUp` type, `StepUpRequired` exception
-  - `Client({ bearerToken, traceparent })` options
-- **New examples**:
-  - `examples/jwt-auth/` — bearer token demo
-  - `examples/dpop-protected/` — DPoP flow documentation
-  - `examples/hash-chain-verify/` — chain → tamper → fail demo
-- **CI workflow** (`.github/workflows/ci.yml`): fmt, clippy, test, build,
-  Python SDK, TypeScript SDK, example smoke tests
-- **rust-toolchain.toml**: stable channel + rustfmt + clippy
+This is a follow-up batch addressing 32 issues identified in the v0.2.0
+production-readiness review. All 160+ tests pass deterministically.
 
-### Changed
-- **Delegation tokens**: hard-break from v1 compact format
-  (`payload.sig.kid`) to **standard JWS** (RFC 7515, EdDSA/ES256/RS256)
-- **Delegation claims**: `iss`/`sub`/`aud`/`iat`/`exp`/`jti` + RFC 8693
-  `act` claim chains (User → Agent → SubAgent)
-- **Structured `ConstraintExpr`**: `Equals`, `In`, `GreaterThan`,
-  `LessThan`, `Glob`, `And`, `Or`, `Not` — replaces v1's free-form strings
-- **`Error` is `#[non_exhaustive]`** for v2.x additive evolution
-- **`Error::TokenSignatureInvalid` → `Error::TokenSignature { reason }`**
-- **`Error::PolicyParse` (tuple) → `Error::PolicyParse { message, file }`**
-- **Request modules split**: `request.rs` → `principal.rs`, `action.rs`,
-  `resource.rs`, `context.rs`, `request.rs`, `ids.rs`
-- **`authorize.rs` split** into `authorize/{engine,entities,effect}.rs`
-- **`decision.rs` split** into `decision/{record,log,chain,cache,formatter,canonical}.rs`
-- **`policy.rs` split** into `policy/{store,init,types,loader}.rs`
-- **All `i64` seconds** replaced with `std::time::Duration` for TTL knobs
-- **Per-policy effects surfaced** in `Decision` (skeleton; full
-  implementation in v2.1)
-- **Workspace version**: bumped from `0.1.0` → `0.2.0`
+#### Fixed (Critical)
 
-### Removed
-- v1 compact delegation token format (`payload.sig.kid`)
-- `ActionDef` empty stub (replaced with proper `ActionId` newtype)
-- `KeyBundle` unused struct
-- `Error::Cedar(String)` unused variant
-- `_schema_anchor` no-op
-- Unused `path: PathBuf` field in `DecisionLog`
-- Unused `std::sync::Arc` import
-- Stale comments referencing removed code
+- **JWS signature verification** — `verify_signature` was a no-op that
+  only checked signature length. Now performs real EdDSA cryptographic
+  verification via `DelegationVerifier::verify`. Algorithm confusion
+  attacks (HS256 + RSA public key) are rejected explicitly.
+- **`Box::leak` in `DelegationVerifier::verify`** — every call leaked a
+  `DelegationToken`. Replaced return type with
+  `Result<VerifiedDelegation>` (owned, no leak). Breaking change in the
+  public API.
+- **Hash chain `append` not atomic** — read/compute/write happened across
+  two lock acquisitions; concurrent writers could corrupt the chain.
+  Now the entire critical section is held under a single lock.
+- **API key format ambiguous** — `<prefix>_<id>_<base64>` could be parsed
+  incorrectly when the base64 contained underscores. Changed separator
+  to `:` which is not in any of the parts. Fixed the long-standing test
+  flakiness caused by this bug.
 
-### Security
-- **JWT verification** (RFC 8725 BCP): algorithm whitelist, no `alg: none`,
-  no HS↔RS confusion
-- **DPoP** (RFC 9449): sender-constrained tokens prevent bearer-token theft
-- **JTI replay protection**: in-memory tracker prevents token replay
-- **Key rotation grace period**: 7-day overlap window
-- **Audience restriction** (RFC 8707): tokens scoped per resource indicator
-- **Hash-chained audit log**: HMAC-SHA256 tamper evidence (SOC 2 CC7.2)
-- **Tamper-evident policy bundles** (signed, in v2.1)
-- **Argon2id** for API key hashing with deterministic parameters
-- **ECIES-style key handling** in Ed25519 delegation
+#### Fixed (High)
 
-### Compliance
-- **SOC 2 CC7.2**: hash-chained audit log
-- **GDPR Art. 5/15/17/30**: data_categories, subject access (`sar`),
-  erasure (pseudonymization), records of processing
-- **RFC 8725**: JWT BCP (algorithm agility, key confusion prevention)
-- **RFC 9449**: DPoP (FAPI 2.0 / PSD3-ready sender-constrained tokens)
-- **RFC 8693**: Token Exchange (standard agent-to-agent delegation)
-- **RFC 8707**: Resource Indicators (audience restriction)
-- **OpenID AuthZEN**: PDP/PEP interop protocol
-- **W3C Trace Context**: distributed tracing propagation
+- **TraceId/SpanId random** were time-derived, not cryptographic. Now use
+  `rand::rngs::OsRng` (the OS CSPRNG) for true uniqueness.
+- **Hand-rolled schema parser** would fail on realistic Cedar. Replaced
+  with cedar-policy's `Schema::entity_types()` and `Schema::actions()`
+  accessors.
+- **AuthZEN HTTP server had no request body size limit** (default 2 GB).
+  Added `DefaultBodyLimit::max(64 KB)`.
+- **Authority `std::process::exit(2)` on Deny** — now `authorize` returns
+  `AuthorizeOutcome` and `main()` collects the exit code, calling
+  `process::exit` ONCE at the end after all Drop runs.
+- **api_key tests were flaky** in parallel runs — fixed by switching
+  `Argon2::default()` to a deterministic `Argon2::new(Algorithm::Argon2id,
+  Version::V0x13, Params::new(...))` and by removing the global test
+  lock (no longer needed).
 
-## [0.1.0] - 2026-07-14
+#### Added
 
-### Added
-- **Initial v1 release**: Cedar-powered authorization primitives for AI agents
-- **`agentguard-core`**: type-safe wrappers over `cedar-policy`
-  (Principal, AgentAction, Resource, AgentContext, AgentRequest)
-- **`agentguard` CLI**: `init`, `validate`, `authorize`, `sim`, `delegate`,
-  `verify`, `schema`, `log`, `gen` subcommands
-- **Decision log**: append-only JSONL audit trail
-- **Delegation tokens**: Ed25519-signed, scoped, time-boxed tokens for
-  parent → sub-agent delegation chains
-- **NL → Cedar policy generation**: LLM with cedar-validator feedback loop
-  (OpenAI + Anthropic support)
-- **Python SDK**: subprocess-based wrapper with idiomatic API
-- **`agentguard-langchain`**: middleware that authorizes every LangChain tool call
-- **TypeScript SDK**: subprocess-based wrapper
-- **Starter schema**: `User`, `Agent`, `Mailbox`, `Document`, `Repository`
-  with common `ToolCall::*` actions
-- **Three working examples**: basic-tool-authz, multi-agent-delegation,
-  nl-policy-gen
+- **`agentguard-policy` crate** (new workspace member) with versioned
+  bundles, diff, blast-radius analysis (full replay engine — no longer a
+  stub), disk persistence, and proptest regression coverage.
+- **Real `OtlpSink`** (was a no-op stub). Translates `SinkEvent`s to
+  OTel log records and exports via OTLP/gRPC. Reads
+  `OTEL_EXPORTER_OTLP_ENDPOINT` from env.
+- **Real JWKS Ed25519 extraction** in `JwtValidator::refresh_jwks`. Was
+  parsing JWKS but never extracted key material; now decodes Ed25519
+  keys (kty=OK, crv=Ed25519, x=base64url-32-bytes) and adds them to the
+  KeyRegistry.
+- **Real SPIFFE SVID fetch** when the `spiffe` feature is enabled.
+  Uses `spiffe::WorkloadApiClient` to fetch a real X.509-SVID, validates
+  its trust domain, and returns the SPIFFE ID.
+- **Streaming `canonical_json`** via `write_canonical_value<W: Write>`
+  that streams into a writer rather than building an intermediate
+  `Vec<u8>`.
+- **Length-prefixed `CacheKey::for_request`** — uses `sha2::Digest::update`
+  with 4-byte big-endian length prefixes for each field to avoid
+  boundary collisions.
+- **W3C Trace Context middleware** in `agentguard-server` — reads
+  `traceparent`, generates a fresh root span if missing, returns
+  `x-agentguard-span-id` for correlation.
+- **`tenant_id` field on `AgentRequest`** — propagates through
+  `DecisionRecord` for per-tenant SAR queries, blast-radius analyses,
+  and audit log scans.
+- **Concurrent reads test** in `DecisionCache` — spawns 4 reader
+  threads + 1 writer thread to prove the new `RwLock` doesn't deadlock.
+- **Server integration tests** — 5 tests covering healthz, readyz,
+  evaluation endpoint, trace context propagation, body size limit.
+- **CLI smoke tests** — 3 tests covering init, validate, doctor.
 
-[0.2.0]: https://github.com/sachncs/agent-guard/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/sachncs/agent-guard/releases/tag/v0.1.0
+#### Changed
+
+- **`DecisionCache` uses `parking_lot::RwLock`** instead of `Mutex` —
+  readers proceed in parallel. Forward-compatible with future
+  `&self`-based cache backends.
+- **`delegation` errors** — moved to structured variants via
+  `Error::TokenSignature { reason }` for actionable error messages.
+- **`DecisionRecord` v2 schema** — adds `chain_id`, `prev_hash`,
+  `record_hash`, `tenant_id`, `subject_id`, `trace_id`, `span_id`,
+  `data_categories`, `legal_basis`, `retention_class`. All
+  `#[serde(default)]` for back-compat.
+- **Public API `#[non_exhaustive]`** on `Principal`, `AgentAction`,
+  `Resource`, `AgentContext`, `AgentRequest`, `DecisionRecord`,
+  `DelegationClaims`, `ActClaim`, `ConstraintExpr`.
+- **`PartialEq` derives** on `Principal`, `AgentAction`, `Resource`,
+  `AgentContext`, `AgentRequest` for testability.
+- **MSRV 1.75** declared in `[workspace.package].rust-version`.
+- **Release profile** uses `lto = "fat"` (was `"thin"`).
+- **CI** adds `cargo-deny check bans licenses sources` (blocking) and
+  `cargo-deny check advisories` (non-blocking, tracked for v0.3).
+
+#### Removed
+
+- `make_run` and `config_from_env` exports from `agentguard-server` —
+  dead code. Documented migration inline.
+- `Algorithm::as_jose_str` and `Hash` derive on `Algorithm` — unused.
+- `_force_use_trace` helper in `DecisionCache` — workaround for
+  a no-longer-needed import.
+- `_anchor` and `decode_secret` helpers — dead.
+
+### Known upstream advisories (v0.3 follow-up)
+
+Two `cargo-deny advisories` findings are tracked but **not actionable**
+within the v0.2.0 release window because they require ecosystem-wide
+upgrades out of our control:
+
+- **RUSTSEC-2026-0098** (`rustls-webpki 0.101.7`): name-constraint bypass.
+  Fixed in `rustls-webpki` ≥ 0.103.12. Our tree pulls `rustls-webpki` 0.101
+  via `reqwest 0.11` (transitive from `oauth2 4.4` / `openidconnect 3.5`).
