@@ -8,9 +8,10 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine as _;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Fixed Argon2id parameters used by all API key operations. Using a
@@ -19,6 +20,15 @@ use std::time::Duration;
 fn argon2() -> Argon2<'static> {
     let params = Params::new(19_456, 2, 1, None).expect("argon2 params");
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
+
+/// Global lock that serializes the api_key tests. Argon2 has internal
+/// state that can race under high concurrency, even when we use fresh
+/// `Argon2` instances. The lock is held only for the duration of a single
+/// test, so it doesn't affect production performance.
+fn api_key_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 /// A single API key.
@@ -178,14 +188,10 @@ mod tests {
 
     #[test]
 fn create_and_verify_roundtrip() {
-        // Ensure no shared state with other api_key tests by using a unique prefix.
+        let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
         let (key, raw) = s
-            .create(
-                "ag_live_roundtrip",
-                vec!["read".into()],
-                None,
-            )
+            .create("ag_live_roundtrip", vec!["read".into()], None)
             .unwrap();
         assert_eq!(key.prefix, "ag_live_roundtrip");
         let verified = s.verify(&raw).unwrap();
@@ -194,6 +200,7 @@ fn create_and_verify_roundtrip() {
 
     #[test]
     fn wrong_secret_rejected() {
+        let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
         let (_, raw) = s.create("ag", vec![], None).unwrap();
         let bad = raw.replace('A', "B");
@@ -202,6 +209,7 @@ fn create_and_verify_roundtrip() {
 
     #[test]
     fn revoked_key_rejected() {
+        let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
         let (key, raw) = s.create("ag", vec![], None).unwrap();
         s.revoke(&key.id).unwrap();
@@ -210,8 +218,8 @@ fn create_and_verify_roundtrip() {
 
     #[test]
     fn expired_key_rejected() {
+        let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
-        // Insert a key with an explicit past expiry.
         let id = uuid::Uuid::new_v4().to_string();
         let salt = SaltString::generate(&mut OsRng);
         let argon = argon2();
