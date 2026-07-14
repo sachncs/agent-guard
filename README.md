@@ -1,11 +1,23 @@
-# agentguard
+<p align="center">
+  <h1 align="center">agentguard</h1>
+  <p align="center">Enterprise-grade Cedar-powered authorization for AI agents.</p>
+  <p align="center">
+    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
+    <a href="https://github.com/sachncs/agent-guard/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master" alt="CI"></a>
+    <a href="https://crates.io/crates/agentguard-core"><img src="https://img.shields.io/crates/v/agentguard-core" alt="crates.io"></a>
+    <a href="https://github.com/sachncs/agent-guard/stargazers"><img src="https://img.shields.io/github/stars/sachncs/agent-guard" alt="Stars"></a>
+  </p>
+</p>
 
-**Enterprise-grade Cedar-powered authorization for AI agents.**
-
-Every tool call is an explicit authorization decision. Every decision is
-tamper-evident, traced end-to-end, and bound to a short-lived identity. Tokens
-are JWS-signed, policies are versioned and hot-reloaded, and the engine speaks
-the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
+**agentguard** wraps [Cedar](https://www.cedarpolicy.com) — an
+open-source policy language designed for these requirements, with formal
+verification support — and adds the agent-specific, enterprise-specific
+primitives you need. Every tool call is an explicit authorization
+decision. Every decision is tamper-evident, traced end-to-end, and bound
+to a short-lived identity. Tokens are JWS-signed, policies are versioned
+and hot-reloaded, and the engine speaks the
+[OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -32,7 +44,24 @@ the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 └────────────────────────────────────────────────────────────────┘
 ```
 
-## What's in v2.0.0
+---
+
+## Features
+
+- **Per-call authorization** — does this user/agent have permission to call this tool on this resource, right now, with this context?
+- **Tamper-evident audit trail** — every decision recorded, hash-chained, exportable to your SIEM in CEF/LEEF/ECS.
+- **Scoped delegation** — parent agent gives sub-agent a *scoped subset* of permissions, time-boxed, sender-constrained (DPoP), revocable.
+- **Schema-validated policies** — your security team writes Cedar, not imperative code. Policies are validated at authoring time.
+- **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE. RFC 8725 BCP for crypto. RFC 8693 for delegation. No proprietary protocols.
+- **OpenTelemetry-native observability** — every decision is a span with `authz.*` attributes; every decision is a metric.
+- **Hot reload + rollback + blast radius** — push policies without downtime; see what would break before you push.
+- **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP.
+- **Local-first** — files in `.agentguard/` are the source of truth. `git diff` your policies. Run the server in-process or as a sidecar.
+- **Multi-language SDKs** — Rust core, Python (`agentguard`, `agentguard_langchain`, `agentguard_server_sdk`), TypeScript (`agentguard`, `@agentguard/vercel-ai`, `@agentguard/server-sdk`).
+
+---
+
+## What's in v0.2.0
 
 | Component | Purpose |
 |---|---|
@@ -48,53 +77,39 @@ the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 | `@agentguard/vercel-ai` (TS) | Middleware for Vercel AI SDK tool calls |
 | `@agentguard/server-sdk` (TS) | AuthZEN client for talking to `agentguard serve` |
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete v2.0.0 change list.
+See [CHANGELOG.md](CHANGELOG.md) for the complete v0.2.0 change list.
 The implementation plan lives in [`stages/`](stages/README.md).
 
-## Why agentguard
+---
 
-LLM agents call tools. Tools have side effects. You need:
+## Installation
 
-1. **Per-call authorization** — does this user/agent have permission to call
-   this tool on this resource, right now, with this context?
-2. **Tamper-evident audit trail** — every decision recorded, hash-chained,
-   exportable to your SIEM in CEF/LEEF/ECS.
-3. **Scoped delegation** — parent agent gives sub-agent a *scoped subset*
-   of permissions, time-boxed, sender-constrained (DPoP), revocable.
-4. **Schema-validated policies** — your security team writes Cedar, not
-   imperative code. Policies are validated at authoring time.
-5. **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE. RFC 8725 BCP
-   for crypto. RFC 8693 for delegation. No proprietary protocols.
-6. **OpenTelemetry-native observability** — every decision is a span with
-   `authz.*` attributes; every decision is a metric.
-7. **Hot reload + rollback + blast radius** — push policies without
-   downtime; see what would break before you push.
-8. **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway,
-   federation tool, and replacement PDP.
-9. **Local-first** — files in `.agentguard/` are the source of truth.
-   `git diff` your policies. Run the server in-process or as a sidecar.
-
-agentguard wraps [Cedar](https://www.cedarpolicy.com) — an open-source
-policy language designed for these requirements, with formal verification
-support — and adds the agent-specific, enterprise-specific primitives you need.
-
-## Quick start
-
-### Install
+### CLI (Rust)
 
 ```bash
-# CLI
 cargo install --path crates/agentguard-cli
+```
 
-# Python SDK + LangChain + server SDK
+### Python SDK + LangChain + Server SDK
+
+```bash
 pip install -e python/agentguard
 pip install -e python/agentguard_langchain
 pip install -e python/agentguard_server_sdk
+```
 
-# TypeScript SDKs
+### TypeScript SDKs
+
+```bash
 cd typescript/agentguard && npm install && npm run build
 cd typescript/packages/vercel-ai && npm install && npm run build
 ```
+
+**Requirements:** Rust 1.85+, Python 3.10+, Node.js ≥ 20.
+
+---
+
+## Quick Start
 
 ### Initialize a project
 
@@ -241,9 +256,22 @@ agentguard doctor
 # ⚠ JWT validator configured but jwks_uri unreachable (cached 30s)
 ```
 
-## Architecture
+---
 
-See [`docs/architecture.md`](docs/architecture.md).
+## Configuration
+
+| Setting | Flag / Env | Default | Description |
+|---------|------------|---------|-------------|
+| Audit log path | `--audit` | `./.audit/decisions.jsonl` | Hash-chained audit log destination |
+| Chain secret | `--secret-file` | `./.chain-secret` | HMAC key for the audit chain |
+| Auth provider | `--auth jwt=...` / `--auth api-key=...` | `none` | Authentication provider |
+| Listen address | `--listen` | `tcp://127.0.0.1:8443` | Server listen address |
+| Store path | `--store` | `./.agentguard` | Cedar schema and policy directory |
+| Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache |
+| JWKS refresh | `AGENTGUARD_JWKS_REFRESH` | `30s` | Cached JWKS refresh interval |
+| OTLP endpoint | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(unset)* | OpenTelemetry OTLP collector URL |
+
+---
 
 ## Examples
 
@@ -257,26 +285,13 @@ See [`docs/architecture.md`](docs/architecture.md).
 - `examples/dpop-protected/` — sender-constrained tokens (added in v2)
 - `examples/hash-chain-verify/` — audit log tamper detection (added in v2)
 
-## Development
+---
 
-```bash
-# Format + lint + test (mirror CI)
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+## Architecture
 
-# Build everything
-cargo build --workspace --release
+See [`docs/architecture.md`](docs/architecture.md).
 
-# Run a single example
-python examples/basic-tool-authz/main.py
-```
-
-## License
-
-Apache 2.0. See `LICENSE`.
-
-## Standards implemented
+### Standards implemented
 
 - **Cedar** 4.x — authorization policy language
 - **OpenID AuthZEN** WG draft — PDP/PEP interop protocol
@@ -291,3 +306,150 @@ Apache 2.0. See `LICENSE`.
 - **RFC 8785** (JSON Canonicalization Scheme) — hash chain input
 - **SPIFFE X.509-SVID** — workload identity
 - **NIST SP 800-204** alignment — microservices security patterns
+
+---
+
+## Project Structure
+
+```
+agent-guard/
+├── crates/
+│   ├── agentguard-core/         # Type-safe wrappers, decision cache, audit log
+│   ├── agentguard-cli/          # `agentguard` CLI binary
+│   ├── agentguard-telemetry/    # OTel/OTLP sink trait + Prometheus metrics
+│   ├── agentguard-auth/         # JWT/OIDC/API-key/DPoP/SPIFFE
+│   ├── agentguard-policy/       # Versioned bundles, hot reload, blast radius
+│   └── agentguard-server/       # AuthZEN HTTP + gRPC PDP
+├── python/
+│   ├── agentguard/              # Python SDK
+│   ├── agentguard_langchain/    # LangChain middleware
+│   └── agentguard_server_sdk/   # AuthZEN client
+├── typescript/
+│   ├── agentguard/              # TypeScript SDK
+│   └── packages/
+│       ├── vercel-ai/           # @agentguard/vercel-ai
+│       └── server-sdk/          # @agentguard/server-sdk
+├── examples/                    # 7 working examples
+├── schemas/                     # Cedar schema fragments
+├── docs/                        # Architecture & API documentation
+└── stages/                      # Stage-by-stage implementation plan
+```
+
+---
+
+## Development
+
+```bash
+# Format + lint + test (mirror CI)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+# Build everything
+cargo build --workspace --release
+
+# Python SDK
+cd python/agentguard
+pip install -e ".[dev]"
+pytest
+
+# TypeScript SDK
+cd typescript/agentguard
+npm install
+npm test
+npm run build
+
+# Run a single example
+python examples/basic-tool-authz/main.py
+```
+
+### Commit Conventions
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add step-up auth flow to Python SDK
+fix: clamp TTL to configured maximum in decision cache
+docs: document RFC 9449 DPoP binding
+refactor: extract hash-chain HMAC to a dedicated module
+test: add adversarial Cedar policy fixtures
+chore: bump cedar-policy to 4.4
+```
+
+---
+
+## Testing
+
+```bash
+cargo test --workspace             # Rust unit + integration tests
+cargo test --workspace --all-features
+cd python/agentguard && pytest     # Python SDK
+cd typescript/agentguard && npm test  # TypeScript SDK
+```
+
+---
+
+## Build
+
+```bash
+cargo build --workspace --release
+cd typescript/agentguard && npm run build
+cd typescript/packages/vercel-ai && npm run build
+```
+
+---
+
+## Release
+
+1. Bump workspace version in `Cargo.toml`
+2. Update `CHANGELOG.md` with the new release notes
+3. Commit with a `version:X.Y.Z` message
+4. Tag and push — CI publishes Rust crates and Python/TypeScript packages
+
+---
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Core language | Rust (edition 2021) |
+| Policy engine | [cedar-policy](https://github.com/cedar-policy/cedar) 4.x |
+| CLI parsing | [clap](https://github.com/clap-rs/clap) 4 |
+| Async runtime | [tokio](https://tokio.rs/) |
+| Serialization | [serde](https://serde.rs/), [serde_json](https://github.com/serde-rs/json) |
+| Tracing | [tracing](https://github.com/tokio-rs/tracing) + OTLP |
+| Crypto | [ed25519-dalek](https://github.com/dalek-cryptography/ed25519-dalek), [hmac](https://github.com/RustCrypto/MACs), [sha2](https://github.com/RustCrypto/hashes) |
+| File watching | [notify](https://github.com/notify-rs/notify) |
+| HTTP client | [reqwest](https://github.com/seanmonstar/reqwest) (rustls) |
+| Python SDK | Python 3.10+, Pydantic v2, [httpx](https://www.python-httpx.org/) |
+| TypeScript SDK | Node.js ≥ 20, [zod](https://zod.dev), native `fetch` |
+| Build (Python) | [Hatchling](https://hatch.pypa.io/) |
+| Build (TypeScript) | [tsc](https://www.typescriptlang.org/) |
+
+---
+
+## Roadmap
+
+- **v0.2.0** — Current: AuthZEN HTTP + gRPC PDP, JWT/OIDC/API-key/DPoP/SPIFFE auth, RFC 8693 token exchange, hash-chained audit log + SIEM formatters, TTL & decision cache, CLI (init/validate/authorize/sim/delegate/verify/audit/policy/serve/doctor)
+- **v0.3.0** — Planned: distributed decision cache (Redis), policy A/B testing, multi-tenant audit namespaces, OpenTelemetry collector integration
+- **v1.0.0** — Stable API, semantic-versioning guarantees, LTS support window
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please **do not** file security vulnerabilities as public GitHub
+issues. Report vulnerabilities to **sachncs@gmail.com** — see
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache 2.0](LICENSE) © 2026 Sachin
