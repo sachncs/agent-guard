@@ -19,3 +19,7 @@ ed25519-dalek.workspace = true
 rand.workspace = true
 indexmap.workspace = true
 walkdir.workspace = true
+parking_lot.workspace = true
+humantime.workspace = true
+hex.workspace = true
+hmac.workspace = true

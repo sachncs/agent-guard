@@ -3,6 +3,7 @@
 use crate::action::AgentAction;
 use crate::context::AgentContext;
 use crate::error::{Error, Result};
+use crate::observability::TraceContext;
 use crate::principal::Principal;
 use crate::resource::Resource;
 use cedar_policy::{Context, EntityId, EntityTypeName, EntityUid, Request};
@@ -21,6 +22,9 @@ pub struct AgentRequest {
     pub context: AgentContext,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// Optional W3C Trace Context (parsed from `traceparent` header).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace: Option<TraceContext>,
 }
 
 impl AgentRequest {
@@ -37,12 +41,19 @@ impl AgentRequest {
             resource,
             context,
             request_id: Some(uuid::Uuid::now_v7().to_string()),
+            trace: None,
         }
     }
 
     /// Override the auto-generated request id.
     pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
         self.request_id = Some(id.into());
+        self
+    }
+
+    /// Attach a W3C Trace Context.
+    pub fn with_trace(mut self, trace: TraceContext) -> Self {
+        self.trace = Some(trace);
         self
     }
 
@@ -103,6 +114,7 @@ pub struct AgentRequestBuilder {
     resource: Option<Resource>,
     context: AgentContext,
     request_id: Option<String>,
+    trace: Option<TraceContext>,
 }
 
 impl AgentRequestBuilder {
@@ -114,6 +126,7 @@ impl AgentRequestBuilder {
             resource: None,
             context: AgentContext::new(),
             request_id: None,
+            trace: None,
         }
     }
 
@@ -141,6 +154,19 @@ impl AgentRequestBuilder {
         self
     }
 
+    /// Attach a W3C Trace Context.
+    pub fn trace(mut self, trace: TraceContext) -> Self {
+        self.trace = Some(trace);
+        self
+    }
+
+    /// Attach a trace by parsing a `traceparent` string.
+    pub fn traceparent(mut self, tp: &str) -> Result<Self> {
+        let trace: TraceContext = tp.parse()?;
+        self.trace = Some(trace);
+        Ok(self)
+    }
+
     /// Finalize the request. Returns an error if action or resource is missing.
     pub fn build(self) -> Result<AgentRequest> {
         let action = self
@@ -153,6 +179,7 @@ impl AgentRequestBuilder {
         if let Some(id) = self.request_id {
             req.request_id = Some(id);
         }
+        req.trace = self.trace;
         Ok(req)
     }
 }

@@ -5,6 +5,7 @@
 
 use crate::authorize::Decision;
 use crate::error::Result;
+use crate::observability::{SpanId, TraceId};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -25,6 +26,18 @@ pub struct DecisionRecord {
     pub reasons: Vec<String>,
     pub session_id: Option<String>,
     pub agent_chain: Option<Vec<String>>,
+    /// W3C Trace Context trace ID, propagated from the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<TraceId>,
+    /// W3C Trace Context span ID, propagated from the request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_id: Option<SpanId>,
+    /// Tenant ID for multi-tenant deployments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    /// Subject ID for SAR queries (GDPR Art. 15).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject_id: Option<String>,
 }
 
 impl DecisionRecord {
@@ -77,6 +90,24 @@ impl DecisionRecord {
             reasons: d.reasons.clone(),
             session_id,
             agent_chain,
+            trace_id: req
+                .get("trace")
+                .and_then(|t| t.get("trace_id"))
+                .and_then(|s| s.as_str())
+                .and_then(|s| s.parse().ok()),
+            span_id: req
+                .get("trace")
+                .and_then(|t| t.get("span_id"))
+                .and_then(|s| s.as_str())
+                .and_then(|s| s.parse().ok()),
+            tenant_id: req
+                .get("tenant_id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            subject_id: req
+                .get("subject_id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         }
     }
 }
