@@ -85,6 +85,11 @@ enum Cmd {
         #[command(subcommand)]
         action: LogCmd,
     },
+    /// Audit log operations (verify, export, SAR, erase, notarize).
+    Audit {
+        #[command(subcommand)]
+        action: AuditCmd,
+    },
     /// Generate Cedar policy from a natural language description (requires --api-key or OPENAI_API_KEY env).
     Gen {
         description: String,
@@ -115,6 +120,53 @@ enum LogCmd {
     },
     /// Pretty-print all entries (use sparingly).
     Dump,
+}
+
+#[derive(Subcommand)]
+enum AuditCmd {
+    /// Walk the HMAC chain and verify every record.
+    Verify {
+        /// Path to the audit log (default: --audit)
+        #[arg(long)]
+        audit: Option<String>,
+        /// Path to the secret file containing the HMAC root key
+        #[arg(long)]
+        secret_file: String,
+    },
+    /// Re-format the audit log for SIEM ingestion.
+    Export {
+        /// Path to the audit log (default: --audit)
+        #[arg(long)]
+        audit: Option<String>,
+        /// Output format: jsonl | cef | leef | ecs
+        #[arg(long, default_value = "ecs")]
+        format: String,
+        /// Output path (default: stdout)
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Subject access report — find all decisions about a data subject.
+    Sar {
+        /// Path to the audit log (default: --audit)
+        #[arg(long)]
+        audit: Option<String>,
+        /// Subject ID (principal) to search for
+        subject_id: String,
+    },
+    /// Pseudonymize a subject's records (GDPR Art. 17 erasure).
+    Erase {
+        /// Path to the audit log (default: --audit)
+        #[arg(long)]
+        audit: Option<String>,
+        /// Subject ID to erase
+        subject_id: String,
+        /// Salt file (random bytes) — required to ensure irreversibility
+        #[arg(long)]
+        salt_file: String,
+        /// Output path for the pseudonymized log (default: overwrite input)
+        #[arg(long)]
+        out: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -196,6 +248,33 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Cmd::Audit { action } => match action {
+            AuditCmd::Verify { audit, secret_file } => {
+                let path = audit.as_deref().unwrap_or(&cli.audit);
+                commands::audit::verify(path, &secret_file, out)
+            }
+            AuditCmd::Export {
+                audit,
+                format,
+                out: out_path,
+            } => {
+                let path = audit.as_deref().unwrap_or(&cli.audit);
+                commands::audit::export(path, &format, out_path.as_deref(), out)
+            }
+            AuditCmd::Sar { audit, subject_id } => {
+                let path = audit.as_deref().unwrap_or(&cli.audit);
+                commands::audit::sar(path, &subject_id, out)
+            }
+            AuditCmd::Erase {
+                audit,
+                subject_id,
+                salt_file,
+                out: out_path,
+            } => {
+                let path = audit.as_deref().unwrap_or(&cli.audit);
+                commands::audit::erase(path, &subject_id, &salt_file, out_path.as_deref())
+            }
+        },
     };
 
     res

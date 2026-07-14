@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod authorize;
 pub mod delegate;
 pub mod gen;
