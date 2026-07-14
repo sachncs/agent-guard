@@ -5,12 +5,22 @@ mod commands;
 #[derive(Parser)]
 #[command(name = "agentguard", version, about = "Cedar-powered authorization for AI agents", long_about = None)]
 struct Cli {
-    /// Path to policy store (default: .agentguard)
-    #[arg(long, global = true, default_value = ".agentguard")]
+    /// Path to policy store (default: .agentguard, or $AGENTGUARD_STORE)
+    #[arg(
+        long,
+        global = true,
+        env = "AGENTGUARD_STORE",
+        default_value = ".agentguard"
+    )]
     store: String,
 
-    /// Path to decision log (default: .audit/decisions.jsonl)
-    #[arg(long, global = true, default_value = ".audit/decisions.jsonl")]
+    /// Path to decision log (default: .audit/decisions.jsonl, or $AGENTGUARD_AUDIT)
+    #[arg(
+        long,
+        global = true,
+        env = "AGENTGUARD_AUDIT",
+        default_value = ".audit/decisions.jsonl"
+    )]
     audit: String,
 
     /// Output format (json|pretty)

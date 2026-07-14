@@ -26,3 +26,6 @@ node_modules/
 *.agentguard/
 .audit/
 *.log
+# Example runtime artifacts
+examples/*/chained.jsonl
+examples/*/.audit/

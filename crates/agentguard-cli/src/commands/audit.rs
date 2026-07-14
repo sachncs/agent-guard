@@ -16,7 +16,11 @@ pub fn verify(audit_path: &str, secret_file: &str, output: &str) -> Result<()> {
     let key_str = std::str::from_utf8(&key)
         .map_err(|e| anyhow!("secret must be utf-8: {}", e))?
         .trim();
-    let key_bytes = decode_secret(key_str)?;
+    let key_bytes = if key_str.len() == 64 && key_str.chars().all(|c| c.is_ascii_hexdigit()) {
+        hex::decode(key_str).map_err(|e| anyhow!("hex: {}", e))?
+    } else {
+        key.to_vec()
+    };
     let chain_id = DecisionLog::verify_chain(audit_path, &key_bytes)?;
     if output == "json" {
         println!(

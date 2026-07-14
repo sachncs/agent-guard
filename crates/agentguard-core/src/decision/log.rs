@@ -49,6 +49,9 @@ impl DecisionLog {
             }),
             Some(key) => {
                 let chain = HashChain::new(&key);
+                // Resume the chain from the file's last record, so each
+                // subprocess invocation picks up where the last left off.
+                let _ = chain.load_head_from_file(&path);
                 Ok(Self {
                     mode: LogMode::Chained {
                         file: Mutex::new(Some(f)),
