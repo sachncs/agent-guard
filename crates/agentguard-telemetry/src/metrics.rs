@@ -9,18 +9,33 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Snapshot of a counter at a point in time.
+/// Snapshot of a counter at a point in time. Snapshot semantics — for
+/// a live counter that can be incremented from multiple threads, use
+/// [`AtomicCounter`] (cheap, lock-free) instead.
+///
+/// `Counter` is deprecated and kept only for snapshot/boundary use.
+#[deprecated(
+    since = "0.2.1",
+    note = "Counter is a snapshot type and cannot increment. Use AtomicCounter for live counters."
+)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Counter {
     value: u64,
 }
 
+#[allow(deprecated)]
 impl Counter {
-    pub fn inc(&self) -> u64 {
-        // Returns the new value.
-        0 // placeholder, real impl below
+    /// Construct a snapshot from a value.
+    pub fn new(value: u64) -> Self {
+        Self { value }
     }
 
+    /// Returns the snapshot value (does NOT mutate).
+    ///
+    /// The previous implementation returned `0` from `inc()` while
+    /// leaving `value` unchanged, which silently broke every caller
+    /// that relied on counter increments. Replaced with `new`/`get`
+    /// to make the snapshot semantics explicit.
     pub fn get(&self) -> u64 {
         self.value
     }

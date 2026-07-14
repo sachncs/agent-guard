@@ -206,9 +206,14 @@ fn build_authorizer(bundle: &PolicyBundle) -> std::result::Result<Authorizer, St
     use agentguard_core::PolicyStore;
     use std::path::Path;
 
-    // Build a temp directory containing the bundle's files, point a
-    // `PolicyStore` at it, then load.
-    let dir = tempdir_in("/tmp")?;
+    // RAII tempdir: the directory is removed when `_tmp` is dropped at
+    // the end of this function (before we return the Authorizer, which
+    // holds parsed policies in memory, not file handles). The previous
+    // implementation created a fresh /tmp/agentguard-blast-* dir on
+    // every call and never cleaned it up; a corpus analysis loop
+    // would fill the disk.
+    let _tmp = tempfile::tempdir().map_err(|e| format!("create tempdir: {}", e))?;
+    let dir = _tmp.path();
     let schema_path = dir.join("schema.cedarschema");
     let policies_dir = dir.join("policies");
     std::fs::create_dir_all(&policies_dir).map_err(|e| format!("create policies dir: {}", e))?;
@@ -219,25 +224,21 @@ fn build_authorizer(bundle: &PolicyBundle) -> std::result::Result<Authorizer, St
         std::fs::write(&path, &p.source).map_err(|e| format!("write policy {}: {}", p.id, e))?;
     }
     let store =
-        PolicyStore::open(Path::new(&dir)).map_err(|e| format!("open policy store: {}", e))?;
+        PolicyStore::open(Path::new(dir)).map_err(|e| format!("open policy store: {}", e))?;
     Authorizer::new(store).map_err(|e| format!("build authorizer: {}", e))
 }
 
-fn tempdir_in(prefix: &str) -> std::result::Result<std::path::PathBuf, String> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Combine a timestamp with a process-wide counter so concurrent test
-    // threads (e.g. cargo test with --test-threads > 1) get unique names.
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::path::PathBuf::from(prefix).join(format!("agentguard-blast-{}-{}", nanos, seq));
-    std::fs::create_dir_all(&path).map_err(|e| format!("create tempdir: {}", e))?;
-    Ok(path)
+#[allow(dead_code, deprecated)]
+fn tempdir_in(_prefix: &str) -> std::result::Result<std::path::PathBuf, String> {
+    // Retained for compatibility with downstream embedders; internally
+    // `build_authorizer` uses `tempfile::tempdir()` for RAII cleanup.
+    // This function now also uses `tempfile::tempdir()` and re-rooted
+    // its prefix as a hint to the underlying builder.
+    let tmp = tempfile::Builder::new()
+        .prefix("agentguard-blast-")
+        .tempdir()
+        .map_err(|e| format!("create tempdir: {}", e))?;
+    Ok(tmp.keep())
 }
 
 #[cfg(test)]

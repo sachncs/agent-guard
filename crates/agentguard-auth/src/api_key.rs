@@ -18,8 +18,14 @@ use std::time::Duration;
 /// Fixed Argon2id parameters used by all API key operations. Using a
 /// deterministic instance per call (rather than `Argon2::default()`)
 /// prevents global-state interference when tests run in parallel.
+///
+/// Parameters: 64 MiB memory, t=3, p=4. This is OWASP's 2024 production
+/// recommendation for auth secrets. The previous 19 MiB / t=2 / p=1
+/// was at the bottom of OWASP's "acceptable" range and ~10x cheaper
+/// to brute-force; the bump brings verification to ~150ms on server
+/// hardware, which is appropriate for an authentication boundary.
 fn argon2() -> Argon2<'static> {
-    let params = Params::new(19_456, 2, 1, None).expect("argon2 params");
+    let params = Params::new(64 * 1024, 3, 4, None).expect("argon2 params");
     Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
 }
 

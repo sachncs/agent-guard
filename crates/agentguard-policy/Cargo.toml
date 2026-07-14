@@ -20,10 +20,10 @@ parking_lot.workspace = true
 anyhow.workspace = true
 similar = "2"
 tracing.workspace = true
+tempfile = "3"
 
 [features]
 default = []
 watch = ["dep:notify", "dep:tokio"]
 
 [dev-dependencies]
-tempfile = "3"

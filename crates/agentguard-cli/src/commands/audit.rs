@@ -97,27 +97,32 @@ pub fn erase(
 ) -> Result<()> {
     let salt =
         std::fs::read(salt_file).map_err(|e| anyhow!("read salt file {}: {}", salt_file, e))?;
-    let records = DecisionLog::read_all(audit_path)?;
+    let records = DecisionLog::read_all_chained(audit_path)?;
     let mut out = Vec::new();
     let mut erased = 0;
-    for mut r in records {
-        let r_matches = r.principal == subject_id || r.subject_id.as_deref() == Some(subject_id);
+    for mut cr in records {
+        let r_matches = cr.record.principal == subject_id
+            || cr.record.subject_id.as_deref() == Some(subject_id);
         if r_matches {
             let mut mac = <HmacSha256 as Mac>::new_from_slice(&salt)
                 .map_err(|e| anyhow!("hmac init: {}", e))?;
-            mac.update(r.principal.as_bytes());
+            mac.update(cr.record.principal.as_bytes());
             let hash = mac.finalize().into_bytes();
-            r.principal = format!("erased:{}", hex::encode(hash));
-            r.subject_id = Some(format!("erased:{}", hex::encode(hash)));
+            let tag = format!("erased:{}", hex::encode(hash));
+            cr.record.principal = tag.clone();
+            cr.record.subject_id = Some(tag);
             erased += 1;
         }
-        out.push(r);
+        // Preserve chain metadata (prev_hash / record_hash / chain_id)
+        // so each record's place in the chain is documented even though
+        // the HMAC no longer recomputes for erased rows.
+        out.push(cr);
     }
     let target = out_path.unwrap_or(audit_path);
     let file = std::fs::File::create(target)?;
     let mut writer = std::io::BufWriter::new(file);
-    for r in &out {
-        serde_json::to_writer(&mut writer, r)?;
+    for cr in &out {
+        serde_json::to_writer(&mut writer, cr)?;
         use std::io::Write;
         writer.write_all(b"\n")?;
     }
@@ -127,7 +132,71 @@ pub fn erase(
         out.len(),
         target
     );
+    if erased > 0 {
+        println!(
+            "WARNING: the rewritten audit log will fail `agentguard audit verify` \
+             because the HMAC of each erased record no longer matches its stored \
+             hash. This is expected for GDPR Art. 17 erasure — the audit trail \
+             keeps its position markers but the canonical record body has been \
+             modified. Operators MUST keep the pre-erasure file as evidence of \
+             the original chain."
+        );
+    }
     Ok(())
 }
 
 fn _path_helper(_: &Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agentguard_core::decision::DecisionRecord;
+    use tempfile::tempdir;
+
+    #[test]
+    fn erase_preserves_chain_metadata() {
+        // The audit log is rewritten preserving prev_hash / record_hash /
+        // chain_id fields (so downstream verifiers see *what was* there),
+        // even though the record body has been mutated and the HMAC no
+        // longer recomputes. The operator is warned to keep the original.
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+        let rec = DecisionRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: Some("alice".into()),
+        };
+        log.append(&rec).unwrap();
+        log.append(&rec).unwrap();
+        drop(log);
+
+        let salt_path = dir.path().join("salt");
+        std::fs::write(&salt_path, b"random-salt-bytes").unwrap();
+        erase(path.to_str().unwrap(), "alice", salt_path.to_str().unwrap(), None).unwrap();
+
+        // Re-read as ChainedRecord and verify the chain metadata is intact.
+        let records = DecisionLog::read_all_chained(&path).unwrap();
+        assert_eq!(records.len(), 2);
+        for cr in &records {
+            // hex of 32 bytes
+            assert_eq!(cr.prev_hash.len(), 64);
+            assert_eq!(cr.record_hash.len(), 64);
+            assert_ne!(cr.chain_id.0, uuid::Uuid::nil());
+            // principal was rewritten to "erased:<hex>"
+            assert!(cr.record.principal.starts_with("erased:"));
+        }
+    }
+}

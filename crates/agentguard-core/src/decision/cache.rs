@@ -142,14 +142,19 @@ impl Default for CacheConfig {
 
 /// LRU + TTL decision cache.
 ///
+/// Backed by a simple LRU map. Thread-safe via [`parking_lot::RwLock`]:
+/// reads (the common case on a hot PDP) take a shared lock and run
+/// concurrently; only `put()` (cache fill) takes the exclusive lock.
 ///
-///
-/// Backed by a simple HashMap + LRU eviction. Thread-safe via [`parking_lot::Mutex`].
+/// Note: a cache miss can still trigger a "thundering herd" where many
+/// concurrent readers all see `None` for a popular key and all run the
+/// underlying authorization. A single-flight pattern (per-key `OnceCell`)
+/// would close this, but is left for a future enhancement.
 pub struct DecisionCache {
     config: CacheConfig,
     clock: Arc<dyn Clock>,
     policy_version: AtomicU64,
-    inner: parking_lot::Mutex<lru::LruCache<CacheKey, (CachedDecision, std::time::Instant)>>,
+    inner: parking_lot::RwLock<lru::LruCache<CacheKey, (CachedDecision, std::time::Instant)>>,
     hits: AtomicU64,
     misses: AtomicU64,
     evictions: AtomicU64,
@@ -162,7 +167,7 @@ impl DecisionCache {
             config,
             clock,
             policy_version: AtomicU64::new(0),
-            inner: parking_lot::Mutex::new(lru::LruCache::new(capacity)),
+            inner: parking_lot::RwLock::new(lru::LruCache::new(capacity)),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
             evictions: AtomicU64::new(0),
@@ -180,7 +185,7 @@ impl DecisionCache {
             config: c,
             clock,
             policy_version: AtomicU64::new(0),
-            inner: parking_lot::Mutex::new(lru::LruCache::new(cap)),
+            inner: parking_lot::RwLock::new(lru::LruCache::new(cap)),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
             evictions: AtomicU64::new(0),
@@ -206,21 +211,34 @@ impl DecisionCache {
     pub fn get(&self, key: &CacheKey) -> Option<CachedDecision> {
         let now = self.clock.now();
         let policy_version = self.policy_version();
-        let mut guard = self.inner.lock();
+        // Read path takes a SHARED lock. Many concurrent readers can
+        // coexist. Eviction (rare) needs exclusive; for that we
+        // downgrade to a write lock only when we observe staleness.
+        let guard = self.inner.read();
         if let Some((cached, expires_at)) = guard.peek(key).cloned() {
             if cached.cached_at_policy_version != policy_version {
-                // Stale due to policy reload; remove and miss.
-                guard.pop(key);
+                // Stale due to policy reload; drop the read lock and
+                // take a write lock to evict.
+                drop(guard);
+                let mut w = self.inner.write();
+                w.pop(key);
                 self.misses.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
             if now >= expires_at {
-                guard.pop(key);
+                drop(guard);
+                let mut w = self.inner.write();
+                w.pop(key);
                 self.misses.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
-            // Touch for LRU recency.
-            guard.get(key);
+            // Touch for LRU recency (requires mut access; skip here
+            // because we hold a shared lock — readers don't update
+            // recency, which means hot reads can be evicted before
+            // cold reads. Acceptable trade-off for the throughput
+            // gain: the cache capacity is sized for working set, and
+            // eviction is "approximately LRU" which is good enough for
+            // a PDP).
             self.hits.fetch_add(1, Ordering::Relaxed);
             return Some(cached);
         }
@@ -235,8 +253,8 @@ impl DecisionCache {
             "deny" if self.config.cache_denies => self.config.deny_ttl,
             _ => return,
         };
-        let guard_cell = &self.inner;
-        let mut guard = guard_cell.lock();
+        // Fill takes an EXCLUSIVE lock. This is rare relative to reads.
+        let mut guard = self.inner.write();
         let prev = guard.push(key, (decision, now + ttl));
         if prev.is_none() && guard.len() >= self.config.capacity {
             self.evictions.fetch_add(1, Ordering::Relaxed);
@@ -248,7 +266,7 @@ impl DecisionCache {
             hits: self.hits.load(Ordering::Relaxed),
             misses: self.misses.load(Ordering::Relaxed),
             evictions: self.evictions.load(Ordering::Relaxed),
-            size: self.inner.lock().len(),
+            size: self.inner.read().len(),
             policy_version: self.policy_version(),
         }
     }

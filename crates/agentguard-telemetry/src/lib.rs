@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod sink;
 pub mod sinks;
 
+#[allow(deprecated)]
 pub use metrics::{Counter, Gauge, Histogram, Metrics, MetricsSnapshot};
 pub use sink::{Sink, SinkError, SinkEvent, SinkEventKind};
 pub use sinks::{jsonl::JsonlSink, stdout::StdoutSink};
