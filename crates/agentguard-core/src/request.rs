@@ -1,208 +1,18 @@
-//! Build Cedar requests from agent concepts: tools, callers, sub-agents.
+//! Agent authorization requests and a builder.
 
+use crate::action::AgentAction;
+use crate::context::AgentContext;
 use crate::error::{Error, Result};
+use crate::principal::Principal;
+use crate::resource::Resource;
 use cedar_policy::{Context, EntityId, EntityTypeName, EntityUid, Request};
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Principal {
-    User {
-        uid: String,
-        #[serde(default)]
-        attrs: IndexMap<String, serde_json::Value>,
-    },
-    Agent {
-        uid: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_uid: Option<String>,
-        #[serde(default)]
-        attrs: IndexMap<String, serde_json::Value>,
-    },
-}
-
-impl Principal {
-    pub fn user(uid: impl Into<String>) -> Self {
-        Principal::User {
-            uid: uid.into(),
-            attrs: IndexMap::new(),
-        }
-    }
-
-    pub fn agent(uid: impl Into<String>) -> Self {
-        Principal::Agent {
-            uid: uid.into(),
-            parent_uid: None,
-            attrs: IndexMap::new(),
-        }
-    }
-
-    pub fn subagent(uid: impl Into<String>, parent: impl Into<String>) -> Self {
-        Principal::Agent {
-            uid: uid.into(),
-            parent_uid: Some(parent.into()),
-            attrs: IndexMap::new(),
-        }
-    }
-
-    pub fn with_attr(mut self, k: impl Into<String>, v: impl Into<serde_json::Value>) -> Self {
-        let map = match &mut self {
-            Principal::User { attrs, .. } => attrs,
-            Principal::Agent { attrs, .. } => attrs,
-        };
-        map.insert(k.into(), v.into());
-        self
-    }
-
-    pub fn entity_type(&self) -> &'static str {
-        match self {
-            Principal::User { .. } => "User",
-            Principal::Agent { .. } => "Agent",
-        }
-    }
-
-    pub fn entity_uid(&self) -> String {
-        format!("{}::\"{}\"", self.entity_type(), self.id())
-    }
-
-    pub fn id(&self) -> &str {
-        match self {
-            Principal::User { uid, .. } | Principal::Agent { uid, .. } => uid,
-        }
-    }
-}
-
-impl fmt::Display for Principal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.entity_uid())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Resource {
-    pub entity_type: String,
-    pub uid: String,
-    #[serde(default)]
-    pub attrs: IndexMap<String, serde_json::Value>,
-}
-
-impl Resource {
-    pub fn new(entity_type: impl Into<String>, uid: impl Into<String>) -> Self {
-        Self {
-            entity_type: entity_type.into(),
-            uid: uid.into(),
-            attrs: IndexMap::new(),
-        }
-    }
-
-    pub fn with_attr(mut self, k: impl Into<String>, v: impl Into<serde_json::Value>) -> Self {
-        self.attrs.insert(k.into(), v.into());
-        self
-    }
-
-    pub fn entity_uid(&self) -> String {
-        format!("{}::\"{}\"", self.entity_type, self.uid)
-    }
-}
-
-impl fmt::Display for Resource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.entity_uid())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AgentAction {
-    pub tool: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub operation: Option<String>,
-}
-
-impl AgentAction {
-    pub fn tool(name: impl Into<String>) -> Self {
-        Self {
-            tool: name.into(),
-            operation: None,
-        }
-    }
-
-    pub fn tool_op(name: impl Into<String>, op: impl Into<String>) -> Self {
-        Self {
-            tool: name.into(),
-            operation: Some(op.into()),
-        }
-    }
-
-    pub fn action_uid(&self) -> String {
-        match &self.operation {
-            Some(op) => format!("Action::\"ToolCall::{}::{}\"", self.tool, op),
-            None => format!("Action::\"ToolCall::{}\"", self.tool),
-        }
-    }
-
-    pub fn action_id(&self) -> String {
-        match &self.operation {
-            Some(op) => format!("ToolCall::{}::{}", self.tool, op),
-            None => format!("ToolCall::{}", self.tool),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AgentContext {
-    #[serde(default)]
-    pub args: serde_json::Value,
-    #[serde(default)]
-    pub session: IndexMap<String, serde_json::Value>,
-}
-
-impl AgentContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_arg(mut self, k: impl Into<String>, v: impl Into<serde_json::Value>) -> Self {
-        if !self.args.is_object() {
-            self.args = serde_json::json!({});
-        }
-        self.args
-            .as_object_mut()
-            .unwrap()
-            .insert(k.into(), v.into());
-        self
-    }
-
-    pub fn with_session(mut self, k: impl Into<String>, v: impl Into<serde_json::Value>) -> Self {
-        self.session.insert(k.into(), v.into());
-        self
-    }
-
-    /// Serialize to a JSON object suitable for `Context::from_json_str`.
-    /// Args are flattened into the top-level context so they match the
-    /// action's declared schema fields. Session metadata is grouped under
-    /// a `session` record so it doesn't collide with action-specific fields.
-    pub fn to_json_object(&self) -> serde_json::Map<String, serde_json::Value> {
-        let mut map = serde_json::Map::new();
-        if let serde_json::Value::Object(args) = &self.args {
-            for (k, v) in args {
-                map.insert(k.clone(), v.clone());
-            }
-        }
-        if !self.session.is_empty() {
-            let session_map: serde_json::Map<_, _> = self
-                .session
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            map.insert("session".into(), serde_json::Value::Object(session_map));
-        }
-        map
-    }
-}
-
+/// A full authorization request: principal + action + resource + context.
+///
+/// Construct via [`AgentRequest::new`] for a quick request, or
+/// [`AgentRequestBuilder`] for type-safe incremental construction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRequest {
     pub principal: Principal,
@@ -214,6 +24,7 @@ pub struct AgentRequest {
 }
 
 impl AgentRequest {
+    /// Construct a request with a fresh UUID v7 request id.
     pub fn new(
         principal: Principal,
         action: AgentAction,
@@ -225,10 +36,11 @@ impl AgentRequest {
             action,
             resource,
             context,
-            request_id: None,
+            request_id: Some(uuid::Uuid::now_v7().to_string()),
         }
     }
 
+    /// Override the auto-generated request id.
     pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
         self.request_id = Some(id.into());
         self
@@ -237,7 +49,7 @@ impl AgentRequest {
     /// Convert to a `cedar_policy::Request`. `schema` is used to construct
     /// a typed context (validates context shape per action) when available.
     pub fn to_cedar_request(&self, schema: Option<&cedar_policy::Schema>) -> Result<Request> {
-        let principal_eid = EntityId::new(self.principal.id());
+        let principal_eid = EntityId::new(&**self.principal.id());
         let principal_etype =
             EntityTypeName::from_str(self.principal.entity_type()).map_err(|e| {
                 Error::InvalidPrincipal(format!("{}: {}", self.principal.entity_type(), e))
@@ -275,38 +87,118 @@ impl AgentRequest {
     }
 }
 
+/// Builder for [`AgentRequest`] with type-safe setters.
+///
+/// ```ignore
+/// let req = AgentRequestBuilder::new(Principal::user("alice"))
+///     .action(AgentAction::tool("send_email"))
+///     .resource(Resource::new("Mailbox", "alice@acme"))
+///     .context(AgentContext::new().with_arg("to", "[email protected]"))
+///     .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct AgentRequestBuilder {
+    principal: Principal,
+    action: Option<AgentAction>,
+    resource: Option<Resource>,
+    context: AgentContext,
+    request_id: Option<String>,
+}
+
+impl AgentRequestBuilder {
+    /// Start building a request for the given principal.
+    pub fn new(principal: impl Into<Principal>) -> Self {
+        Self {
+            principal: principal.into(),
+            action: None,
+            resource: None,
+            context: AgentContext::new(),
+            request_id: None,
+        }
+    }
+
+    /// Set the action (tool call).
+    pub fn action(mut self, a: impl Into<AgentAction>) -> Self {
+        self.action = Some(a.into());
+        self
+    }
+
+    /// Set the resource.
+    pub fn resource(mut self, r: impl Into<Resource>) -> Self {
+        self.resource = Some(r.into());
+        self
+    }
+
+    /// Set the context.
+    pub fn context(mut self, c: impl Into<AgentContext>) -> Self {
+        self.context = c.into();
+        self
+    }
+
+    /// Override the auto-generated request id.
+    pub fn request_id(mut self, id: impl Into<String>) -> Self {
+        self.request_id = Some(id.into());
+        self
+    }
+
+    /// Finalize the request. Returns an error if action or resource is missing.
+    pub fn build(self) -> Result<AgentRequest> {
+        let action = self
+            .action
+            .ok_or_else(|| Error::InvalidPrincipal("action is required".into()))?;
+        let resource = self
+            .resource
+            .ok_or_else(|| Error::InvalidResource("resource is required".into()))?;
+        let mut req = AgentRequest::new(self.principal, action, resource, self.context);
+        if let Some(id) = self.request_id {
+            req.request_id = Some(id);
+        }
+        Ok(req)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_user_principal() {
-        let p = Principal::user("alice").with_attr("role", "admin");
-        assert_eq!(p.entity_type(), "User");
-        assert_eq!(p.entity_uid(), "User::\"alice\"");
+    fn builder_sets_all_fields() {
+        let req = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .context(AgentContext::new().with_arg("to", "[email protected]"))
+            .build()
+            .unwrap();
+        assert_eq!(req.principal.entity_uid(), "User::\"alice\"");
+        assert_eq!(req.action.action_uid(), "Action::\"ToolCall::send_email\"");
+        assert_eq!(req.resource.entity_uid(), "Mailbox::\"alice@acme\"");
+        assert!(req.request_id.is_some());
     }
 
     #[test]
-    fn test_agent_with_parent() {
-        let p = Principal::subagent("summarizer", "research");
-        assert_eq!(p.entity_type(), "Agent");
-        assert_eq!(p.entity_uid(), "Agent::\"summarizer\"");
+    fn builder_requires_action() {
+        let res = AgentRequestBuilder::new(Principal::user("alice"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .build();
+        assert!(res.is_err());
     }
 
     #[test]
-    fn test_action_uid() {
-        let a = AgentAction::tool("send_email");
-        assert_eq!(a.action_uid(), "Action::\"ToolCall::send_email\"");
-        let a = AgentAction::tool_op("s3", "PutObject");
-        assert_eq!(a.action_uid(), "Action::\"ToolCall::s3::PutObject\"");
+    fn builder_requires_resource() {
+        let res = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .build();
+        assert!(res.is_err());
     }
 
     #[test]
-    fn test_context_builder() {
-        let c = AgentContext::new()
-            .with_arg("to", "[email protected]")
-            .with_session("ip", "10.0.0.1");
-        assert_eq!(c.args["to"], "[email protected]");
-        assert_eq!(c.session["ip"], "10.0.0.1");
+    fn new_auto_assigns_request_id() {
+        let req = AgentRequest::new(
+            Principal::user("alice"),
+            AgentAction::tool("send_email"),
+            Resource::new("Mailbox", "alice@acme"),
+            AgentContext::new(),
+        );
+        assert!(req.request_id.is_some());
     }
 }
