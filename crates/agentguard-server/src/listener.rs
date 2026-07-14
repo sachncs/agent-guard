@@ -61,7 +61,9 @@ impl Listener {
 pub struct ServerConfig {
     pub listener: Listener,
     pub store_root: PathBuf,
-    pub audit_log: PathBuf,
+    /// Path to the audit log. The server writes every authorization
+    /// decision to this file. **Required for production.**
+    pub audit_log: Option<PathBuf>,
     /// Optional secret file for hash-chained audit log.
     pub chain_secret: Option<PathBuf>,
 }
@@ -74,10 +76,10 @@ impl ServerConfig {
         let store_root = PathBuf::from(
             std::env::var("AGENTGUARD_STORE").unwrap_or_else(|_| ".agentguard".to_string()),
         );
-        let audit_log = PathBuf::from(
-            std::env::var("AGENTGUARD_AUDIT")
-                .unwrap_or_else(|_| ".audit/decisions.jsonl".to_string()),
-        );
+        let audit_log = std::env::var("AGENTGUARD_AUDIT")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| Some(PathBuf::from(".audit/decisions.jsonl")));
         let chain_secret = std::env::var("AGENTGUARD_CHAIN_SECRET")
             .ok()
             .map(PathBuf::from);

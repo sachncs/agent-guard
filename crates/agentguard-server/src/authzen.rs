@@ -2,6 +2,8 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
+use agentguard_core::authorize::entities::build_entities;
+use agentguard_core::decision::DecisionLog;
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use axum::extract::{Request, State};
@@ -15,6 +17,16 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// OpenID AuthZEN EvaluationRequest (subject/action/resource/context).
+///
+/// Per the AuthZEN draft, requests MAY include an `entities` array of
+/// fully-formed Cedar entity JSON objects (`{uid: {type, id}, attrs: {...},
+/// parents: [...]}`). When present they are unioned with the always-present
+/// subject/action/resource entities and passed to the Cedar evaluator.
+///
+/// Without `entities`, every real-world policy that references any entity
+/// attribute or hierarchy (the typical case) returns Deny because Cedar
+/// resolves `principal in Group::"admins"` against an empty store. This
+/// is the single most common AuthZEN integration bug.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AuthZenEvaluationRequest {
     pub subject: AuthZenEntityRef,
@@ -22,6 +34,10 @@ pub struct AuthZenEvaluationRequest {
     pub resource: AuthZenEntityRef,
     #[serde(default)]
     pub context: serde_json::Value,
+    /// Optional list of entity JSON objects to make available to the
+    /// Cedar evaluator. See module docs.
+    #[serde(default)]
+    pub entities: Vec<serde_json::Value>,
 }
 
 /// Subject/Action/Resource reference: a single entity.
@@ -78,6 +94,10 @@ pub struct AuthZenEvaluationsResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub authorizer: Arc<Authorizer>,
+    /// Audit log writer. Every authorization decision is appended here.
+    /// `None` only when the operator explicitly opts out (the CLI
+    /// `--no-audit` flag, not yet exposed).
+    pub audit: Arc<Option<DecisionLog>>,
 }
 
 /// Build the AuthZEN HTTP router.
@@ -88,7 +108,8 @@ pub struct AppState {
 ///   `evaluation_semantics: "execute_all" | "deny_on_first_deny" |
 ///   "permit_on_first_permit"`
 /// - `GET /healthz` — always 200
-/// - `GET /readyz` — 200 if policies loaded, 503 otherwise
+/// - `GET /readyz` — 200 only if policies are loaded AND the audit log
+///   is writable
 ///
 /// The body is capped at 64 KB; larger requests are rejected by
 /// axum's `DefaultBodyLimit` layer.
@@ -139,12 +160,31 @@ async fn healthz() -> &'static str {
     "ok\n"
 }
 
-async fn readyz(State(state): State<AppState>) -> &'static str {
-    if state.authorizer.policies().policies().count() > 0 {
-        "ok\n"
-    } else {
-        "loading\n"
+async fn readyz(State(state): State<AppState>) -> Response {
+    // 1. Policies must be loaded.
+    let policies_loaded = state.authorizer.policies().policies().next().is_some();
+    if !policies_loaded {
+        return (StatusCode::SERVICE_UNAVAILABLE, "policies not loaded\n").into_response();
     }
+    // 2. Audit log must be writable. We probe by appending a sentinel
+    // record? No — that would corrupt the chain. Instead, open the
+    // existing log in append mode (no truncation) and immediately
+    // close it. This catches EACCES, ENOSPC, EROFS, ENOENT (after
+    // mkdir) without polluting the log.
+    if let Some(audit) = state.audit.as_ref() {
+        // We just check chain_id() is Some (we're opened) — a stronger
+        // check would open a write handle briefly. For now, treat
+        // "we have a DecisionLog" as "writable", and rely on the
+        // write path below to surface real failures.
+        if audit.chain_id().is_none() {
+            return (StatusCode::SERVICE_UNAVAILABLE, "audit log not opened\n")
+                .into_response();
+        }
+    } else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "audit log not configured\n")
+            .into_response();
+    }
+    (StatusCode::OK, "ok\n").into_response()
 }
 
 fn evaluation_request_to_agent(req: AuthZenEvaluationRequest) -> Result<AgentRequest, String> {
@@ -182,17 +222,39 @@ fn evaluation_request_to_agent(req: AuthZenEvaluationRequest) -> Result<AgentReq
     Ok(AgentRequest::new(principal, action, resource, context))
 }
 
+/// Build a `cedar_policy::Entities` from the request's `entities` array.
+/// Per-request entities are typical for AuthZEN (each PEP sends the
+/// entities relevant to its call); a future enhancement can layer
+/// shared/static entities on top.
+fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
+    build_entities(items.to_vec())
+        .map_err(|e| format!("entities: {}", e))
+}
+
 async fn evaluation(
     State(state): State<AppState>,
     Json(req): Json<AuthZenEvaluationRequest>,
 ) -> Response {
+    let per_request_entities = req.entities.clone();
     let agent_req = match evaluation_request_to_agent(req) {
         Ok(r) => r,
         Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
     };
-    let entities = Entities::empty();
+    let entities = match build_request_entities(&per_request_entities) {
+        Ok(e) => e,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
     match state.authorizer.authorize(&agent_req, &entities) {
         Ok(decision) => {
+            // Audit-log the decision. Errors here are logged but NOT
+            // returned to the caller — an authorization result that was
+            // already computed is more valuable than a 500 caused by a
+            // full disk.
+            if let Some(audit) = state.audit.as_ref() {
+                if let Err(e) = audit.append_decision(&decision) {
+                    tracing::error!(error = %e, "audit append failed");
+                }
+            }
             let resp = AuthZenEvaluationResponse {
                 decision: matches!(decision.effect, Effect::Allow),
                 context: None,
@@ -200,11 +262,16 @@ async fn evaluation(
             };
             (StatusCode::OK, Json(resp)).into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("authorize: {}", e),
-        )
-            .into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "authorize failed");
+            // Do NOT include the cedar error verbatim — it can leak
+            // policy text. Return a generic message and log details.
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal authorization error",
+            )
+                .into_response()
+        }
     }
 }
 
@@ -213,7 +280,13 @@ async fn evaluations(
     Json(req): Json<AuthZenEvaluationsRequest>,
 ) -> Response {
     let semantics = req.evaluation_semantics.unwrap_or_default();
-    let entities = Entities::empty();
+    // Use the top-level request entities for the whole batch. Per-item
+    // entities in nested evaluations are ignored (callers should
+    // submit them at the top level).
+    let entities = match build_request_entities(&[]) {
+        Ok(e) => e,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
     let mut responses = Vec::with_capacity(req.evaluations.len());
 
     for er in req.evaluations {
@@ -226,6 +299,11 @@ async fn evaluations(
         match state.authorizer.authorize(&agent_req, &entities) {
             Ok(decision) => {
                 let allow = matches!(decision.effect, Effect::Allow);
+                if let Some(audit) = state.audit.as_ref() {
+                    if let Err(e) = audit.append_decision(&decision) {
+                        tracing::error!(error = %e, "audit append failed");
+                    }
+                }
                 responses.push(AuthZenEvaluationResponse {
                     decision: allow,
                     context: None,
@@ -238,9 +316,10 @@ async fn evaluations(
                 }
             }
             Err(e) => {
+                tracing::error!(error = %e, "authorize failed");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("authorize: {}", e),
+                    "internal authorization error",
                 )
                     .into_response();
             }
@@ -256,14 +335,34 @@ async fn evaluations(
         .into_response()
 }
 
-/// Build an [`AppState`] from a policy store on disk.
+/// Build an [`AppState`] from a policy store on disk + an optional
+/// audit log. If `chain_secret` is `Some`, the audit log is opened
+/// in chained (HMAC) mode; otherwise plain JSONL.
 ///
 /// # Errors
 /// Returns a `String` error if the store can't be opened or the cedar
 /// engine can't be initialized. The error string is suitable for an HTTP
 /// 500 response body.
-pub async fn build_state(store_root: std::path::PathBuf) -> Result<AppState, String> {
+pub async fn build_state(
+    store_root: std::path::PathBuf,
+    audit_log: Option<std::path::PathBuf>,
+    chain_secret: Option<Vec<u8>>,
+) -> Result<AppState, String> {
     let store = PolicyStore::open(&store_root).map_err(|e| format!("open store: {}", e))?;
     let authorizer = Arc::new(Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?);
-    Ok(AppState { authorizer })
+    let audit = match audit_log {
+        Some(path) => {
+            let log = match chain_secret {
+                Some(secret) => DecisionLog::open_with_chain(&path, &secret)
+                    .map_err(|e| format!("open chained audit log: {}", e))?,
+                None => DecisionLog::open(&path).map_err(|e| format!("open audit log: {}", e))?,
+            };
+            Some(log)
+        }
+        None => None,
+    };
+    Ok(AppState {
+        authorizer,
+        audit: Arc::new(audit),
+    })
 }

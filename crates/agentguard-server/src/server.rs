@@ -15,7 +15,7 @@
 //! let cfg = ServerConfig {
 //!     listener: Listener::Tcp("127.0.0.1:8443".parse().unwrap()),
 //!     store_root: ".agentguard".into(),
-//!     audit_log: ".audit/decisions.jsonl".into(),
+//!     audit_log: Some(".audit/decisions.jsonl".into()),
 //!     chain_secret: None,
 //! };
 //! agentguard_server::run(cfg).await?;
@@ -27,14 +27,27 @@ use crate::listener::ServerConfig;
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
 use tokio::net::TcpListener;
+use tokio::signal;
 
-/// Run the server. Returns when the listener stops (e.g. on SIGTERM).
+/// Run the server. Returns when the listener stops (e.g. on SIGTERM/SIGINT).
+/// In-flight requests are allowed to complete before the process exits.
 ///
 /// # Errors
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
-    let state = build_state(cfg.store_root.clone())
+    let chain_secret = match &cfg.chain_secret {
+        Some(path) => {
+            let bytes = std::fs::read(path)
+                .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+            if bytes.is_empty() {
+                return Err(anyhow!("chain secret file {:?} is empty", path));
+            }
+            Some(bytes)
+        }
+        None => None,
+    };
+    let state = build_state(cfg.store_root.clone(), cfg.audit_log.clone(), chain_secret)
         .await
         .map_err(|e| anyhow!("build state: {}", e))?;
     let app = router(state);
@@ -43,13 +56,24 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         Listener::Tcp(addr) => {
             let listener = TcpListener::bind(addr).await?;
             tracing::info!("agentguard listening on tcp://{}", addr);
-            serve(listener, app.into_make_service()).await?;
+            serve(listener, app.into_make_service())
+                .with_graceful_shutdown(shutdown_signal())
+                .await?;
         }
         Listener::Tls { addr, cert, key } => {
             use axum_server::tls_rustls::RustlsConfig;
             let cfg = RustlsConfig::from_pem_file(cert, key).await?;
             tracing::info!("agentguard listening on tls://{}", addr);
+            // axum_server::Handle exposes shutdown; use it to coordinate
+            // with our signal handler.
+            let handle = axum_server::Handle::new();
+            let signal_handle = handle.clone();
+            tokio::spawn(async move {
+                shutdown_signal().await;
+                signal_handle.shutdown();
+            });
             axum_server::bind_rustls(addr, cfg)
+                .handle(handle)
                 .serve(app.into_make_service())
                 .await?;
         }
@@ -63,5 +87,27 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         }
     }
 
+    tracing::info!("agentguard stopped cleanly");
     Ok(())
+}
+
+/// Resolve when SIGINT or SIGTERM is received. Used as the trigger for
+/// `axum::serve(...).with_graceful_shutdown(...)` so in-flight requests
+/// finish before the process exits.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            sig.recv().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("SIGINT received, draining"),
+        _ = terminate => tracing::info!("SIGTERM received, draining"),
+    }
 }

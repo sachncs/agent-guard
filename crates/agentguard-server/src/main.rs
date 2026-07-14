@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     let cfg = ServerConfig {
         listener,
         store_root: cli.store.into(),
-        audit_log: cli.audit.into(),
+        audit_log: Some(cli.audit.into()),
         chain_secret: std::env::var("AGENTGUARD_CHAIN_SECRET")
             .ok()
             .map(Into::into),

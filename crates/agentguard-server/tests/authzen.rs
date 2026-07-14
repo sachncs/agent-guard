@@ -20,7 +20,14 @@ async fn make_app() -> axum::Router {
             r#"permit (principal in User::"alice", action, resource);"#,
         )
         .unwrap();
-    let state: AppState = build_state(dir.path().to_path_buf()).await.unwrap();
+    // Open a per-test audit log so /readyz sees a configured log.
+    let audit_path = dir.path().join("audit.jsonl");
+    let audit = agentguard_core::decision::DecisionLog::open(&audit_path).unwrap();
+    let state: AppState =
+        build_state(dir.path().to_path_buf(), Some(audit_path), Some(b"test-key".to_vec()))
+            .await
+            .unwrap();
+    drop(audit); // state owns its own copy via Arc
     router(state)
 }
 
