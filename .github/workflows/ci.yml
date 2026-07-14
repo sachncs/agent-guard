@@ -25,7 +25,6 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy --workspace --all-targets -- -D warnings
-        continue-on-error: true  # v1 clippy carries warnings; tracked separately
 
   test:
     name: cargo test
@@ -35,6 +34,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
       - run: cargo build --workspace --release
+      - run: cargo bench --workspace --no-run
 
   python:
     name: python sdk
@@ -77,3 +77,4 @@ jobs:
       - run: python examples/multi-agent-delegation/main.py
       - run: python examples/jwt-auth/main.py
       - run: python examples/hash-chain-verify/main.py
+      - run: python examples/dpop-protected/main.py
