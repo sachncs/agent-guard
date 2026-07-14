@@ -1,7 +1,9 @@
 //! API key management.
 //!
-//! Format: `<prefix>_<id>_<secret>` where the secret is 32 random bytes
-//! encoded base64url. At rest, only the Argon2id hash of the secret is kept.
+//! Format: `<prefix>:<id>:<secret>` where the secret is 32 random bytes
+//! encoded base64url. The `:` separator avoids ambiguity with the
+//! base64url alphabet (which includes `_` and `-`). At rest, only the
+//! Argon2id hash of the secret is kept.
 
 use crate::error::{AuthError, Result};
 use argon2::password_hash::rand_core::OsRng;
@@ -120,27 +122,23 @@ impl ApiKeyStore {
             revoked_at: None,
         };
         self.keys.write().insert(id, key.clone());
-        let raw = format!("{}_{}_{}", prefix, key.id, secret_b64);
+        let raw = format!("{}:{}:{}", prefix, key.id, secret_b64);
         Ok((key, raw))
     }
 
-    /// Verify a raw API key string. Returns the matched key record on success.
     /// Verify a raw API key string. Returns a cloned `ApiKey` on success.
+    ///
+    /// Format: `<prefix>:<id>:<base64url-secret>`. The `:` separator ensures
+    /// the parse is unambiguous even when the prefix or secret contain `_`
+    /// (which is in the base64url alphabet).
     pub fn verify(&self, raw: &str) -> Result<ApiKey> {
-        // Format: <prefix>_<id>_<secret_b64>. Use rsplitn to handle prefixes
-        // that contain underscores.
-        let parts: Vec<&str> = raw.rsplitn(2, '_').collect();
-        if parts.len() != 2 {
+        let parts: Vec<&str> = raw.split(':').collect();
+        if parts.len() != 3 {
             return Err(AuthError::ApiKeyInvalid);
         }
-        let (rest, secret_b64) = (parts[1], parts[0]);
-        let prefix_and_id: Vec<&str> = rest.rsplitn(2, '_').collect();
-        if prefix_and_id.len() != 2 {
-            return Err(AuthError::ApiKeyInvalid);
-        }
-        let (prefix, id) = (prefix_and_id[1], prefix_and_id[0]);
+        let (prefix, id, secret_b64) = (parts[0], parts[1], parts[2]);
 
-let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(secret_b64)
             .map_err(|_| AuthError::ApiKeyInvalid)?;
         let guard = self.keys.read();
@@ -202,9 +200,13 @@ fn create_and_verify_roundtrip() {
     fn wrong_secret_rejected() {
         let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
-        let (_, raw) = s.create("ag", vec![], None).unwrap();
-        let bad = raw.replace('A', "B");
-        assert!(matches!(s.verify(&bad), Err(AuthError::ApiKeyInvalid)));
+        let (_, mut raw) = s.create("ag", vec![], None).unwrap();
+        // Corrupt the secret by flipping the last character of the base64.
+        let last = raw.pop().unwrap();
+        let replacement = if last == 'A' { 'B' } else { 'A' };
+        let bad = format!("{}{}", raw, replacement);
+        let res = s.verify(&bad);
+        assert!(matches!(res, Err(AuthError::ApiKeyInvalid)));
     }
 
     #[test]
@@ -213,7 +215,8 @@ fn create_and_verify_roundtrip() {
         let s = ApiKeyStore::new();
         let (key, raw) = s.create("ag", vec![], None).unwrap();
         s.revoke(&key.id).unwrap();
-        assert!(matches!(s.verify(&raw), Err(AuthError::ApiKeyRevoked)));
+        let res = s.verify(&raw);
+        assert!(matches!(res, Err(AuthError::ApiKeyRevoked)));
     }
 
     #[test]

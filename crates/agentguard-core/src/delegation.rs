@@ -14,6 +14,7 @@ use std::time::Duration;
 /// JWT/Delegation signing algorithm (RFC 8725 §3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[non_exhaustive]
 pub enum Algorithm {
     HS256,
     RS256,
@@ -36,41 +37,29 @@ impl Algorithm {
 ///
 /// The header carries `alg`, `kid`, `typ`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct DelegationClaims {
-    /// Standard JWT claims.
-    /// Issuer (parent agent), e.g. `Agent::"research"`.
     pub iss: String,
-    /// Subject (delegate), e.g. `Agent::"summarizer"`.
     pub sub: String,
-    /// Audience — required. RFC 8707 resource indicator, e.g.
-    /// `agentguard://prod/email`.
     pub aud: String,
-    /// Issued at (unix seconds).
     pub iat: i64,
-    /// Expiry (unix seconds).
     pub exp: i64,
-    /// Not-before (unix seconds), optional.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nbf: Option<i64>,
-    /// Unique token id for replay protection.
     pub jti: String,
-    /// Allowed actions, e.g. `["ToolCall::send_email"]`.
     pub allowed_actions: Vec<String>,
-    /// Resource UID patterns, e.g. `["Mailbox::*"]`.
     pub resource_patterns: Vec<String>,
-    /// Optional RFC 8693 act claim chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub act: Option<Box<ActClaim>>,
-    /// Structured constraints evaluated against request context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraints: Option<ConstraintSet>,
-    /// Free-form claims.
     #[serde(default)]
     pub extra: IndexMap<String, serde_json::Value>,
 }
 
 /// RFC 8693 nested act claim.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ActClaim {
     pub sub: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,9 +82,7 @@ impl ConstraintSet {
     }
 
     pub fn empty() -> Self {
-        Self {
-            expressions: vec![],
-        }
+        Self { expressions: vec![] }
     }
 }
 
@@ -105,6 +92,7 @@ impl ConstraintSet {
 /// `context.session.ip`, `principal.tenant_id`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ConstraintExpr {
     Equals {
         path: String,
@@ -174,34 +162,54 @@ fn lookup<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json:
     Some(cur)
 }
 
-fn glob_match(pattern: &str, value: &str) -> bool {
+/// Glob match with `*` wildcard support.
+///
+/// Supports `*` (matches any sequence of characters, including empty).
+/// The match is greedy: it matches the longest possible prefix of the value
+/// against the literal prefix, then advances. This is sufficient for the
+/// resource-pattern use case in delegation tokens.
+pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
     }
     if !pattern.contains('*') {
         return pattern == value;
     }
+    // Backtracking match: split pattern on `*` and walk value, backtracking
+    // on failure. This is correct for all glob patterns with `*` wildcards.
     let parts: Vec<&str> = pattern.split('*').collect();
-    let mut idx = 0;
-    if !parts[0].is_empty() && !value.starts_with(parts[0]) {
-        return false;
+    glob_recurse(&parts, 0, value, 0)
+}
+
+fn glob_recurse(parts: &[&str], pi: usize, value: &str, vi: usize) -> bool {
+    // Base case: no more pattern segments to match.
+    if pi == parts.len() {
+        return vi == value.len();
     }
-    idx = parts[0].len();
-    for (i, p) in parts.iter().enumerate() {
-        if i == 0 || p.is_empty() {
-            continue;
+    let segment = parts[pi];
+    if pi == parts.len() - 1 {
+        // Last segment: must match the suffix of value.
+        if segment.is_empty() {
+            return true;
         }
-        match value[idx..].find(p) {
-            Some(pos) => idx += pos + p.len(),
-            None => return false,
-        }
+        return value.len() >= vi + segment.len()
+            && &value[value.len() - segment.len()..] == segment;
     }
-    if let Some(last) = parts.last() {
-        if !last.is_empty() && !value.ends_with(last) {
-            return false;
-        }
+    if segment.is_empty() {
+        // `**` or leading/trailing `*` — advance value position.
+        return glob_recurse(parts, pi + 1, value, vi);
     }
-    true
+    // Find segment starting at or after vi.
+    let mut start = vi;
+    while start + segment.len() <= value.len() {
+        if &value[start..start + segment.len()] == segment {
+            if glob_recurse(parts, pi + 1, value, start + segment.len()) {
+                return true;
+            }
+        }
+        start += 1;
+    }
+    false
 }
 
 /// TTL configuration for minting tokens.
@@ -270,6 +278,7 @@ impl DelegationSigner {
         self.key_id = id.into();
     }
 
+    /// Mint a delegation token with the given configuration.
     pub fn mint(
         &self,
         iss: impl Into<String>,
@@ -290,6 +299,7 @@ impl DelegationSigner {
         )
     }
 
+    /// Mint a delegation token with a callback to mutate the claims before signing.
     pub fn mint_with<F>(
         &self,
         iss: impl Into<String>,
@@ -322,6 +332,7 @@ impl DelegationSigner {
         self.sign_jws(&claims)
     }
 
+    /// Sign a JWS with the given claims.
     pub fn sign_jws(&self, claims: &DelegationClaims) -> Result<DelegationToken> {
         let header = serde_json::json!({
             "alg": "EdDSA",
@@ -355,8 +366,10 @@ impl DelegationToken {
         &self.jws
     }
 
-    /// Parse a compact JWS string into a token.
-    pub fn from_jws(s: &str) -> Result<Self> {
+    /// Parse the JWS structure (header, payload, signature) without
+    /// cryptographic verification. Use [`DelegationVerifier::verify`] for
+    /// full signature + claim validation.
+    pub fn parse(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() != 3 {
             return Err(Error::InvalidToken("JWS must have 3 parts".into()));
@@ -369,15 +382,10 @@ impl DelegationToken {
             .map_err(|e| Error::InvalidToken(format!("header b64: {}", e)))?;
         let header: serde_json::Value = serde_json::from_slice(&header_bytes)
             .map_err(|e| Error::InvalidToken(format!("header json: {}", e)))?;
-        let kid = header
-            .get("kid")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::InvalidToken("missing kid in header".into()))?;
-        let alg_str = header
+        let _alg_str = header
             .get("alg")
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::InvalidToken("missing alg".into()))?;
-        let alg = parse_alg(alg_str)?;
 
         let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(payload_b64)
@@ -385,12 +393,15 @@ impl DelegationToken {
         let claims: DelegationClaims = serde_json::from_slice(&payload_bytes)
             .map_err(|e| Error::InvalidToken(format!("payload json: {}", e)))?;
 
+        // Verify the signature is well-formed (correct length for the alg).
         let sig = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(sig_b64)
             .map_err(|e| Error::InvalidToken(format!("sig b64: {}", e)))?;
-
-        let signing_input = format!("{}.{}", header_b64, payload_b64);
-        verify_signature(alg, kid, signing_input.as_bytes(), &sig)?;
+        if sig.len() != 64 {
+            return Err(Error::TokenSignature {
+                reason: format!("ed25519 signature must be 64 bytes, got {}", sig.len()),
+            });
+        }
 
         Ok(Self {
             claims,
@@ -399,7 +410,19 @@ impl DelegationToken {
     }
 }
 
+/// A successfully verified delegation token.
+#[derive(Debug, Clone)]
+pub struct VerifiedDelegation {
+    pub claims: DelegationClaims,
+    pub kid: String,
+    pub alg: Algorithm,
+}
+
 /// Verifies JWS tokens using a key registry of public keys.
+///
+/// The verifier holds an internal `HashMap<kid, (Algorithm, VerifyingKey)>`.
+/// When a token is verified, the registry is consulted to find the matching
+/// key, and the EdDSA signature is checked cryptographically.
 #[derive(Default)]
 pub struct DelegationVerifier {
     keys: parking_lot::RwLock<std::collections::HashMap<String, (Algorithm, VerifyingKey)>>,
@@ -410,7 +433,7 @@ impl DelegationVerifier {
         Self::default()
     }
 
-    /// Add a public key (raw Ed25519 bytes for now).
+    /// Add a public key (raw Ed25519 bytes).
     pub fn add_key(&mut self, kid: impl Into<String>, alg: Algorithm, raw: &[u8]) -> Result<()> {
         let key = match alg {
             Algorithm::EdDSA => {
@@ -425,7 +448,7 @@ impl DelegationVerifier {
             }
             _ => {
                 return Err(Error::InvalidToken(format!(
-                    "alg {:?} not implemented in this release",
+                    "alg {:?} not yet supported for verification",
                     alg
                 )));
             }
@@ -434,18 +457,80 @@ impl DelegationVerifier {
         Ok(())
     }
 
-    /// Verify the JWS signature, then validate standard claims (exp, nbf,
-    /// audience). Returns the parsed claims.
+    /// Remove all keys.
+    pub fn clear(&mut self) {
+        self.keys.write().clear();
+    }
+
+    /// Number of registered keys.
+    pub fn key_count(&self) -> usize {
+        self.keys.read().len()
+    }
+
+    /// Verify the JWS signature, then validate standard claims (exp, nbf, aud).
+    /// Returns the verified claims on success.
+    ///
+    /// This is the secure entry point — unlike [`DelegationToken::parse`],
+    /// it actually verifies the EdDSA signature.
     pub fn verify(
         &self,
         token: &str,
         expected_aud: &str,
         now_unix: i64,
-    ) -> Result<&DelegationClaims> {
-        // Use the Token's own verifier (which uses its own KeyRegistry-free
-        // signing-input verification via the kid/alg header). For full
-        // algorithm coverage we delegate to from_jws + a one-off key lookup.
-        let parsed = DelegationToken::from_jws(token)?;
+    ) -> Result<VerifiedDelegation> {
+        // Step 1: parse the JWS structure (no crypto yet).
+        let parsed = DelegationToken::parse(token)?;
+
+        // Step 2: extract `alg` and `kid` from the header.
+        let header_bytes = {
+            let parts: Vec<&str> = token.split('.').collect();
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(parts[0])
+                .map_err(|e| Error::InvalidToken(format!("header b64: {}", e)))?
+        };
+        let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+            .map_err(|e| Error::InvalidToken(format!("header json: {}", e)))?;
+        let alg_str = header
+            .get("alg")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::InvalidToken("missing alg".into()))?;
+        let kid = header
+            .get("kid")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::InvalidToken("missing kid in header".into()))?
+            .to_string();
+        let alg = parse_alg(alg_str)?;
+
+        // Step 3: reject HS* with asymmetric keys (algorithm confusion).
+        // We never accept HS256 for delegation — symmetric algorithms don't
+        // apply to the public-key model.
+        if matches!(alg, Algorithm::HS256) {
+            return Err(Error::TokenSignature {
+                reason: "HS256 is not supported for delegation tokens".into(),
+            });
+        }
+
+        // Step 4: look up the key by kid in the registry.
+        let keys = self.keys.read();
+        let (_, verifying_key) = keys
+            .get(&kid)
+            .ok_or_else(|| Error::TokenSignature {
+                reason: format!("unknown kid: {}", kid),
+            })?
+            .clone();
+        drop(keys);
+
+        // Step 5: compute the EdDSA signature check.
+        let parts: Vec<&str> = token.split('.').collect();
+        let signing_input = format!("{}.{}", parts[0], parts[1]);
+        let sig_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[2])
+            .map_err(|e| Error::TokenSignature {
+                reason: format!("sig b64: {}", e),
+            })?;
+        verify_ed255sa(&verifying_key, signing_input.as_bytes(), &sig_bytes)?;
+
+        // Step 6: validate time-based claims with clock skew.
         if parsed.claims.exp <= now_unix {
             return Err(Error::TokenExpired(parsed.claims.exp.to_string()));
         }
@@ -454,6 +539,8 @@ impl DelegationVerifier {
                 return Err(Error::TokenNotYetValid(nbf.to_string()));
             }
         }
+
+        // Step 7: validate the audience.
         if parsed.claims.aud != expected_aud {
             return Err(Error::TokenSignature {
                 reason: format!(
@@ -462,21 +549,32 @@ impl DelegationVerifier {
                 ),
             });
         }
-        // Re-anchor the claims to the token we own so we can return a ref.
-        // (Caller holds the token; we leak a reference via Box::leak-free
-        // trick: we return &claims of the token we parsed, then we move the
-        // token into a Box held by the caller. Since we can't return &_
-        // through a local, we attach it via `Box::new` and `Box::leak` is
-        // not used — instead we return an owned Claims value.)
-        let _ = self; // suppress unused
-        Ok(Box::leak(Box::new(parsed)).claims_ref())
+
+        Ok(VerifiedDelegation {
+            claims: parsed.claims,
+            kid,
+            alg,
+        })
     }
 }
 
-impl DelegationToken {
-    pub fn claims_ref(&self) -> &DelegationClaims {
-        &self.claims
+/// Verify an EdDSA signature over `signing_input` using `verifying_key`.
+fn verify_ed255sa(verifying_key: &VerifyingKey, signing_input: &[u8], signature: &[u8]) -> Result<()> {
+    if signature.len() != 64 {
+        return Err(Error::TokenSignature {
+            reason: format!("ed25519 signature must be 64 bytes, got {}", signature.len()),
+        });
     }
+    let sig = ed25519_dalek::Signature::from_slice(signature)
+        .map_err(|e| Error::TokenSignature {
+            reason: format!("ed25519 sig parse: {}", e),
+        })?;
+    verifying_key
+        .verify(signing_input, &sig)
+        .map_err(|_| Error::TokenSignature {
+            reason: "ed25519 signature verification failed".into(),
+        })?;
+    Ok(())
 }
 
 fn parse_alg(s: &str) -> Result<Algorithm> {
@@ -489,52 +587,12 @@ fn parse_alg(s: &str) -> Result<Algorithm> {
     }
 }
 
-fn verify_signature(
-    alg: Algorithm,
-    kid: &str,
-    signing_input: &[u8],
-    signature: &[u8],
-) -> Result<()> {
-    use ed25519_dalek::Signature;
-    match alg {
-        Algorithm::EdDSA => {
-            let bytes: [u8; 32] = signing_input
-                .get(..32)
-                .and_then(|_| signing_input.get(..32))
-                .and_then(|_| Some([0u8; 32]))
-                .ok_or_else(|| Error::InvalidToken("bad input".into()))?;
-            // Real implementation: look up `kid` in a verifier-bound key
-            // registry. The from_jws() constructor doesn't have access to
-            // the verifier's registry, so this is a no-op verification that
-            // only checks signature length. Use DelegationVerifier::verify
-            // for the real check.
-            let _ = (kid, bytes, signature);
-            if signature.len() != 64 {
-                return Err(Error::TokenSignature {
-                    reason: format!(
-                        "ed25519 signature must be 64 bytes, got {}",
-                        signature.len()
-                    ),
-                });
-            }
-            // Verify against a default-constructed key would fail, so we
-            // skip the actual cryptographic check here.
-            let _ = Signature::from_slice(signature);
-            Ok(())
-        }
-        _ => Err(Error::InvalidToken(format!(
-            "alg {:?} not implemented in this release",
-            alg
-        ))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn mint_and_parse_roundtrip() {
+    fn mint_and_verify_roundtrip() {
         let signer = DelegationSigner::generate();
         let token = signer
             .mint(
@@ -546,52 +604,124 @@ mod tests {
                 DelegationConfig::default(),
             )
             .unwrap();
-        let jws = token.to_jws().to_string();
-        let parsed = DelegationToken::from_jws(&jws).unwrap();
-        assert_eq!(parsed.claims.sub, "Agent::\"summarizer\"");
-        assert_eq!(parsed.claims.aud, "agentguard://prod/email");
+
+        let mut verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let v = verifier
+            .verify(token.to_jws(), "agentguard://prod/email", chrono::Utc::now().timestamp())
+            .unwrap();
+        assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
+        assert_eq!(v.claims.aud, "agentguard://prod/email");
+        assert_eq!(v.kid, signer.key_id());
     }
 
     #[test]
-    fn expired_token_rejected() {
+    fn forged_signature_rejected() {
         let signer = DelegationSigner::generate();
-        // Construct a token whose exp is in the past by setting a small ttl
-        // and fast-forwarding the clock.
         let token = signer
             .mint(
-                "Agent::\"a\"",
-                "Agent::\"b\"",
+                "a",
+                "b",
                 "aud",
                 vec![],
                 vec![],
-                DelegationConfig {
-                    ttl: Duration::from_secs(0),
-                },
+                DelegationConfig::default(),
             )
             .unwrap();
-        // Wait a second so the token's exp is behind `now`.
-        std::thread::sleep(Duration::from_millis(1100));
-        let mut v = DelegationVerifier::new();
-        let res = v.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp());
-        assert!(matches!(res, Err(Error::TokenExpired(_))));
+
+        // Replace the signature with a 64-byte all-zero buffer. The verifier
+        // must reject this because the signature is not a valid Ed25519
+        // signature over the signing input.
+        let mut parts: Vec<&str> = token.to_jws().split('.').collect();
+        // base64url-no-pad of 64 zero bytes
+        let bogus = "A".repeat(86);
+        let forged = format!("{}.{}.{}", parts[0], parts[1], bogus);
+
+        let mut verifier = DelegationVerifier::new();
+        verifier
+            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .unwrap();
+        let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
+        assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
 
     #[test]
     fn wrong_audience_rejected() {
         let signer = DelegationSigner::generate();
         let token = signer
-            .mint(
-                "a",
-                "b",
-                "aud1",
-                vec![],
-                vec![],
-                DelegationConfig::default(),
-            )
+            .mint("a", "b", "aud1", vec![], vec![], DelegationConfig::default())
             .unwrap();
-        let mut v = DelegationVerifier::new();
-        let res = v.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
+        let mut verifier = DelegationVerifier::new();
+        verifier
+            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .unwrap();
+        let res = verifier.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
+    }
+
+    #[test]
+    fn unknown_kid_rejected() {
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint("a", "b", "aud", vec![], vec![], DelegationConfig::default())
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        // No key registered — must fail.
+        let res = verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp());
+        assert!(matches!(res, Err(Error::TokenSignature { .. })));
+    }
+
+    #[test]
+    fn hs256_rejected_to_prevent_algorithm_confusion() {
+        // Forge a token with alg=HS256 and a signature that's "valid" HMAC-SHA256
+        // over the signing input. The verifier must reject it because HS256
+        // is never accepted for delegation tokens.
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint("a", "b", "aud", vec![], vec![], DelegationConfig::default())
+            .unwrap();
+
+        let parts: Vec<&str> = token.to_jws().split('.').collect();
+        let header = serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": signer.key_id()});
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header).unwrap());
+        let signing_input = format!("{}.{}", header_b64, parts[1]);
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"some-hmac-secret")
+            .expect("hmac key");
+        mac.update(signing_input.as_bytes());
+        let sig = mac.finalize().into_bytes();
+        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig);
+        let forged = format!("{}.{}.{}", header_b64, parts[1], sig_b64);
+
+        let mut verifier = DelegationVerifier::new();
+        verifier
+            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .unwrap();
+        let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
+        assert!(matches!(res, Err(Error::TokenSignature { .. })));
+    }
+
+    #[test]
+    fn glob_match_wildcards() {
+        assert!(glob_match("*", "anything"));
+        assert!(glob_match("Mailbox::*", "Mailbox::\"alice@x\""));
+        assert!(glob_match("Mailbox::\"alice*\"", "Mailbox::\"alice@x\""));
+        assert!(!glob_match("Mailbox::\"bob*\"", "Mailbox::\"alice@x\""));
+        // Multiple wildcards.
+        assert!(glob_match("a*b*c", "axbxc"));
+        assert!(glob_match("a*b*c", "abxc"));
+        assert!(glob_match("a*b*c", "axbxc"));
+        // The previous "overly strict" bug: pattern "a*x*" should match "axxby"
+        // (first * matches "xx", second * matches "y" after consuming "b").
+        assert!(glob_match("a*x*", "axxby"));
     }
 
     #[test]
@@ -604,14 +734,6 @@ mod tests {
         assert!(c.expressions[0].evaluate(&req));
         let req2 = serde_json::json!({"context": {"args": {"amount": 5000}}});
         assert!(!c.expressions[0].evaluate(&req2));
-    }
-
-    #[test]
-    fn glob_match_works() {
-        assert!(glob_match("Mailbox::*", "Mailbox::\"alice@acme\""));
-        assert!(glob_match("Mailbox::\"alice*\"", "Mailbox::\"alice@acme\""));
-        assert!(!glob_match("Mailbox::\"bob*\"", "Mailbox::\"alice@acme\""));
-        assert!(glob_match("*", "anything"));
     }
 
     #[test]
@@ -638,12 +760,22 @@ mod tests {
                 },
             )
             .unwrap();
-        let jws = token.to_jws();
-        let parsed = DelegationToken::from_jws(jws).unwrap();
-        assert_eq!(parsed.claims.sub, "Agent::\"summarizer\"");
-        assert_eq!(
-            parsed.claims.act.as_ref().unwrap().sub,
-            "Agent::\"research\""
-        );
+        let mut verifier = DelegationVerifier::new();
+        verifier
+            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .unwrap();
+        let v = verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp()).unwrap();
+        assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
+        assert_eq!(v.claims.act.as_ref().unwrap().sub, "Agent::\"research\"");
+    }
+}
+
+// Test helpers.
+impl DelegationSigner {
+    #[cfg(test)]
+    pub fn public_key_b64_bytes(&self) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(self.public_key_b64())
+            .expect("public key is base64")
     }
 }

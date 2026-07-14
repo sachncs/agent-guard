@@ -48,7 +48,7 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
     } else {
         token_str.to_string()
     };
-    let _token = DelegationToken::from_jws(&compact)?;
+    let _token = DelegationToken::parse(&compact)?;
 
     let mut verifier = agentguard_core::DelegationVerifier::new();
     let text = std::fs::read_to_string(keys_path)?;
@@ -70,13 +70,14 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
             .map_err(|e| anyhow!("add key: {}", e))?;
     }
 
-    let claims = verifier
+    let verified = verifier
         .verify(
             &compact,
             "agentguard://default",
             chrono::Utc::now().timestamp(),
         )
         .map_err(|e| anyhow!("verify: {}", e))?;
+    let claims = &verified.claims;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(claims)?);

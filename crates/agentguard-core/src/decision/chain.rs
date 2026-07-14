@@ -143,14 +143,18 @@ impl HashChain {
     ///
     /// The canonical record bytes should be the canonical JSON serialization
     /// of the record (see [`crate::decision::canonical`]).
+    ///
+    /// Thread-safe: the head read, HMAC computation, and head write happen
+    /// inside a single critical section. Concurrent appenders serialize.
     pub fn append(&self, canonical_record: &[u8]) -> ([u8; HASH_LEN], [u8; HASH_LEN]) {
-        let prev = *self.inner.head.lock();
-        let mut mac =
-            HmacSha256::new_from_slice(&self.inner.root).expect("HMAC accepts any key length");
+        let mut guard = self.inner.head.lock();
+        let prev = *guard;
+        let mut mac = HmacSha256::new_from_slice(&self.inner.root)
+            .expect("HMAC accepts any key length");
         mac.update(&prev);
         mac.update(canonical_record);
         let new_hash: [u8; HASH_LEN] = mac.finalize().into_bytes().into();
-        *self.inner.head.lock() = new_hash;
+        *guard = new_hash;
         (prev, new_hash)
     }
 

@@ -2,7 +2,6 @@
 
 use crate::decision::canonical::canonical_json;
 use crate::error::Result;
-use crate::observability::TraceContext;
 use crate::request::AgentRequest;
 use crate::ttl::Clock;
 use serde::{Deserialize, Serialize};
@@ -226,11 +225,6 @@ impl CacheStats {
 /// Helper: convert a request + policy_version into a cache key.
 pub fn cache_key_for(req: &AgentRequest, policy_version: u64) -> CacheKey {
     CacheKey::for_request(req, policy_version)
-}
-
-#[allow(dead_code)]
-fn _force_use_trace(trace: &TraceContext) {
-    let _ = trace;
 }
 
 #[cfg(test)]
