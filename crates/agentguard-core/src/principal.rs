@@ -33,6 +33,14 @@ pub enum Principal {
 
 impl Principal {
     /// Construct a `User` principal with the given UID.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentguard_core::Principal;
+    /// let p = Principal::user("alice");
+    /// assert_eq!(p.entity_uid(), "User::\"alice\"");
+    /// ```
     pub fn user(uid: impl Into<PrincipalId>) -> Self {
         Principal::User {
             uid: uid.into(),
@@ -41,6 +49,14 @@ impl Principal {
     }
 
     /// Construct an `Agent` principal with the given UID and no parent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentguard_core::Principal;
+    /// let p = Principal::agent("email-bot");
+    /// assert_eq!(p.entity_type(), "Agent");
+    /// ```
     pub fn agent(uid: impl Into<PrincipalId>) -> Self {
         Principal::Agent {
             uid: uid.into(),
@@ -50,6 +66,14 @@ impl Principal {
     }
 
     /// Construct a sub-agent whose parent is another agent.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use agentguard_core::Principal;
+    /// let p = Principal::subagent("summarizer", "research");
+    /// assert_eq!(p.entity_uid(), "Agent::\"summarizer\"");
+    /// ```
     pub fn subagent(uid: impl Into<PrincipalId>, parent: impl Into<PrincipalId>) -> Self {
         Principal::Agent {
             uid: uid.into(),

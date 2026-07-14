@@ -34,6 +34,11 @@ impl DecisionLog {
     }
 
     /// Open a hash-chained JSONL log at `path` with the given root key.
+    /// # Examples
+    /// ```
+    /// use agentguard_core::decision::DecisionLog;
+    /// let log = DecisionLog::open_with_chain("/tmp/audit.jsonl", b"root-key").unwrap();
+    /// ```
     pub fn open_with_chain(path: impl Into<PathBuf>, root_key: &[u8]) -> Result<Self> {
         Self::open_internal(path.into(), Some(root_key.to_vec()))
     }
