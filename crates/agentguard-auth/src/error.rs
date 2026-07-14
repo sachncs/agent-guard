@@ -1,8 +1,12 @@
-// TODO(stage-3): full AuthError hierarchy. See stages/STAGE-3-auth.md.
+// TODO(stage-3): full AuthError hierarchy with structured context. See stages/STAGE-3-auth.md.
 
 use thiserror::Error;
 
+/// Result alias for agentguard-auth fallible operations.
+pub type Result<T> = std::result::Result<T, AuthError>;
+
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AuthError {
     #[error("jwt invalid: {0}")]
     JwtInvalid(String),
