@@ -10,10 +10,9 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine as _;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Fixed Argon2id parameters used by all API key operations. Using a
@@ -28,9 +27,10 @@ fn argon2() -> Argon2<'static> {
 /// state that can race under high concurrency, even when we use fresh
 /// `Argon2` instances. The lock is held only for the duration of a single
 /// test, so it doesn't affect production performance.
-fn api_key_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+#[cfg(test)]
+fn api_key_test_lock() -> &'static parking_lot::Mutex<()> {
+    static LOCK: std::sync::OnceLock<parking_lot::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| parking_lot::Mutex::new(()))
 }
 
 /// A single API key.

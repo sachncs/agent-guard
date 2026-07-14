@@ -130,7 +130,7 @@ pub fn write_bundle_to_path(
         std::fs::create_dir_all(parent)?;
     }
     let text = serde_json::to_string_pretty(bundle)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     std::fs::write(path, text)?;
     Ok(())
 }
@@ -141,7 +141,7 @@ pub fn read_bundle_from_path(
 ) -> std::io::Result<PolicyBundle> {
     let text = std::fs::read_to_string(path)?;
     serde_json::from_str(&text)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        .map_err(std::io::Error::other)
 }
 
 #[cfg(test)]

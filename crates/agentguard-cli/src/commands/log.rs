@@ -14,7 +14,7 @@ pub fn tail(
         .filter(|r| principal.map(|p| r.principal.contains(p)).unwrap_or(true))
         .filter(|r| action.map(|a| r.action.contains(a)).unwrap_or(true))
         .collect();
-    filtered.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    filtered.sort_by_key(|r| std::cmp::Reverse(r.timestamp));
     let slice = filtered.into_iter().take(n).collect::<Vec<_>>();
 
     if output == "json" {

@@ -2,7 +2,6 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
-use agentguard_core::authorize::entities::build_entities;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use axum::extract::State;
 use axum::http::StatusCode;

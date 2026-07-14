@@ -1,2 +1,7 @@
 avoid-breaking-exported-api = false
 missing-docs-in-crate-items = false
+
+# Tests frequently have unused code paths.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

@@ -1,7 +1,6 @@
 //! LRU decision cache with TTL and policy-version invalidation.
 
 use crate::decision::canonical::canonical_json;
-use crate::error::Result;
 use crate::request::AgentRequest;
 use crate::ttl::Clock;
 use serde::{Deserialize, Serialize};

@@ -12,6 +12,7 @@ members = [
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.75"
 license = "Apache-2.0"
 repository = "https://github.com/sachncs/agent-guard"
 authors = ["Sachin <sachncs@gmail.com>"]
@@ -22,7 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 thiserror = "2"
-clap = { version = "4", features = ["derive", "wrap_help"] }
+clap = { version = "4", features = ["derive", "wrap_help", "env"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
@@ -41,9 +42,13 @@ hex = "0.4"
 hmac = "0.12"
 notify = "6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+lru = "0.12"
+proptest = "1.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+similar = "2"
 
 [profile.release]
 opt-level = 3
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 strip = true

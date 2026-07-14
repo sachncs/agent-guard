@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
 
 /// Configuration for [`JwtValidator`].
 #[derive(Debug, Clone)]
@@ -316,6 +315,12 @@ fn verify_signature(
     }
 }
 
+// Suppress unused warning when jwt feature is off
+#[cfg(not(feature = "jwt"))]
+use AuthError as _Unused;
+#[allow(dead_code)]
+type _Unused = AuthError;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,9 +403,3 @@ mod tests {
         assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
     }
 }
-
-// Suppress unused warning when jwt feature is off
-#[cfg(not(feature = "jwt"))]
-use AuthError as _Unused;
-#[allow(dead_code)]
-type _Unused = AuthError;

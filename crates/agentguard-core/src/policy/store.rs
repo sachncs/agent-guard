@@ -91,7 +91,7 @@ impl PolicyStore {
         let mut warnings = Vec::new();
 
         for src in &sources {
-            let pid = PolicyId::new(src.path.to_string_lossy().to_string());
+            let pid = PolicyId::new(src.path.to_string_lossy());
             if let Err(e) = Policy::parse(Some(pid), src.text.clone()) {
                 errors.push(ValidationIssue {
                     policy: src.path.to_string_lossy().to_string(),

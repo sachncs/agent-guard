@@ -92,7 +92,7 @@ impl HashChain {
         let Ok(text) = std::fs::read_to_string(path) else {
             return Ok(());
         };
-        let last_line = text.lines().filter(|l| !l.trim().is_empty()).last();
+        let last_line = text.lines().rfind(|l| !l.trim().is_empty());
         let Some(line) = last_line else { return Ok(()) };
         let val: serde_json::Value = match serde_json::from_str(line) {
             Ok(v) => v,
@@ -247,7 +247,7 @@ mod tests {
         let chain = HashChain::new(b"root-key");
         let (p1, h1) = chain.append(b"record-1");
         // Tamper with the record bytes.
-        let res = chain.verify(&b"record-1-tampered".to_vec(), &p1, &h1);
+        let res = chain.verify(b"record-1-tampered".as_ref(), &p1, &h1);
         assert!(res.is_err());
     }
 

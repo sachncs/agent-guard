@@ -78,4 +78,59 @@ mod tests {
         let v = json!({"b": 1, "a": 2});
         assert_eq!(canonical_value_bytes(&v), b"{\"a\":2,\"b\":1}");
     }
+
+    #[test]
+    fn nested_keys_sorted_recursively() {
+        let v = json!({"outer": {"z": 1, "a": 2}, "first": 3});
+        let out = canonical_value_bytes(&v);
+        // Both outer and inner keys are sorted.
+        assert!(out.starts_with(b"{\"first\":3,\"outer\":{\"a\":2,\"z\":1}}"));
+    }
+
+    #[test]
+    fn primitives_render_canonically() {
+        assert_eq!(canonical_value_bytes(&json!(null)), b"null");
+        assert_eq!(canonical_value_bytes(&json!(true)), b"true");
+        assert_eq!(canonical_value_bytes(&json!(false)), b"false");
+        assert_eq!(canonical_value_bytes(&json!(42)), b"42");
+        assert_eq!(canonical_value_bytes(&json!("hello")), b"\"hello\"");
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Canonicalization is deterministic: same input always produces
+            /// the same bytes.
+            #[test]
+            fn canonical_is_deterministic(
+                keys in proptest::collection::hash_set("[a-z]{1,4}", 1..6),
+                values in proptest::collection::vec(0i64..100, 1..6)
+            ) {
+                let mut obj = serde_json::Map::new();
+                for (i, k) in keys.iter().enumerate() {
+                    obj.insert(k.clone(), serde_json::json!(values.get(i).copied().unwrap_or(0)));
+                }
+                let v1 = canonical_value_bytes(&serde_json::Value::Object(obj.clone()));
+                let v2 = canonical_value_bytes(&serde_json::Value::Object(obj.clone()));
+                prop_assert_eq!(v1, v2);
+            }
+
+            /// Hashes are pure: same input → same hash (when the chain head
+            /// is the same).
+            #[test]
+            fn hash_chain_pure(
+                payload in "[a-zA-Z0-9]{1,32}"
+            ) {
+                use crate::decision::chain::HashChain;
+                let chain1 = HashChain::new(b"root");
+                let chain2 = HashChain::new(b"root");
+                let h1 = chain1.append(payload.as_bytes());
+                let h2 = chain2.append(payload.as_bytes());
+                prop_assert_eq!(h1, h2);
+            }
+        }
+    }
 }

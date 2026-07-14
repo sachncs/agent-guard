@@ -130,15 +130,4 @@ pub fn erase(
     Ok(())
 }
 
-fn decode_secret(s: &str) -> Result<Vec<u8>> {
-    if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return hex::decode(s).map_err(|e| anyhow!("hex: {}", e));
-    }
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .map_err(|e| anyhow!("base64: {}", e))
-}
-
-#[allow(dead_code)]
 fn _path_helper(_: &Path) {}

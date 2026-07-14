@@ -202,11 +202,10 @@ fn glob_recurse(parts: &[&str], pi: usize, value: &str, vi: usize) -> bool {
     // Find segment starting at or after vi.
     let mut start = vi;
     while start + segment.len() <= value.len() {
-        if &value[start..start + segment.len()] == segment {
-            if glob_recurse(parts, pi + 1, value, start + segment.len()) {
+        if &value[start..start + segment.len()] == segment
+            && glob_recurse(parts, pi + 1, value, start + segment.len()) {
                 return true;
             }
-        }
         start += 1;
     }
     false
@@ -512,12 +511,11 @@ impl DelegationVerifier {
 
         // Step 4: look up the key by kid in the registry.
         let keys = self.keys.read();
-        let (_, verifying_key) = keys
+        let (_, verifying_key) = *keys
             .get(&kid)
             .ok_or_else(|| Error::TokenSignature {
                 reason: format!("unknown kid: {}", kid),
-            })?
-            .clone();
+            })?;
         drop(keys);
 
         // Step 5: compute the EdDSA signature check.
@@ -587,6 +585,16 @@ fn parse_alg(s: &str) -> Result<Algorithm> {
     }
 }
 
+// Test helpers.
+impl DelegationSigner {
+    #[cfg(test)]
+    pub fn public_key_b64_bytes(&self) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(self.public_key_b64())
+            .expect("public key is base64")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,7 +646,7 @@ mod tests {
         // Replace the signature with a 64-byte all-zero buffer. The verifier
         // must reject this because the signature is not a valid Ed25519
         // signature over the signing input.
-        let mut parts: Vec<&str> = token.to_jws().split('.').collect();
+        let parts: Vec<&str> = token.to_jws().split('.').collect();
         // base64url-no-pad of 64 zero bytes
         let bogus = "A".repeat(86);
         let forged = format!("{}.{}.{}", parts[0], parts[1], bogus);
@@ -724,6 +732,43 @@ mod tests {
         assert!(glob_match("a*x*", "axxby"));
     }
 
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn glob_match_always_matches_star(
+                v in ".*"
+            ) {
+                prop_assert!(glob_match("*", &v));
+            }
+
+            #[test]
+            fn glob_match_literal_no_wildcards(
+                lit in "[a-zA-Z0-9]{1,16}"
+            ) {
+                prop_assert!(glob_match(&lit, &lit));
+                // Mismatch only when lengths differ. "x" is 1 char, lit is
+                // 1-16 chars, so for length-1 lit "x" the assertion is invalid.
+                // Use a length-2 alternative.
+                prop_assume!(lit.len() != 1);
+                prop_assert!(!glob_match(&lit, "xy"));
+            }
+
+            #[test]
+            fn glob_match_star_prefix(
+                prefix in "[a-zA-Z]{1,8}",
+                suffix in "[a-zA-Z]{1,8}",
+            ) {
+                let pat = format!("{}*", prefix);
+                let val = format!("{}{}", prefix, suffix);
+                prop_assert!(glob_match(&pat, &val));
+            }
+        }
+    }
+
     #[test]
     fn constraint_evaluation_works() {
         let c = ConstraintSet::new(vec![ConstraintExpr::LessThan {
@@ -767,15 +812,5 @@ mod tests {
         let v = verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp()).unwrap();
         assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
         assert_eq!(v.claims.act.as_ref().unwrap().sub, "Agent::\"research\"");
-    }
-}
-
-// Test helpers.
-impl DelegationSigner {
-    #[cfg(test)]
-    pub fn public_key_b64_bytes(&self) -> Vec<u8> {
-        base64::engine::general_purpose::STANDARD
-            .decode(self.public_key_b64())
-            .expect("public key is base64")
     }
 }

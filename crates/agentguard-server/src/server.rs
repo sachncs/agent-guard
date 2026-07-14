@@ -5,7 +5,6 @@ use crate::listener::Listener;
 use crate::listener::ServerConfig;
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
-use std::path::PathBuf;
 use tokio::net::TcpListener;
 
 pub async fn run(cfg: ServerConfig) -> Result<()> {
