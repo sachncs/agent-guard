@@ -173,8 +173,12 @@ impl JwtValidator {
     }
 
     /// Fetch JWKS from `jwks_uri` and populate the key registry. Idempotent.
+    ///
+    /// Supports Ed25519 keys (kty=OK, crv=Ed25519, x=base64url-32-bytes).
+    /// Other key types are skipped with a tracing warning.
     #[cfg(feature = "jwt")]
     pub async fn refresh_jwks(&self) -> Result<()> {
+        use base64::Engine as _;
         let uri = self
             .config
             .jwks_uri
@@ -189,11 +193,40 @@ impl JwtValidator {
         let jwks: JwksDoc = serde_json::from_str(&body)
             .map_err(|e| AuthError::JwksFetch(format!("parse: {}", e)))?;
         for k in jwks.keys {
-            let alg = parse_alg(&k.alg)?;
-            // Only Ed25519 supported in this release; others no-op.
-            if let Some("OK") = k.key_type.as_deref() {
-                // ... real implementation would decode k.x / k.n based on alg ...
-                let _ = (alg, k);
+            let alg = match parse_alg(&k.alg) {
+                Ok(a) => a,
+                Err(_) => {
+                    tracing::warn!(alg = %k.alg, "skipping unknown JWKS alg");
+                    continue;
+                }
+            };
+            // Decode per key-type.
+            if matches!(alg, Algorithm::EdDSA) {
+                let x = match k.x.as_deref() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let raw = match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(x) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "skipping Ed25519 JWKS key: bad x");
+                        continue;
+                    }
+                };
+                if raw.len() != 32 {
+                    tracing::warn!("skipping Ed25519 JWKS key: x is not 32 bytes");
+                    continue;
+                }
+                let kid = k.kid.clone().unwrap_or_else(|| {
+                    tracing::warn!("JWKS key without kid; auto-generating");
+                    format!("jwks-{}", k.alg)
+                });
+                if let Err(e) = self.keys.add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw)) {
+                    tracing::warn!(error = %e, kid = %kid, "failed to register JWKS key");
+                }
+            } else {
+                // RSA/ECDSA/HS256 would be supported here in v2.1.
+                tracing::debug!(alg = ?alg, "skipping non-Ed25519 JWKS key");
             }
         }
         Ok(())
