@@ -211,17 +211,15 @@ fn build_authorizer(bundle: &PolicyBundle) -> std::result::Result<Authorizer, St
     let dir = tempdir_in("/tmp")?;
     let schema_path = dir.join("schema.cedarschema");
     let policies_dir = dir.join("policies");
-    std::fs::create_dir_all(&policies_dir)
-        .map_err(|e| format!("create policies dir: {}", e))?;
+    std::fs::create_dir_all(&policies_dir).map_err(|e| format!("create policies dir: {}", e))?;
     std::fs::write(&schema_path, &bundle.schema_source)
         .map_err(|e| format!("write schema: {}", e))?;
     for (i, p) in bundle.policies.iter().enumerate() {
         let path = policies_dir.join(format!("{:03}_{}.cedar", i, p.id));
-        std::fs::write(&path, &p.source)
-            .map_err(|e| format!("write policy {}: {}", p.id, e))?;
+        std::fs::write(&path, &p.source).map_err(|e| format!("write policy {}: {}", p.id, e))?;
     }
-    let store = PolicyStore::open(Path::new(&dir))
-        .map_err(|e| format!("open policy store: {}", e))?;
+    let store =
+        PolicyStore::open(Path::new(&dir)).map_err(|e| format!("open policy store: {}", e))?;
     Authorizer::new(store).map_err(|e| format!("build authorizer: {}", e))
 }
 
@@ -237,10 +235,8 @@ fn tempdir_in(prefix: &str) -> std::result::Result<std::path::PathBuf, String> {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::path::PathBuf::from(prefix)
-        .join(format!("agentguard-blast-{}-{}", nanos, seq));
-    std::fs::create_dir_all(&path)
-        .map_err(|e| format!("create tempdir: {}", e))?;
+    let path = std::path::PathBuf::from(prefix).join(format!("agentguard-blast-{}-{}", nanos, seq));
+    std::fs::create_dir_all(&path).map_err(|e| format!("create tempdir: {}", e))?;
     Ok(path)
 }
 
@@ -250,9 +246,7 @@ mod tests {
     use crate::version::PolicyVersion;
     use crate::{NamedPolicy, PolicyBundle};
     use agentguard_core::ttl::SystemClock;
-    use agentguard_core::{
-        AgentAction, AgentContext, AgentRequestBuilder, Principal, Resource,
-    };
+    use agentguard_core::{AgentAction, AgentContext, AgentRequestBuilder, Principal, Resource};
     use serde_json::json;
 
     fn bundle(schema: &str, policy_name: &str, policy: &str) -> PolicyBundle {
@@ -395,7 +389,9 @@ action "ToolCall::send_email" appliesTo { principal: [User], resource: [Mailbox]
         let old = bundle(SCHEMA, "p", allow_alice_email());
         let new = bundle(SCHEMA, "p", allow_alice_email());
         let mut req = make_request();
-        req.entities = vec![json!({"uid": {"type": "Mailbox", "id": "alice@acme"}, "attrs": {}, "parents": []})];
+        req.entities = vec![
+            json!({"uid": {"type": "Mailbox", "id": "alice@acme"}, "attrs": {}, "parents": []}),
+        ];
         let report = analyze(&old, &new, &[req], &SystemClock).unwrap();
         assert_eq!(report.unchanged, 1);
     }
