@@ -1,0 +1,18 @@
+[project]
+name = "agentguard-langchain"
+version = "0.1.0"
+description = "LangChain middleware that authorizes every tool call via agentguard"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+dependencies = [
+    "agentguard>=0.1.0",
+    "langchain-core>=0.3",
+    "pydantic>=2.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentguard_langchain"]

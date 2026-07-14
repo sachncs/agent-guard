@@ -1,0 +1,16 @@
+{
+  "name": "agentguard-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "typescript/agentguard",
+    "typescript/packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

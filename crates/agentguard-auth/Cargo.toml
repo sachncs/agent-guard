@@ -1,0 +1,37 @@
+[package]
+name = "agentguard-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Authentication for agentguard: JWT, OIDC, API keys, DPoP, SPIFFE"
+
+[features]
+default = ["jwt", "api-keys"]
+jwt = ["dep:jsonwebtoken", "dep:openidconnect", "dep:reqwest", "dep:rsa"]
+api-keys = ["dep:argon2", "dep:rand"]
+dpop = ["dep:jsonwebtoken", "dep:rsa", "dep:sha2"]
+spiffe = ["dep:rust-spiffe"]
+introspect = []
+revoke = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+reqwest = { workspace = true, optional = true }
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+base64.workspace = true
+
+jsonwebtoken = { version = "9", optional = true }
+openidconnect = { version = "3", optional = true, default-features = false, features = ["reqwest", "rustls-tls"] }
+rsa = { version = "0.9", optional = true }
+argon2 = { version = "0.5", optional = true }
+rand = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rust-spiffe = { version = "0.5", optional = true, package = "spiffe" }
