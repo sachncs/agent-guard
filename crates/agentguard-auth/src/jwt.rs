@@ -408,4 +408,114 @@ mod tests {
         let res = v.validate("aaa.bbb.ccc");
         assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
     }
+
+    #[test]
+    fn hs256_falsified_token_rejected() {
+        // Algorithm-confusion attack: a token with alg=HS256 + a forged
+        // HMAC-SHA256 signature is rejected even if we have an Ed25519
+        // key registered for the same kid.
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
+            .unwrap();
+
+        // Forge a token with alg=HS256 and a real HMAC-SHA256 over the
+        // signing input. Our EdDSA-only verifier must reject it.
+        let parts: Vec<&str> = "header.payload.sig".split('.').collect();
+        let header_json = serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": "kid1"});
+        let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header_json).unwrap());
+        let payload_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&serde_json::json!({"iss": "iss", "aud": "aud", "exp": chrono::Utc::now().timestamp() + 3600})).unwrap());
+        let signing_input = format!("{}.{}", header_b64, payload_b64);
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"hmac-secret")
+            .expect("hmac key");
+        mac.update(signing_input.as_bytes());
+        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(mac.finalize().into_bytes());
+        let forged = format!("{}.{}.{}", header_b64, payload_b64, sig_b64);
+        let res = v.validate(&forged);
+        assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
+    }
+
+    #[test]
+    fn tampered_payload_signature_check() {
+        // Mutating the signature segment must fail verification.
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
+            .unwrap();
+        let claims = serde_json::json!({
+            "iss": "https://idp.example.com",
+            "aud": "agentguard",
+            "exp": chrono::Utc::now().timestamp() + 3600,
+        });
+        let token = sign_token(&signing_key, "kid1", claims);
+        // Replace a character in the signature segment with a different
+        // valid base64url char. The signature won't verify after the change.
+        let parts: Vec<&str> = token.split('.').collect();
+        let mut sig_chars: Vec<char> = parts[2].chars().collect();
+        let c0 = sig_chars[0];
+        sig_chars[0] = if c0 == 'A' { 'B' } else { 'A' };
+        let tampered_sig: String = sig_chars.into_iter().collect();
+        let tampered = format!("{}.{}.{}", parts[0], parts[1], tampered_sig);
+        let res = v.validate(&tampered);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn empty_jwt_rejected() {
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        assert!(matches!(v.validate(""), Err(AuthError::JwtInvalid(_))));
+        assert!(matches!(v.validate("."), Err(AuthError::JwtInvalid(_))));
+    }
+
+    #[test]
+    fn nbf_in_future_rejected() {
+        // NotBefore: a token whose nbf is 1 hour in the future must
+        // be rejected even if its exp is 1 hour later (also in the future
+        // but past nbf).
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let claims = serde_json::json!({
+            "iss": "iss",
+            "aud": "aud",
+            "exp": now + 7200,
+            "nbf": now + 3600,
+        });
+        let token = sign_token(&signing_key, "kid1", claims);
+        let res = v.validate(&token);
+        assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
+    }
+
+    #[test]
+    fn array_aud_accepted() {
+        // RFC 7519 §4.1.3: aud may be a single string OR an array of
+        // strings. A token with aud=["agentguard", "other"] is valid
+        // when we expect "agentguard".
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("iss", "agentguard"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
+            .unwrap();
+        let claims = serde_json::json!({
+            "iss": "iss",
+            "aud": ["agentguard", "other"],
+            "exp": chrono::Utc::now().timestamp() + 3600,
+        });
+        let token = sign_token(&signing_key, "kid1", claims);
+        assert!(v.validate(&token).is_ok());
+    }
 }

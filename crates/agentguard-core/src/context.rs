@@ -89,4 +89,29 @@ mod tests {
         assert_eq!(obj["amount"], 1000);
         assert!(obj.contains_key("session"));
     }
+
+    #[test]
+    fn empty_context_serializes_to_empty_object() {
+        let c = AgentContext::new();
+        let obj = c.to_json_object();
+        assert!(obj.is_empty());
+    }
+
+    #[test]
+    fn with_arg_overwrites_previous() {
+        let c = AgentContext::new()
+            .with_arg("to", "[email protected]")
+            .with_arg("to", "[email protected]");
+        assert_eq!(c.args["to"], "[email protected]");
+    }
+
+    #[test]
+    fn context_serde_round_trip() {
+        let c = AgentContext::new()
+            .with_arg("k", "v")
+            .with_session("s", "u");
+        let json = serde_json::to_string(&c).unwrap();
+        let parsed: AgentContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, c);
+    }
 }

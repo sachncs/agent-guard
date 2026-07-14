@@ -67,4 +67,29 @@ mod tests {
         assert_eq!(a.action_uid(), "Action::\"ToolCall::s3::PutObject\"");
         assert_eq!(a.action_id(), "ToolCall::s3::PutObject");
     }
+
+    #[test]
+    fn action_without_operation_omits_double_colon() {
+        let a = AgentAction::tool("search");
+        // Single-tool action: no `::op` segment in the action id.
+        assert_eq!(a.action_id(), "ToolCall::search");
+        assert!(!a.action_id().contains("::ToolCall::"));
+    }
+
+    #[test]
+    fn action_serde_round_trip() {
+        let a = AgentAction::tool_op("email", "send");
+        let json = serde_json::to_string(&a).unwrap();
+        let parsed: AgentAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, a);
+    }
+
+    #[test]
+    fn action_without_operation_serializes_no_op_field() {
+        let a = AgentAction::tool("solo");
+        let json = serde_json::to_value(&a).unwrap();
+        // The `operation` field has `skip_serializing_if = "Option::is_none"`,
+        // so it should not appear in the serialized form.
+        assert!(json.get("operation").is_none());
+    }
 }

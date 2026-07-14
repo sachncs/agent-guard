@@ -137,4 +137,59 @@ mod tests {
         assert_eq!(p.entity_uid(), "Agent::\"summarizer\"");
         assert_eq!(p.id(), &PrincipalId::from("summarizer"));
     }
+
+    #[test]
+    fn agent_no_parent_omits_parent_uid() {
+        let p = Principal::agent("solo");
+        assert_eq!(p.entity_type(), "Agent");
+        assert_eq!(p.id(), &PrincipalId::from("solo"));
+        // `parent_uid` is `skip_serializing_if = "Option::is_none"`, so a
+        // parentless agent must not emit the field at all (avoids ambiguity
+        // between `null` and absent on the deserializing side).
+        let json = serde_json::to_value(&p).unwrap();
+        assert!(json.get("parent_uid").is_none(), "parent_uid leaked: {json}");
+    }
+
+    #[test]
+    fn with_attr_supports_multiple_attrs() {
+        let p = Principal::user("alice")
+            .with_attr("role", "admin")
+            .with_attr("tenant", "acme-corp")
+            .with_attr("level", "5");
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["attrs"]["role"], "admin");
+        assert_eq!(json["attrs"]["tenant"], "acme-corp");
+        assert_eq!(json["attrs"]["level"], "5");
+    }
+
+    #[test]
+    fn principal_serde_round_trips() {
+        let p = Principal::subagent("research-bot", "admin");
+        let json = serde_json::to_string(&p).unwrap();
+        let parsed: Principal = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, p);
+    }
+
+    #[test]
+    fn user_and_agent_with_same_id_differ() {
+        // Two principals with the same id but different variants are
+        // not equal because their entity_type differs.
+        let u = Principal::user("alice");
+        let a = Principal::agent("alice");
+        assert_ne!(u, a);
+        assert_eq!(u.entity_type(), "User");
+        assert_eq!(a.entity_type(), "Agent");
+    }
+
+    #[test]
+    fn user_display_uses_entity_uid() {
+        let p = Principal::user("alice");
+        assert_eq!(format!("{}", p), "User::\"alice\"");
+    }
+
+    #[test]
+    fn subagent_display_uses_entity_uid() {
+        let p = Principal::subagent("summarizer", "research");
+        assert_eq!(format!("{}", p), "Agent::\"summarizer\"");
+    }
 }

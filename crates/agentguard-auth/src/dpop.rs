@@ -148,4 +148,61 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AuthError::DpopInvalid(_)));
     }
+
+    #[test]
+    fn ath_mismatch_rejected() {
+        // Access token is the hash input. If we pass a different token,
+        // the ath computed from it won't match the proof's ath claim.
+        let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let v = DpopVerifier::new(tracker);
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"EdDSA","typ":"dpop+jwt","jkt":"x"}"#);
+        let now = chrono::Utc::now().timestamp();
+        // Use SHA256 of "real-token" as the ath.
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(b"real-token");
+        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(h.finalize());
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!(
+                r#"{{"jti":"abc123","htm":"POST","htu":"https://example.com/x","ath":"{ath}","iat":{now}}}"#,
+                ath = ath, now = now
+            ));
+        let dpop = format!("{}.{}.sig", header, claims);
+        // Pass a different token — ath should not match.
+        let err = v
+            .verify(&dpop, "different-token", "POST", "https://example.com/x")
+            .unwrap_err();
+        assert!(matches!(err, AuthError::DpopInvalid(_)));
+    }
+
+    #[test]
+    fn missing_jti_rejected() {
+        // No jti claim — replay protection cannot function.
+        let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let v = DpopVerifier::new(tracker);
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"EdDSA","typ":"dpop+jwt","jkt":"x"}"#);
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"htm":"POST","htu":"https://example.com/x","iat":{}}}"#,
+            chrono::Utc::now().timestamp()
+        ));
+        let dpop = format!("{}.{}.sig", header, claims);
+        let err = v
+            .verify(&dpop, "token", "POST", "https://example.com/x")
+            .unwrap_err();
+        assert!(matches!(err, AuthError::DpopInvalid(_)));
+    }
+
+    #[test]
+    fn malformed_dpop_header_rejected() {
+        // Two segments instead of three — must fail to parse.
+        let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let v = DpopVerifier::new(tracker);
+        let err = v
+            .verify("only.two", "token", "POST", "https://example.com/x")
+            .unwrap_err();
+        assert!(matches!(err, AuthError::DpopInvalid(_)));
+    }
 }

@@ -38,7 +38,38 @@ impl Resource {
 }
 
 impl fmt::Display for Resource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.entity_uid())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_entity_uid_uses_type_and_id() {
+        let r = Resource::new("Mailbox", "alice@acme");
+        assert_eq!(r.entity_uid(), "Mailbox::\"alice@acme\"");
+    }
+
+    #[test]
+    fn resource_display_matches_entity_uid() {
+        let r = Resource::new("Document", "doc-1");
+        assert_eq!(format!("{}", r), r.entity_uid());
+    }
+
+    #[test]
+    fn resource_serde_round_trip() {
+        let r = Resource::new("Mailbox", "alice@acme");
+        let json = serde_json::to_string(&r).unwrap();
+        let parsed: Resource = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, r);
+    }
+
+    #[test]
+    fn resource_attrs_default_to_empty() {
+        let r = Resource::new("Mailbox", "x");
+        assert!(r.attrs.is_empty());
     }
 }
