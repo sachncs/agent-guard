@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Cedar action UID format: `Action::"ToolCall::<tool>"` or
 /// `Action::"ToolCall::<tool>::<operation>"`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AgentAction {
     /// Tool name (e.g. `send_email`, `s3`, `repo_read`).
     pub tool: String,

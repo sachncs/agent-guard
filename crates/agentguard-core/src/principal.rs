@@ -13,6 +13,7 @@ use crate::ids::PrincipalId;
 /// Cedar entities of type `User` or `Agent`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Principal {
     /// A human user.
     User {

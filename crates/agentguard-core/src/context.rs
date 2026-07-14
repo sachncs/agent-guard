@@ -8,7 +8,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 /// Structured context for an agent request.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[non_exhaustive]
 pub struct AgentContext {
     /// Tool arguments as a JSON object. Flattened to top level on serialization.
     #[serde(default)]

@@ -7,6 +7,7 @@ use std::fmt;
 /// A resource being acted on. The `entity_type` is the Cedar type name
 /// (`Mailbox`, `Repository`, etc) and `uid` is the entity's ID.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Resource {
     pub entity_type: String,
     pub uid: String,

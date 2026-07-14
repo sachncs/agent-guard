@@ -14,7 +14,8 @@ use std::str::FromStr;
 ///
 /// Construct via [`AgentRequest::new`] for a quick request, or
 /// [`AgentRequestBuilder`] for type-safe incremental construction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub struct AgentRequest {
     pub principal: Principal,
     pub action: AgentAction,
