@@ -1,8 +1,10 @@
-//! Policy store: loads/saves/validates Cedar policies and schemas from disk.
+//! Policy store: loads/saves/validates Cedar policies and schemas.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+use crate::policy::types::{PolicySource, Severity, ValidationIssue, ValidationReport};
+use crate::schema::SchemaParsed;
 use cedar_policy::{Policy, PolicyId, PolicySet, ValidationMode, Validator};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use walkdir::WalkDir;
 
@@ -42,21 +44,21 @@ impl PolicyStore {
         }
 
         for entry in WalkDir::new(&dir).sort_by_file_name() {
-            let entry = entry.map_err(|e| Error::Walk(e.to_string()))?;
+            let entry = entry.map_err(|e| crate::error::Error::Walk(e.to_string()))?;
             if entry.file_type().is_file()
                 && entry.path().extension().and_then(|s| s.to_str()) == Some("cedar")
             {
                 let src = std::fs::read_to_string(entry.path())?;
-                // Parse each file as a PolicySet (a file may contain multiple policies).
-                let file_set = PolicySet::from_str(&src).map_err(|e| Error::PolicyParse {
-                    message: e.to_string(),
-                    file: src.clone(),
-                })?;
-                // Merge into the master set (in place).
-                set.merge(&file_set, true).map_err(|e| Error::PolicyParse {
-                    message: e.to_string(),
-                    file: src.clone(),
-                })?;
+                let file_set =
+                    PolicySet::from_str(&src).map_err(|e| crate::error::Error::PolicyParse {
+                        message: e.to_string(),
+                        file: src.clone(),
+                    })?;
+                set.merge(&file_set, true)
+                    .map_err(|e| crate::error::Error::PolicyParse {
+                        message: e.to_string(),
+                        file: src.clone(),
+                    })?;
                 sources.push(PolicySource {
                     path: entry.path().to_path_buf(),
                     text: src,
@@ -67,15 +69,15 @@ impl PolicyStore {
         Ok((set, sources))
     }
 
-    pub fn load_schema(&self) -> Result<Option<crate::schema::SchemaParsed>> {
+    pub fn load_schema(&self) -> Result<Option<SchemaParsed>> {
         let p = self.schema_path();
         if !p.exists() {
             return Ok(None);
         }
         let text = std::fs::read_to_string(&p)?;
         let (schema, _warnings) = cedar_policy::Schema::from_cedarschema_str(&text)
-            .map_err(|e| Error::Schema(e.to_string()))?;
-        Ok(Some(crate::schema::SchemaParsed {
+            .map_err(|e| crate::error::Error::Schema(e.to_string()))?;
+        Ok(Some(SchemaParsed {
             schema,
             source: text,
         }))
@@ -143,43 +145,4 @@ impl PolicyStore {
         std::fs::write(self.schema_path(), text)?;
         Ok(())
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct PolicySource {
-    pub path: PathBuf,
-    pub text: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ValidationReport {
-    pub policy_count: usize,
-    pub errors: Vec<ValidationIssue>,
-    pub warnings: Vec<ValidationIssue>,
-}
-
-impl ValidationReport {
-    pub fn is_ok(&self) -> bool {
-        self.errors.is_empty()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ValidationIssue {
-    pub policy: String,
-    pub severity: Severity,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity {
-    Error,
-    Warning,
-}
-
-pub fn init_store(root: impl AsRef<Path>) -> Result<()> {
-    let store = PolicyStore::open(root.as_ref())?;
-    let starter = include_str!("../../../schemas/starter.cedarschema");
-    store.write_schema(starter)?;
-    Ok(())
 }

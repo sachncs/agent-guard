@@ -19,14 +19,16 @@ pub mod ttl;
 pub use action::AgentAction;
 pub use authorize::{Authorizer, Decision, Effect};
 pub use context::AgentContext;
-pub use decision::{DecisionLog, DecisionRecord};
+pub use decision::{DecisionCache, DecisionLog, DecisionRecord};
 pub use delegation::{
     DelegationClaims, DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier,
 };
 pub use error::{Error, Result};
 pub use ids::{ActionId, PrincipalId, ResourceId};
 pub use observability::{SpanId, TraceContext, TraceId};
-pub use policy::{init_store, PolicyStore, ValidationReport};
+pub use policy::{
+    init_store, PolicySource, PolicyStore, Severity, ValidationIssue, ValidationReport,
+};
 pub use principal::Principal;
 pub use request::{AgentRequest, AgentRequestBuilder};
 pub use resource::Resource;

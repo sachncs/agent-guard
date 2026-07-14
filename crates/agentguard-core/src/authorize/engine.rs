@@ -4,10 +4,11 @@ use crate::error::Result;
 use crate::policy::PolicyStore;
 use crate::request::AgentRequest;
 use cedar_policy::{
-    Authorizer as CedarAuthorizer, Decision as CedarDecision, Entities, Entity, PolicySet, Response,
+    Authorizer as CedarAuthorizer, Decision as CedarDecision, Entities, PolicySet, Response,
 };
 use serde::{Deserialize, Serialize};
 
+/// The result of evaluating an authorization request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Decision {
     pub effect: Effect,
@@ -82,16 +83,4 @@ impl Authorizer {
     pub fn policies(&self) -> &PolicySet {
         &self.policies
     }
-}
-
-/// Build a `cedar_policy::Entities` from a list of entity JSON values.
-pub fn build_entities(items: Vec<serde_json::Value>) -> Result<Entities> {
-    let mut ents: Vec<Entity> = Vec::with_capacity(items.len());
-    for v in items {
-        let s = serde_json::to_string(&v)?;
-        let e = Entity::from_json_str(&s, None)
-            .map_err(|e| crate::error::Error::Entities(e.to_string()))?;
-        ents.push(e);
-    }
-    Entities::from_entities(ents, None).map_err(|e| crate::error::Error::Entities(e.to_string()))
 }
