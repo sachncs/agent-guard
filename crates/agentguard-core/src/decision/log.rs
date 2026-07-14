@@ -187,12 +187,14 @@ impl DecisionLog {
     /// # Examples
     /// ```
     /// use agentguard_core::decision::DecisionLog;
-    /// use std::time::Duration;
-    /// let log = DecisionLog::open_with_chain("/tmp/audit.jsonl", b"secret").unwrap();
+    /// let path = std::env::temp_dir().join("agentguard-verify-chain.jsonl");
+    /// let _ = std::fs::remove_file(&path);
+    /// let log = DecisionLog::open_with_chain(&path, b"secret").unwrap();
     /// // ... write some decisions ...
     /// drop(log);
-    /// let chain_id = DecisionLog::verify_chain("/tmp/audit.jsonl", b"secret").unwrap();
+    /// let chain_id = DecisionLog::verify_chain(&path, b"secret").unwrap();
     /// println!("verified chain: {}", chain_id);
+    /// let _ = std::fs::remove_file(&path);
     /// ```
     pub fn verify_chain(path: impl AsRef<Path>, root_key: &[u8]) -> Result<ChainId> {
         let records = Self::read_all_chained(path)?;

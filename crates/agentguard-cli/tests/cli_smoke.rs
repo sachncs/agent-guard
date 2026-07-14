@@ -19,8 +19,16 @@ fn init_creates_store() {
         .current_dir(dir.path())
         .output()
         .unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    assert!(dir.path().join(".agentguard").join("schema.cedarschema").exists());
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(dir
+        .path()
+        .join(".agentguard")
+        .join("schema.cedarschema")
+        .exists());
     assert!(dir.path().join(".agentguard").join("policies").exists());
 }
 

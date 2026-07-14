@@ -156,8 +156,8 @@ impl HashChain {
     pub fn append(&self, canonical_record: &[u8]) -> ([u8; HASH_LEN], [u8; HASH_LEN]) {
         let mut guard = self.inner.head.lock();
         let prev = *guard;
-        let mut mac = HmacSha256::new_from_slice(&self.inner.root)
-            .expect("HMAC accepts any key length");
+        let mut mac =
+            HmacSha256::new_from_slice(&self.inner.root).expect("HMAC accepts any key length");
         mac.update(&prev);
         mac.update(canonical_record);
         let new_hash: [u8; HASH_LEN] = mac.finalize().into_bytes().into();
@@ -306,10 +306,14 @@ mod tests {
         // Tamper with p2 by changing one byte.
         let mut bad_p2 = p2;
         bad_p2[0] ^= 0x01;
-        assert!(chain.verify(&canonical_json(&v2).unwrap(), &bad_p2, &h2).is_err());
+        assert!(chain
+            .verify(&canonical_json(&v2).unwrap(), &bad_p2, &h2)
+            .is_err());
         // The first record (p1) is intact; verify it standalone.
         let canonical_v1 = canonical_json(&v1).unwrap();
-        chain.verify(&canonical_v1, &p1, &chain.head()).unwrap_or(());
+        chain
+            .verify(&canonical_v1, &p1, &chain.head())
+            .unwrap_or(());
     }
 
     #[test]
@@ -381,8 +385,8 @@ mod tests {
                 root in proptest::collection::vec(any::<u8>(), 8..32),
                 body in proptest::collection::vec(any::<u8>(), 0..128),
             ) {
-                let mut c1 = HashChain::new(&root);
-                let mut c2 = HashChain::new(&root);
+                let c1 = HashChain::new(&root);
+                let c2 = HashChain::new(&root);
                 c2.set_head(c1.head());
                 let h1 = c1.append(&body);
                 let h2 = c2.append(&body);

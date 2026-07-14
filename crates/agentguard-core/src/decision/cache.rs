@@ -41,8 +41,7 @@ impl CacheKey {
         // Format: 4-byte big-endian length || canonical JSON.
         let hash_field = |h: &mut Sha256, value: &serde_json::Value| {
             let mut buf = Vec::new();
-            write_canonical_value(&mut buf, value)
-                .expect("canonical write to Vec is infallible");
+            write_canonical_value(&mut buf, value).expect("canonical write to Vec is infallible");
             let len = (buf.len() as u32).to_be_bytes();
             sha2::Digest::update(h, len);
             sha2::Digest::update(h, &buf);
@@ -172,7 +171,10 @@ impl DecisionCache {
 
     /// A disabled cache (every call is a miss).
     pub fn disabled(clock: Arc<dyn Clock>) -> Self {
-        let c = CacheConfig { capacity: 1, ..CacheConfig::default() };
+        let c = CacheConfig {
+            capacity: 1,
+            ..CacheConfig::default()
+        };
         let cap = std::num::NonZeroUsize::new(c.capacity).unwrap();
         Self {
             config: c,

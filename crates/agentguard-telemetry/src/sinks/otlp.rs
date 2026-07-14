@@ -33,9 +33,7 @@ impl OtlpSink {
     /// `OTEL_EXPORTER_OTLP_*` environment variables.
     pub fn from_env() -> Result<Self, OtlpError> {
         use opentelemetry_otlp::WithExportConfig;
-        let exporter = opentelemetry_otlp::new_exporter()
-            .tonic()
-            .with_env();
+        let exporter = opentelemetry_otlp::new_exporter().tonic().with_env();
         let provider = SdkLoggerProvider::builder()
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_resource(Resource::builder().with_service_name("agentguard").build())
@@ -123,15 +121,32 @@ trait SinkEventExt {
 impl SinkEventExt for crate::sink::SinkEventKind {
     fn summary(&self) -> String {
         match self {
-            crate::sink::SinkEventKind::Decision { effect, principal, action, resource, .. } => {
-                format!("{} {} on {} ({} {})", effect, principal, action, effect, resource)
+            crate::sink::SinkEventKind::Decision {
+                effect,
+                principal,
+                action,
+                resource,
+                ..
+            } => {
+                format!(
+                    "{} {} on {} ({} {})",
+                    effect, principal, action, effect, resource
+                )
             }
             _ => "agentguard event".into(),
         }
     }
     fn attributes(&self) -> Vec<KeyValue> {
         let mut out = Vec::new();
-        if let crate::sink::SinkEventKind::Decision { effect, principal, action, resource, policies, .. } = self {
+        if let crate::sink::SinkEventKind::Decision {
+            effect,
+            principal,
+            action,
+            resource,
+            policies,
+            ..
+        } = self
+        {
             out.push(KeyValue::new("authz.effect", effect.clone()));
             out.push(KeyValue::new("authz.principal", principal.clone()));
             out.push(KeyValue::new("authz.action", action.clone()));

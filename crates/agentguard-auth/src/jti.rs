@@ -47,6 +47,7 @@ impl JtiTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::AuthError;
 
     #[test]
     fn first_occurrence_ok_replay_blocked() {

@@ -2,7 +2,6 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
-use agentguard_core::authorize::entities::build_entities;
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use axum::extract::{Request, State};
@@ -113,11 +112,7 @@ pub fn router(state: AppState) -> Router {
 
 /// W3C Trace Context middleware: read incoming `traceparent` or generate
 /// a fresh trace, and echo the span id back to the caller.
-async fn trace_context_layer(
-    headers: HeaderMap,
-    mut req: Request,
-    next: Next,
-) -> Response {
+async fn trace_context_layer(headers: HeaderMap, mut req: Request, next: Next) -> Response {
     let traceparent = headers
         .get("traceparent")
         .and_then(|v| v.to_str().ok())

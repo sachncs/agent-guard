@@ -159,7 +159,10 @@ impl ApiKeyStore {
         let key = guard.get(id).ok_or(AuthError::ApiKeyInvalid)?.clone();
         drop(guard);
         if key.prefix != prefix {
-            return Err(AuthError::Other(format!("prefix mismatch: {} != {}", key.prefix, prefix)));
+            return Err(AuthError::Other(format!(
+                "prefix mismatch: {} != {}",
+                key.prefix, prefix
+            )));
         }
         if let Some(exp) = key.expires_at {
             if exp < chrono::Utc::now().timestamp() {
@@ -171,10 +174,7 @@ impl ApiKeyStore {
         }
         let parsed = PasswordHash::new(&key.secret_hash)
             .map_err(|e| AuthError::Other(format!("hash parse: {}", e)))?;
-        if argon2()
-            .verify_password(&secret, &parsed)
-            .is_err()
-        {
+        if argon2().verify_password(&secret, &parsed).is_err() {
             return Err(AuthError::ApiKeyInvalid);
         }
         Ok(key)
@@ -199,7 +199,7 @@ mod tests {
     use super::*;
 
     #[test]
-fn create_and_verify_roundtrip() {
+    fn create_and_verify_roundtrip() {
         let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
         let (key, raw) = s

@@ -3,8 +3,8 @@
 //! Run with `cargo bench -p agentguard-core`.
 
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::{AgentRequest, AgentRequestBuilder, Authorizer, PolicyStore};
 use agentguard_core::{AgentAction, AgentContext, Principal, Resource};
+use agentguard_core::{AgentRequest, AgentRequestBuilder, Authorizer, PolicyStore};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::sync::OnceLock;
 
@@ -43,7 +43,7 @@ fn make_request() -> AgentRequest {
                 .with_arg("body", "hello"),
         )
         .build()
-    .unwrap()
+        .unwrap()
 }
 
 fn bench_authorize(c: &mut Criterion) {
@@ -53,7 +53,11 @@ fn bench_authorize(c: &mut Criterion) {
     let entities = build_entities(vec![]).expect("entities");
     c.bench_function("authorize_simple", |b| {
         b.iter(|| {
-            let _ = black_box(authorizer.authorize(black_box(&req), black_box(&entities)).expect("ok"));
+            let _ = black_box(
+                authorizer
+                    .authorize(black_box(&req), black_box(&entities))
+                    .expect("ok"),
+            );
         });
     });
 }
@@ -79,7 +83,11 @@ fn bench_authorize_with_deny(c: &mut Criterion) {
     let entities = build_entities(vec![]).expect("entities");
     c.bench_function("authorize_with_deny", |b| {
         b.iter(|| {
-            let _ = black_box(authorizer.authorize(black_box(&req), black_box(&entities)).expect("ok"));
+            let _ = black_box(
+                authorizer
+                    .authorize(black_box(&req), black_box(&entities))
+                    .expect("ok"),
+            );
         });
     });
 }

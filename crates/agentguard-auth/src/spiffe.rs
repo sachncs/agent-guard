@@ -83,7 +83,8 @@ impl SpiffeValidator {
     #[cfg(not(feature = "spiffe"))]
     pub async fn fetch_svid(&self) -> Result<SpiffeId> {
         Err(AuthError::SpiffeFetch(
-            "SPIFFE Workload API integration requires the 'spiffe' feature on agentguard-auth".into(),
+            "SPIFFE Workload API integration requires the 'spiffe' feature on agentguard-auth"
+                .into(),
         ))
     }
 }

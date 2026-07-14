@@ -426,7 +426,6 @@ mod tests {
 
         // Forge a token with alg=HS256 and a real HMAC-SHA256 over the
         // signing input. Our EdDSA-only verifier must reject it.
-        let parts: Vec<&str> = "header.payload.sig".split('.').collect();
         let header_json = serde_json::json!({"alg": "HS256", "typ": "JWT", "kid": "kid1"});
         let header_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(serde_json::to_vec(&header_json).unwrap());

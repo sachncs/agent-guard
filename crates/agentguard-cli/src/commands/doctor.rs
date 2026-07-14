@@ -53,39 +53,50 @@ impl DoctorReport {
     }
 }
 
-pub fn run(store_root: &Path, audit_log: &Path, chain_secret: Option<&Path>) -> Result<DoctorReport> {
+pub fn run(
+    store_root: &Path,
+    audit_log: &Path,
+    chain_secret: Option<&Path>,
+) -> Result<DoctorReport> {
     let mut report = DoctorReport { checks: vec![] };
 
     // 1. Schema
     let store = match PolicyStore::open(store_root) {
         Ok(s) => s,
         Err(e) => {
-            report.checks.push(("schema", CheckStatus::Fail(e.to_string())));
+            report
+                .checks
+                .push(("schema", CheckStatus::Fail(e.to_string())));
             return Ok(report);
         }
     };
     let schema = store.load_schema().ok().flatten();
     match &schema {
         Some(_) => report.checks.push(("schema", CheckStatus::Ok)),
-        None => report
-            .checks
-            .push(("schema", CheckStatus::Warn("no schema.cedarschema at store root".into()))),
+        None => report.checks.push((
+            "schema",
+            CheckStatus::Warn("no schema.cedarschema at store root".into()),
+        )),
     }
 
     // 2. Policies
     let validation = match store.validate() {
         Ok(v) => v,
         Err(e) => {
-            report.checks.push(("policies", CheckStatus::Fail(e.to_string())));
+            report
+                .checks
+                .push(("policies", CheckStatus::Fail(e.to_string())));
             return Ok(report);
         }
     };
     if validation.is_ok() {
-        report
-            .checks
-            .push(("policies", CheckStatus::Ok));
+        report.checks.push(("policies", CheckStatus::Ok));
     } else {
-        let errs: Vec<String> = validation.errors.iter().map(|e| e.message.clone()).collect();
+        let errs: Vec<String> = validation
+            .errors
+            .iter()
+            .map(|e| e.message.clone())
+            .collect();
         report
             .checks
             .push(("policies", CheckStatus::Fail(errs.join("; "))));
@@ -93,10 +104,7 @@ pub fn run(store_root: &Path, audit_log: &Path, chain_secret: Option<&Path>) -> 
 
     // 3. Audit log writable
     if audit_log.exists() {
-        match std::fs::OpenOptions::new()
-            .append(true)
-            .open(audit_log)
-        {
+        match std::fs::OpenOptions::new().append(true).open(audit_log) {
             Ok(_) => report.checks.push(("audit log", CheckStatus::Ok)),
             Err(e) => report
                 .checks

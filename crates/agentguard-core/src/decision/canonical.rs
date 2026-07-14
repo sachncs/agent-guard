@@ -31,8 +31,7 @@ pub fn write_canonical_value<W: Write>(w: &mut W, v: &Value) -> Result<()> {
             w.write_all(s.as_bytes()).map_err(into_err)?;
         }
         Value::Number(n) => {
-            w.write_all(n.to_string().as_bytes())
-                .map_err(into_err)?;
+            w.write_all(n.to_string().as_bytes()).map_err(into_err)?;
         }
         Value::String(s) => {
             serde_json::to_writer(w, s)
@@ -58,20 +57,20 @@ fn write_canonical_object<W: Write>(w: &mut W, obj: &Map<String, Value>) -> Resu
     let mut keys: Vec<&String> = obj.keys().collect();
     keys.sort();
 
-        w.write_all(b"{").map_err(into_err)?;
-        for (i, k) in keys.iter().enumerate() {
-            if i > 0 {
-                w.write_all(b",").map_err(into_err)?;
-            }
-            // Borrow the writer mutably for the json call.
-            serde_json::to_writer(&mut *w, k)
-                .map_err(|e| Error::Other(format!("serialize key: {}", e)))?;
-            w.write_all(b":").map_err(into_err)?;
-            write_canonical_value(w, &obj[*k])?;
+    w.write_all(b"{").map_err(into_err)?;
+    for (i, k) in keys.iter().enumerate() {
+        if i > 0 {
+            w.write_all(b",").map_err(into_err)?;
         }
-        w.write_all(b"}").map_err(into_err)?;
-        Ok(())
+        // Borrow the writer mutably for the json call.
+        serde_json::to_writer(&mut *w, k)
+            .map_err(|e| Error::Other(format!("serialize key: {}", e)))?;
+        w.write_all(b":").map_err(into_err)?;
+        write_canonical_value(w, &obj[*k])?;
     }
+    w.write_all(b"}").map_err(into_err)?;
+    Ok(())
+}
 
 fn into_err(e: std::io::Error) -> Error {
     Error::Io(e.to_string())

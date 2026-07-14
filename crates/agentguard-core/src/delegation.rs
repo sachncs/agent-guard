@@ -73,7 +73,9 @@ impl ConstraintSet {
     }
 
     pub fn empty() -> Self {
-        Self { expressions: vec![] }
+        Self {
+            expressions: vec![],
+        }
     }
 }
 
@@ -194,9 +196,10 @@ fn glob_recurse(parts: &[&str], pi: usize, value: &str, vi: usize) -> bool {
     let mut start = vi;
     while start + segment.len() <= value.len() {
         if &value[start..start + segment.len()] == segment
-            && glob_recurse(parts, pi + 1, value, start + segment.len()) {
-                return true;
-            }
+            && glob_recurse(parts, pi + 1, value, start + segment.len())
+        {
+            return true;
+        }
         start += 1;
     }
     false
@@ -513,11 +516,9 @@ impl DelegationVerifier {
 
         // Step 4: look up the key by kid in the registry.
         let keys = self.keys.read();
-        let (_, verifying_key) = *keys
-            .get(&kid)
-            .ok_or_else(|| Error::TokenSignature {
-                reason: format!("unknown kid: {}", kid),
-            })?;
+        let (_, verifying_key) = *keys.get(&kid).ok_or_else(|| Error::TokenSignature {
+            reason: format!("unknown kid: {}", kid),
+        })?;
         drop(keys);
 
         // Step 5: compute the EdDSA signature check.
@@ -559,14 +560,21 @@ impl DelegationVerifier {
 }
 
 /// Verify an EdDSA signature over `signing_input` using `verifying_key`.
-fn verify_ed255sa(verifying_key: &VerifyingKey, signing_input: &[u8], signature: &[u8]) -> Result<()> {
+fn verify_ed255sa(
+    verifying_key: &VerifyingKey,
+    signing_input: &[u8],
+    signature: &[u8],
+) -> Result<()> {
     if signature.len() != 64 {
         return Err(Error::TokenSignature {
-            reason: format!("ed25519 signature must be 64 bytes, got {}", signature.len()),
+            reason: format!(
+                "ed25519 signature must be 64 bytes, got {}",
+                signature.len()
+            ),
         });
     }
-    let sig = ed25519_dalek::Signature::from_slice(signature)
-        .map_err(|e| Error::TokenSignature {
+    let sig =
+        ed25519_dalek::Signature::from_slice(signature).map_err(|e| Error::TokenSignature {
             reason: format!("ed25519 sig parse: {}", e),
         })?;
     verifying_key
@@ -624,7 +632,11 @@ mod tests {
             )
             .unwrap();
         let v = verifier
-            .verify(token.to_jws(), "agentguard://prod/email", chrono::Utc::now().timestamp())
+            .verify(
+                token.to_jws(),
+                "agentguard://prod/email",
+                chrono::Utc::now().timestamp(),
+            )
             .unwrap();
         assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
         assert_eq!(v.claims.aud, "agentguard://prod/email");
@@ -635,14 +647,7 @@ mod tests {
     fn forged_signature_rejected() {
         let signer = DelegationSigner::generate();
         let token = signer
-            .mint(
-                "a",
-                "b",
-                "aud",
-                vec![],
-                vec![],
-                DelegationConfig::default(),
-            )
+            .mint("a", "b", "aud", vec![], vec![], DelegationConfig::default())
             .unwrap();
 
         // Replace the signature with a 64-byte all-zero buffer. The verifier
@@ -655,7 +660,11 @@ mod tests {
 
         let mut verifier = DelegationVerifier::new();
         verifier
-            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
             .unwrap();
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
@@ -665,11 +674,22 @@ mod tests {
     fn wrong_audience_rejected() {
         let signer = DelegationSigner::generate();
         let token = signer
-            .mint("a", "b", "aud1", vec![], vec![], DelegationConfig::default())
+            .mint(
+                "a",
+                "b",
+                "aud1",
+                vec![],
+                vec![],
+                DelegationConfig::default(),
+            )
             .unwrap();
         let mut verifier = DelegationVerifier::new();
         verifier
-            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
             .unwrap();
         let res = verifier.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
@@ -704,8 +724,7 @@ mod tests {
         let signing_input = format!("{}.{}", header_b64, parts[1]);
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
-        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"some-hmac-secret")
-            .expect("hmac key");
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(b"some-hmac-secret").expect("hmac key");
         mac.update(signing_input.as_bytes());
         let sig = mac.finalize().into_bytes();
         let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig);
@@ -713,7 +732,11 @@ mod tests {
 
         let mut verifier = DelegationVerifier::new();
         verifier
-            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
             .unwrap();
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
@@ -809,9 +832,15 @@ mod tests {
             .unwrap();
         let mut verifier = DelegationVerifier::new();
         verifier
-            .add_key(signer.key_id(), Algorithm::EdDSA, &signer.public_key_b64_bytes())
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
             .unwrap();
-        let v = verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp()).unwrap();
+        let v = verifier
+            .verify(token.to_jws(), "aud", chrono::Utc::now().timestamp())
+            .unwrap();
         assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
         assert_eq!(v.claims.act.as_ref().unwrap().sub, "Agent::\"research\"");
     }
