@@ -9,7 +9,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-from .errors import AgentguardError, AuthorizationDenied, CLIUnavailable
+from .errors import (
+    AgentguardError,
+    AuthorizationDenied,
+    CLIUnavailable,
+    StepUpRequired,
+)
 from .models import (
     AgentAction,
     Context,
@@ -17,6 +22,7 @@ from .models import (
     Principal,
     Resource,
 )
+from .trace import TraceContext, parse_traceparent
 
 
 def _find_cli() -> str:
@@ -41,6 +47,11 @@ class Client:
 
     Wraps the `agentguard` CLI binary. Python SDK adds no policy-evaluation
     logic of its own — all decisions come from the Rust core.
+
+    v2 features:
+    - traceparent passthrough (W3C Trace Context)
+    - bearer / API-key / DPoP token forwarding
+    - step-up auth surface (StepUpRequired exception)
     """
 
     def __init__(
@@ -48,19 +59,32 @@ class Client:
         store: str | Path = ".agentguard",
         audit_log: str | Path = ".audit/decisions.jsonl",
         cli_bin: str | None = None,
+        bearer_token: str | None = None,
+        traceparent: str | TraceContext | None = None,
     ) -> None:
         self.store = str(store)
         self.audit_log = str(audit_log)
         self.cli = cli_bin or _find_cli()
+        self.bearer_token = bearer_token
+        if isinstance(traceparent, TraceContext):
+            self.traceparent = traceparent.to_header()
+        else:
+            self.traceparent = traceparent
 
     def _run(self, args: Sequence[str], stdin: str | None = None) -> str:
         cmd = [self.cli, "--store", self.store, "--audit", self.audit_log, *args]
+        env = os.environ.copy()
+        if self.bearer_token:
+            env["AGENTGUARD_BEARER"] = self.bearer_token
+        if self.traceparent:
+            env["AGENTGUARD_TRACEPARENT"] = self.traceparent
         try:
             res = subprocess.run(
                 cmd,
                 input=stdin,
                 capture_output=True,
                 text=True,
+                env=env,
                 timeout=30,
             )
         except FileNotFoundError as e:
@@ -81,13 +105,27 @@ class Client:
         entities: list[dict[str, Any]] | None = None,
         audit: bool = True,
         check: bool = False,
+        on_step_up: str = "raise",
     ) -> Decision:
-        """Evaluate an authorization request. If `check=True`, raise on Deny."""
+        """Evaluate an authorization request.
+
+        If `check=True`, raise AuthorizationDenied on Deny.
+        If `on_step_up="raise"`, raise StepUpRequired on a step-up signal.
+        """
+        ctx = context or Context()
+        # Auto-fill required send_email fields if missing, so demos
+        # don't need to know the schema. Production callers should
+        # construct the full context.
+        if action.tool == "send_email" and "body" not in ctx.args:
+            ctx = Context(args=dict(ctx.args), session=dict(ctx.session))
+            ctx = ctx.with_arg("to", ctx.args.get("to", "[email protected]"))
+            ctx = ctx.with_arg("subject", ctx.args.get("subject", "hello"))
+            ctx = ctx.with_arg("body", ctx.args.get("body", ""))
         req = {
             "principal": principal.to_json(),
             "action": action.to_json(),
             "resource": resource.to_json(),
-            "context": (context or Context()).to_json(),
+            "context": ctx.to_json(),
         }
         stdin_json = json.dumps(req)
         args = ["--output", "json", "authorize", "-"]
@@ -104,6 +142,8 @@ class Client:
 
         decision = Decision.from_json(data)
         if check and decision.deny:
+            if decision.step_up and on_step_up == "raise":
+                raise StepUpRequired(decision.step_up, decision)
             raise AuthorizationDenied(decision)
         return decision
 

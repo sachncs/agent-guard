@@ -14,6 +14,7 @@ version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/sachncs/agent-guard"
+authors = ["Sachin <sachncs@gmail.com>"]
 
 [workspace.dependencies]
 cedar-policy = "4.4"

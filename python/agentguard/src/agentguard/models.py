@@ -114,6 +114,12 @@ class Decision:
     reasons: list[str] = field(default_factory=list)
     request: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+    # W3C trace context, populated from the audit record
+    trace_id: str | None = None
+    span_id: str | None = None
+    tenant_id: str | None = None
+    # Step-up auth requirement, if any
+    step_up: "StepUp | None" = None
 
     @property
     def allow(self) -> bool:
@@ -125,10 +131,30 @@ class Decision:
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> "Decision":
+        step_up = None
+        if su := data.get("step_up"):
+            step_up = StepUp(acr_values=su.get("acr_values", ""), amr_values=su.get("amr_values", ""))
         return cls(
             effect=Effect(data["effect"]),
             policies=list(data.get("policies", [])),
             reasons=list(data.get("reasons", [])),
             request=dict(data.get("request", {})),
             raw=data,
+            trace_id=data.get("trace_id"),
+            span_id=data.get("span_id"),
+            tenant_id=data.get("tenant_id"),
+            step_up=step_up,
         )
+
+
+@dataclass
+class StepUp:
+    """Step-up authentication requirement returned in a Deny decision.
+
+    Per RFC 9470, the PDP returns `acr_values` and `amr_values` strings that
+    the PEP uses to trigger the appropriate authentication flow (e.g. MFA
+    via WebAuthn, hardware key, etc.).
+    """
+
+    acr_values: str
+    amr_values: str

@@ -13,10 +13,10 @@
 // .agentguard/schema.cedarschema.
 
 type Session = {
-  ip: String,
-  user_agent: String,
-  mfa: Bool,
-  ts: Long,
+  ip?: String,
+  user_agent?: String,
+  mfa?: Bool,
+  ts?: Long,
 };
 
 entity User;

@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "LangChain middleware that authorizes every tool call via agentguard"
 requires-python = ">=3.10"
 license = "Apache-2.0"
+authors = [
+    {name = "Sachin", email = "sachncs@gmail.com"},
+]
 dependencies = [
     "agentguard>=0.1.0",
     "langchain-core>=0.3",

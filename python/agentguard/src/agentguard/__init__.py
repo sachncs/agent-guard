@@ -1,6 +1,11 @@
 """agentguard — Cedar-powered authorization for AI agents (Python SDK)."""
 
 from .client import Client
+from .errors import (
+    AgentguardError,
+    AuthorizationDenied,
+    StepUpRequired,
+)
 from .models import (
     AgentAction,
     Context,
@@ -8,10 +13,11 @@ from .models import (
     Effect,
     Principal,
     Resource,
+    StepUp,
 )
-from .errors import AgentguardError, AuthorizationDenied
+from .trace import TraceContext, parse_traceparent
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "AgentAction",
@@ -23,4 +29,8 @@ __all__ = [
     "Effect",
     "Principal",
     "Resource",
+    "StepUp",
+    "StepUpRequired",
+    "TraceContext",
+    "parse_traceparent",
 ]

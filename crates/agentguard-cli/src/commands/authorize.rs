@@ -51,7 +51,18 @@ pub async fn run(
     }
 
     if !no_audit {
-        let log = DecisionLog::open(audit)?;
+        // Open hash-chained log if AGENTGUARD_CHAIN_SECRET points to a file.
+        let log = if let Ok(secret_path) = std::env::var("AGENTGUARD_CHAIN_SECRET") {
+            let key = std::fs::read(&secret_path).unwrap_or_default();
+            if !key.is_empty() {
+                let key = trim_key(&key);
+                DecisionLog::open_with_chain(audit, &key)?
+            } else {
+                DecisionLog::open(audit)?
+            }
+        } else {
+            DecisionLog::open(audit)?
+        };
         log.append_decision(&decision)?;
     }
 
@@ -76,4 +87,17 @@ fn load_entities(path: Option<&str>) -> Result<cedar_policy::Entities> {
         )
     })?;
     build_entities(arr).map_err(Into::into)
+}
+
+fn trim_key(bytes: &[u8]) -> Vec<u8> {
+    let s = std::str::from_utf8(bytes)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return hex::decode(&s).unwrap_or_else(|_| s.into_bytes());
+    }
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(s.as_bytes())
+        .unwrap_or_else(|_| s.into_bytes())
 }
