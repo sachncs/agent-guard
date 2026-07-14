@@ -105,8 +105,10 @@ mod tests {
     fn added_policy_is_detected() {
         let a = bundle("p0", "permit (principal, action, resource);");
         let mut b = bundle("p0", "permit (principal, action, resource);");
-        b.policies
-            .push(NamedPolicy { id: "p1".into(), source: "permit (...)".into() });
+        b.policies.push(NamedPolicy {
+            id: "p1".into(),
+            source: "permit (...)".into(),
+        });
         let diff = diff_bundles(&a, &b);
         assert!(diff.iter().any(|(id, _)| id == "p1"));
     }
