@@ -78,3 +78,23 @@ jobs:
       - run: python examples/jwt-auth/main.py
       - run: python examples/hash-chain-verify/main.py
       - run: python examples/dpop-protected/main.py
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      # Bans + licenses + sources are blocking: we own the surface and
+      # can fix violations directly.
+      - run: cargo deny check bans licenses sources
+      # Advisories are non-blocking: rustls-webpki 0.101 (RustSec
+      # 2026-0098, name-constraint bypass) and rsa 0.9 (RustSec
+      # 2023-0071, Marvin timing attack) are transitive deps from
+      # openidconnect 3.5 / reqwest 0.11. Fixing them requires upgrading
+      # to openidconnect >=0.6 / reqwest 0.13 / rustls 0.24 — tracked
+      # as a v0.3 follow-up. See CHANGELOG.md.
+      - name: cargo-deny advisories (informational, tracked for v0.3)
+        run: cargo deny check advisories
+        continue-on-error: true
