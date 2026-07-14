@@ -5,6 +5,7 @@
 
 use crate::error::{Error, Result};
 use hmac::{Hmac, Mac};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::sync::Arc;
@@ -38,7 +39,9 @@ impl std::fmt::Display for ChainId {
 
 /// A live hash chain: holds the root key and current head hash.
 ///
-/// Cloning is cheap (Arc'd). Thread-safe via `parking_lot::Mutex` on the head.
+/// Cloning is cheap (Arc'd). Thread-safe via `parking_lot::Mutex` on the
+/// head and chain id (the latter so that [`Self::load_head_from_file`]
+/// can adopt the persisted id from a previous process invocation).
 #[derive(Clone)]
 pub struct HashChain {
     inner: Arc<HashChainInner>,
@@ -46,8 +49,10 @@ pub struct HashChain {
 
 struct HashChainInner {
     root: Vec<u8>,
-    head: parking_lot::Mutex<[u8; HASH_LEN]>,
-    id: ChainId,
+    head: Mutex<[u8; HASH_LEN]>,
+    /// Lazily initialized in `id()`; restored from disk by
+    /// `load_head_from_file` when the chain is resumed after a restart.
+    id: Mutex<Option<ChainId>>,
 }
 
 impl std::fmt::Debug for HashChain {
@@ -67,8 +72,8 @@ impl HashChain {
         Self {
             inner: Arc::new(HashChainInner {
                 root: root_key.to_vec(),
-                head: parking_lot::Mutex::new([0u8; HASH_LEN]),
-                id: ChainId::new(),
+                head: Mutex::new([0u8; HASH_LEN]),
+                id: Mutex::new(None),
             }),
         }
     }
@@ -79,15 +84,17 @@ impl HashChain {
         Self {
             inner: Arc::new(HashChainInner {
                 root: root_key.to_vec(),
-                head: parking_lot::Mutex::new(head),
-                id,
+                head: Mutex::new(head),
+                id: Mutex::new(Some(id)),
             }),
         }
     }
 
-    /// Read the last `record_hash` from the audit log and use it as the
-    /// current head. This lets a fresh process pick up where the last left
-    /// off. Tolerates: missing file, empty file, malformed last line.
+    /// Read the last `record_hash` (and the matching `chain_id`) from the
+    /// audit log and use them as the current state. This lets a fresh
+    /// process pick up where the last left off without breaking the
+    /// chain's identity (both head and id are restored). Tolerates:
+    /// missing file, empty file, malformed last line.
     pub fn load_head_from_file(&self, path: &std::path::Path) -> std::io::Result<()> {
         let Ok(text) = std::fs::read_to_string(path) else {
             return Ok(());
@@ -101,9 +108,8 @@ impl HashChain {
         let Some(hash_str) = val.get("record_hash").and_then(|v| v.as_str()) else {
             return Ok(());
         };
-        let bytes = match hex::decode(hash_str) {
-            Ok(b) => b,
-            Err(_) => return Ok(()),
+        let Ok(bytes) = hex::decode(hash_str) else {
+            return Ok(());
         };
         if bytes.len() != HASH_LEN {
             return Ok(());
@@ -111,28 +117,40 @@ impl HashChain {
         let mut arr = [0u8; HASH_LEN];
         arr.copy_from_slice(&bytes);
         *self.inner.head.lock() = arr;
-        // Adopt the chain id from the file too, if present.
+        // Adopt the chain id from the file too. Without this, every
+        // restart generates a fresh id and the audit chain's identity
+        // drifts across processes — verify_chain then sees records
+        // tagged with multiple ids and rejects them.
         if let Some(id_str) = val.get("chain_id").and_then(|v| v.as_str()) {
-            if let Ok(id) = uuid::Uuid::parse_str(id_str) {
-                // Safe: rebuild the inner with the loaded id but the loaded head.
-                let new = HashChain {
-                    inner: Arc::new(HashChainInner {
-                        root: self.inner.root.clone(),
-                        head: parking_lot::Mutex::new(arr),
-                        id: ChainId(id),
-                    }),
-                };
-                // We can't reassign self; just mutate via Arc::get_mut which
-                // fails if there are other references. For simplicity, leave
-                // the id as-is in this minimal in-memory model.
-                let _ = new; // suppress unused
+            if let Ok(uuid) = uuid::Uuid::parse_str(id_str) {
+                *self.inner.id.lock() = Some(ChainId(uuid));
             }
         }
         Ok(())
     }
 
+    /// Returns the chain id. If [`Self::load_head_from_file`] has been
+    /// called and the file contained a `chain_id`, that id is returned;
+    /// otherwise a fresh id is generated lazily on first call and cached.
     pub fn id(&self) -> ChainId {
-        self.inner.id
+        let mut guard = self.inner.id.lock();
+        if let Some(id) = *guard {
+            return id;
+        }
+        let id = ChainId::new();
+        *guard = Some(id);
+        id
+    }
+
+    /// Adopt the chain id from an external source (e.g. a sidecar file
+    /// persisted by [`crate::decision::DecisionLog`]). Idempotent: if an
+    /// id has already been observed (loaded from the audit log or set
+    /// explicitly), this is a no-op.
+    pub fn adopt_id(&self, id: ChainId) {
+        let mut guard = self.inner.id.lock();
+        if guard.is_none() {
+            *guard = Some(id);
+        }
     }
 
     pub fn head(&self) -> [u8; HASH_LEN] {

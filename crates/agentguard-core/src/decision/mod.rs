@@ -13,5 +13,5 @@ pub mod record;
 pub use cache::DecisionCache;
 pub use chain::{ChainId, HashChain, HASH_LEN};
 pub use formatter::{AuditFormatter, CefFormatter, EcsFormatter, JsonlFormatter, LeefFormatter};
-pub use log::DecisionLog;
+pub use log::{ChainedRecord, DecisionLog};
 pub use record::DecisionRecord;
