@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod authorize;
 pub mod delegate;
+pub mod doctor;
 pub mod gen;
 pub mod init;
 pub mod log;

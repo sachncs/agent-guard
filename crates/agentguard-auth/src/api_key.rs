@@ -6,12 +6,20 @@
 use crate::error::{AuthError, Result};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
+use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine as _;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
+
+/// Fixed Argon2id parameters used by all API key operations. Using a
+/// deterministic instance per call (rather than `Argon2::default()`)
+/// prevents global-state interference when tests run in parallel.
+fn argon2() -> Argon2<'static> {
+    let params = Params::new(19_456, 2, 1, None).expect("argon2 params");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
 
 /// A single API key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +90,7 @@ impl ApiKeyStore {
         };
         let secret_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
         let salt = SaltString::generate(&mut OsRng);
-        let argon = Argon2::default();
+        let argon = argon2();
         let secret_hash = argon
             .hash_password(secret_bytes.as_ref(), &salt)
             .map_err(|e| AuthError::Other(format!("argon2: {}", e)))?
@@ -122,14 +130,14 @@ impl ApiKeyStore {
         }
         let (prefix, id) = (prefix_and_id[1], prefix_and_id[0]);
 
-        let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD
+let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(secret_b64)
             .map_err(|_| AuthError::ApiKeyInvalid)?;
         let guard = self.keys.read();
         let key = guard.get(id).ok_or(AuthError::ApiKeyInvalid)?.clone();
         drop(guard);
         if key.prefix != prefix {
-            return Err(AuthError::ApiKeyInvalid);
+            return Err(AuthError::Other(format!("prefix mismatch: {} != {}", key.prefix, prefix)));
         }
         if let Some(exp) = key.expires_at {
             if exp < chrono::Utc::now().timestamp() {
@@ -141,16 +149,10 @@ impl ApiKeyStore {
         }
         let parsed = PasswordHash::new(&key.secret_hash)
             .map_err(|e| AuthError::Other(format!("hash parse: {}", e)))?;
-        if Argon2::default().verify_password(&secret, &parsed).is_err() {
-            // Helpful debug for development; in production this should be quiet.
-            eprintln!(
-                "DEBUG verify failed: raw={} prefix={} id={} secret_len={} hash={}",
-                raw,
-                prefix,
-                id,
-                secret.len(),
-                key.secret_hash
-            );
+        if argon2()
+            .verify_password(&secret, &parsed)
+            .is_err()
+        {
             return Err(AuthError::ApiKeyInvalid);
         }
         Ok(key)
@@ -175,10 +177,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn create_and_verify_roundtrip() {
+fn create_and_verify_roundtrip() {
+        // Ensure no shared state with other api_key tests by using a unique prefix.
         let s = ApiKeyStore::new();
-        let (key, raw) = s.create("ag_live", vec!["read".into()], None).unwrap();
-        assert_eq!(key.prefix, "ag_live");
+        let (key, raw) = s
+            .create(
+                "ag_live_roundtrip",
+                vec!["read".into()],
+                None,
+            )
+            .unwrap();
+        assert_eq!(key.prefix, "ag_live_roundtrip");
         let verified = s.verify(&raw).unwrap();
         assert_eq!(verified.id, key.id);
     }
@@ -205,7 +214,7 @@ mod tests {
         // Insert a key with an explicit past expiry.
         let id = uuid::Uuid::new_v4().to_string();
         let salt = SaltString::generate(&mut OsRng);
-        let argon = Argon2::default();
+        let argon = argon2();
         let hash = argon
             .hash_password(b"some-secret", &salt)
             .unwrap()

@@ -113,6 +113,8 @@ enum Cmd {
         #[arg(long, default_value = "gpt-4o-mini")]
         model: String,
     },
+    /// Diagnose a deployment: schema, policies, audit log, chain, authorizer.
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -285,6 +287,25 @@ async fn main() -> anyhow::Result<()> {
                 commands::audit::erase(path, &subject_id, &salt_file, out_path.as_deref())
             }
         },
+        Cmd::Doctor => {
+            let chain_secret = std::env::var("AGENTGUARD_CHAIN_SECRET")
+                .ok()
+                .map(std::path::PathBuf::from);
+            let report = commands::doctor::run(
+                std::path::Path::new(&cli.store),
+                std::path::Path::new(&cli.audit),
+                chain_secret.as_deref(),
+            )?;
+            report.print();
+            let code = if report.has_failures() {
+                1
+            } else if report.has_warnings() {
+                2
+            } else {
+                0
+            };
+            std::process::exit(code);
+        }
     };
 
     res
