@@ -20,21 +20,33 @@ impl CacheKey {
     /// Streams each field's canonical JSON through the hasher, avoiding the
     /// intermediate `String` allocations the previous implementation made.
     /// For high-throughput PDPs (thousands of decisions/sec) this matters.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::{AgentRequestBuilder, Principal, AgentAction, Resource, AgentContext};
+    /// use agentguard_core::decision::cache::CacheKey;
+    /// let req = AgentRequestBuilder::new(Principal::user("alice"))
+    ///     .action(AgentAction::tool("send_email"))
+    ///     .resource(Resource::new("Mailbox", "alice@acme"))
+    ///     .context(AgentContext::new())
+    ///     .build()
+    ///     .unwrap();
+    /// let _k = CacheKey::for_request(&req, 0);
+    /// ```
     pub fn for_request(req: &AgentRequest, policy_version: u64) -> Self {
         let mut hasher = Sha256::new();
 
         // Hash a length-prefixed JSON encoding of each component so
         // boundaries between fields can't be ambiguous.
         // Format: 4-byte big-endian length || canonical JSON.
-        let mut hash_field =
-            |h: &mut Sha256, value: &serde_json::Value| {
-                let mut buf = Vec::new();
-                write_canonical_value(&mut buf, value)
-                    .expect("canonical write to Vec is infallible");
-                let len = (buf.len() as u32).to_be_bytes();
-                sha2::Digest::update(h, len);
-                sha2::Digest::update(h, &buf);
-            };
+        let hash_field = |h: &mut Sha256, value: &serde_json::Value| {
+            let mut buf = Vec::new();
+            write_canonical_value(&mut buf, value)
+                .expect("canonical write to Vec is infallible");
+            let len = (buf.len() as u32).to_be_bytes();
+            sha2::Digest::update(h, len);
+            sha2::Digest::update(h, &buf);
+        };
 
         if let Ok(p) = serde_json::to_value(&req.principal) {
             hash_field(&mut hasher, &p);
@@ -123,6 +135,8 @@ impl Default for CacheConfig {
 }
 
 /// LRU + TTL decision cache.
+///
+///
 ///
 /// Backed by a simple HashMap + LRU eviction. Thread-safe via [`parking_lot::Mutex`].
 pub struct DecisionCache {
@@ -341,5 +355,49 @@ mod tests {
             policy_version: 0,
         };
         assert!((s.hit_rate() - 0.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn concurrent_reads_dont_block_writers() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let clock = Arc::new(MockClock::new());
+        let cache = Arc::new(DecisionCache::new(CacheConfig::default(), clock));
+        let key = cache_key_for(&req(), 0);
+
+        // Seed the cache so reads hit.
+        cache.put(key.clone(), CachedDecision::allow());
+
+        // Spawn N reader threads. They all do `cache.get` in a tight
+        // loop for a bounded time. While they're doing that, the main
+        // thread does a few writes. If RwLock works as intended the reads
+        // mostly proceed in parallel; we don't assert specific timing,
+        // just that the test completes (proves no deadlock).
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let cache = Arc::clone(&cache);
+            let key = key.clone();
+            let stop = Arc::clone(&stop);
+            handles.push(thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = cache.get(&key);
+                }
+            }));
+        }
+
+        for v in 1..=20 {
+            cache.set_policy_version(v);
+            cache.put(key.clone(), CachedDecision::allow());
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        for h in handles {
+            h.join().unwrap();
+        }
+        // The test cares about non-deadlock under concurrent traffic, not
+        // about the cache state. We just confirm the lock was released and
+        // the readers made progress (otherwise the test would hang on join).
+        assert!(cache.stats().hits > 0, "no reads completed");
     }
 }
