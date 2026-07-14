@@ -59,9 +59,12 @@ impl MockClock {
         *self.unix_inner.lock() = t;
     }
 
-    /// Advance the wall clock by `d`.
+    /// Advance the wall clock by `d`. Also advances the monotonic clock so
+    /// `Duration`-based TTLs work in tests.
     pub fn advance_unix(&self, d: Duration) {
         *self.unix_inner.lock() += d.as_secs() as Timestamp;
+        let now = *self.inner.lock();
+        *self.inner.lock() = now.checked_add(d).unwrap_or(now);
     }
 }
 
