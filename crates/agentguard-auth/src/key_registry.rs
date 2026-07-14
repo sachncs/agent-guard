@@ -54,7 +54,8 @@ impl KeyRegistry {
         Self::default()
     }
 
-    /// Register a key. Replaces any existing key with the same `kid` and `alg`.
+    /// Register a key. Replaces any existing active key with the same `kid` and
+    /// `alg` (grace-window keys from a rotation are preserved).
     pub fn add(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) -> Result<()> {
         let mut guard = self.inner.write().expect("KeyRegistry poisoned");
         let entry = KeyEntry {
@@ -63,7 +64,13 @@ impl KeyRegistry {
             key,
             grace_expires_at: None,
         };
-        guard.entry(entry.kid.clone()).or_default().push(entry);
+        // Replace existing entries with the same kid+alg rather than
+        // appending. Without this, every JWKS refresh (which calls add
+        // for every JWKS doc key) grows the registry without bound and
+        // a long-running process eventually OOMs.
+        let entries = guard.entry(entry.kid.clone()).or_default();
+        entries.retain(|e| !(e.alg == entry.alg && e.grace_expires_at.is_none()));
+        entries.push(entry);
         Ok(())
     }
 

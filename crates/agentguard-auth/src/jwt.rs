@@ -139,14 +139,20 @@ impl JwtValidator {
             ));
         }
 
-        // Validate iss, aud, exp, nbf.
-        if let Some(iss) = claims.get("iss").and_then(|v| v.as_str()) {
-            if iss != self.config.issuer {
-                return Err(AuthError::JwtIssuerMismatch {
-                    expected: self.config.issuer.clone(),
-                    actual: iss.to_string(),
-                });
-            }
+        // Validate iss (REQUIRED — RFC 8725 §3.1: a JWT without `iss` is
+        // not bound to a known issuer and must be rejected).
+        let iss = claims
+            .get("iss")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AuthError::JwtIssuerMismatch {
+                expected: self.config.issuer.clone(),
+                actual: "<missing>".into(),
+            })?;
+        if iss != self.config.issuer {
+            return Err(AuthError::JwtIssuerMismatch {
+                expected: self.config.issuer.clone(),
+                actual: iss.to_string(),
+            });
         }
         let aud_ok = match claims.get("aud") {
             Some(serde_json::Value::String(s)) => *s == self.config.audience,
@@ -189,14 +195,39 @@ impl JwtValidator {
             .jwks_uri
             .as_ref()
             .ok_or_else(|| AuthError::Other("no jwks_uri configured".into()))?;
-        let body = reqwest::get(uri)
+        // Bounded client: 10 s total, 5 s connect, no redirects (would
+        // let an attacker point us at an unrelated host), 1 MiB body cap.
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| AuthError::JwksFetch(format!("client build: {}", e)))?;
+        let resp = client
+            .get(uri)
+            .send()
             .await
-            .map_err(|e| AuthError::JwksFetch(e.to_string()))?
+            .map_err(|e| AuthError::JwksFetch(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(AuthError::JwksFetch(format!("HTTP {}", resp.status())));
+        }
+        let body = resp
             .text()
             .await
             .map_err(|e| AuthError::JwksFetch(e.to_string()))?;
+        if body.len() > 1_048_576 {
+            return Err(AuthError::JwksFetch(
+                "JWKS document exceeds 1 MiB".into(),
+            ));
+        }
         let jwks: JwksDoc = serde_json::from_str(&body)
             .map_err(|e| AuthError::JwksFetch(format!("parse: {}", e)))?;
+        if jwks.keys.len() > 64 {
+            return Err(AuthError::JwksFetch(format!(
+                "JWKS document has {} keys; refusing to register more than 64",
+                jwks.keys.len()
+            )));
+        }
         for k in jwks.keys {
             let alg = match parse_alg(&k.alg) {
                 Ok(a) => a,
