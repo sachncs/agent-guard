@@ -1,9 +1,10 @@
 //! Audit log formatters for SIEM ingestion.
 //!
-//! - [`JsonlFormatter`]: pass-through (default)
-//! - [`CefFormatter`]: ArcSight Common Event Format
-//! - [`LeefFormatter`]: IBM QRadar Log Event Extended Format
-//! - [`EcsFormatter`]: Elastic Common Schema
+//! Four formatters are provided:
+//! - `JsonlFormatter` (default): pass-through JSON
+//! - `CefFormatter`: ArcSight Common Event Format
+//! - `LeefFormatter`: IBM QRadar Log Event Extended Format
+//! - `EcsFormatter`: Elastic Common Schema (JSON)
 
 use crate::decision::record::DecisionRecord;
 use serde::Serialize;

@@ -26,6 +26,7 @@ impl CheckStatus {
     }
 }
 
+#[allow(clippy::to_string_trait_impl)]
 pub struct DoctorReport {
     pub checks: Vec<(&'static str, CheckStatus)>,
 }

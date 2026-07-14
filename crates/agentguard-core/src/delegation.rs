@@ -299,6 +299,7 @@ impl DelegationSigner {
     }
 
     /// Mint a delegation token with a callback to mutate the claims before signing.
+    #[allow(clippy::too_many_arguments)]
     pub fn mint_with<F>(
         &self,
         iss: impl Into<String>,

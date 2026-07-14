@@ -3,7 +3,7 @@
 //! Run with `cargo bench -p agentguard-core`.
 
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::{AgentRequest, AgentRequestBuilder, Authorizer, Effect, PolicyStore};
+use agentguard_core::{AgentRequest, AgentRequestBuilder, Authorizer, PolicyStore};
 use agentguard_core::{AgentAction, AgentContext, Principal, Resource};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::sync::OnceLock;

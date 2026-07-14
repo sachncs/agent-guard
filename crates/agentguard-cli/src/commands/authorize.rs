@@ -4,15 +4,17 @@ use agentguard_core::{
 use anyhow::{anyhow, Result};
 use std::io::Read;
 
-/// A policy decision returned to the caller. The exit code at the process
-/// boundary is derived from `effect`.
+/// A policy decision returned to the caller.
 #[derive(Debug)]
 pub struct AuthorizeOutcome {
+    /// The decision effect.
+    #[allow(dead_code)]
     pub effect: agentguard_core::authorize::Effect,
-    /// Indicates whether the underlying authorizer returned an `Ok` decision.
+    /// Whether the decision was an Allow.
     pub decision_was_allow: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     store: &str,
     audit: &str,

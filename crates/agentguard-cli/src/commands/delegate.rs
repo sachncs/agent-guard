@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     from: &str,
     to: &str,

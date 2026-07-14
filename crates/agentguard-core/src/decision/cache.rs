@@ -130,9 +130,17 @@ impl DecisionCache {
 
     /// A disabled cache (every call is a miss).
     pub fn disabled(clock: Arc<dyn Clock>) -> Self {
-        let mut c = CacheConfig::default();
-        c.capacity = 1;
-        Self::new(c, clock)
+        let c = CacheConfig { capacity: 1, ..CacheConfig::default() };
+        let cap = std::num::NonZeroUsize::new(c.capacity).unwrap();
+        Self {
+            config: c,
+            clock,
+            policy_version: AtomicU64::new(0),
+            inner: parking_lot::Mutex::new(lru::LruCache::new(cap)),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
+        }
     }
 
     pub fn policy_version(&self) -> u64 {
@@ -183,7 +191,8 @@ impl DecisionCache {
             "deny" if self.config.cache_denies => self.config.deny_ttl,
             _ => return,
         };
-        let mut guard = self.inner.lock();
+        let guard_cell = &self.inner;
+        let mut guard = guard_cell.lock();
         let prev = guard.push(key, (decision, now + ttl));
         if prev.is_none() && guard.len() >= self.config.capacity {
             self.evictions.fetch_add(1, Ordering::Relaxed);
@@ -257,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn expire_after_ttl() {
         let clock = Arc::new(MockClock::new());
         let mut cfg = CacheConfig::default();
@@ -289,6 +299,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn deny_not_cached_when_disabled() {
         let clock = Arc::new(MockClock::new());
         let mut cfg = CacheConfig::default();
