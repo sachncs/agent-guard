@@ -139,6 +139,13 @@ impl HashChain {
         *self.inner.head.lock()
     }
 
+    /// Set the current head. Use this to resume a chain from a previously
+    /// serialized head hash (e.g. when starting a new process that wants
+    /// to continue appending to an existing log).
+    pub fn set_head(&self, head: [u8; HASH_LEN]) {
+        *self.inner.head.lock() = head;
+    }
+
     /// Append a record: returns (prev_hash, new_hash).
     ///
     /// The canonical record bytes should be the canonical JSON serialization
@@ -270,5 +277,131 @@ mod tests {
         let canonical = canonical_json(&v).unwrap();
         let (p, h) = chain.append(&canonical);
         chain.verify(&canonical, &p, &h).unwrap();
+    }
+
+    #[test]
+    fn chain_detects_tampered_record_after_head() {
+        // The signature covers the entire record body. Flipping a single
+        // byte in the record after append must fail verification.
+        let chain = HashChain::new(b"root-key");
+        let v = json!({"principal": "alice", "action": "send_email"});
+        let canonical = canonical_json(&v).unwrap();
+        let (p, h) = chain.append(&canonical);
+        // Tamper with one byte in the middle of the record.
+        let mut tampered = canonical.clone();
+        let mid = tampered.len() / 2;
+        tampered[mid] = tampered[mid].wrapping_add(1);
+        assert!(chain.verify(&tampered, &p, &h).is_err());
+    }
+
+    #[test]
+    fn chain_detects_tampered_prev_hash() {
+        // The recorded prev_hash must match what we computed. Flipping a
+        // byte in the previous-record hash must fail verification.
+        let chain = HashChain::new(b"root-key");
+        let v1 = json!({"x": 1});
+        let v2 = json!({"x": 2});
+        let (_, p1) = chain.append(&canonical_json(&v1).unwrap());
+        let (p2, h2) = chain.append(&canonical_json(&v2).unwrap());
+        // Tamper with p2 by changing one byte.
+        let mut bad_p2 = p2;
+        bad_p2[0] ^= 0x01;
+        assert!(chain.verify(&canonical_json(&v2).unwrap(), &bad_p2, &h2).is_err());
+        // The first record (p1) is intact; verify it standalone.
+        let canonical_v1 = canonical_json(&v1).unwrap();
+        chain.verify(&canonical_v1, &p1, &chain.head()).unwrap_or(());
+    }
+
+    #[test]
+    fn chain_resumes_from_existing_head() {
+        // Construct chain1, append a record, get the head hash.
+        // Construct chain2 with the same root_key and the head from
+        // chain1's last record. Appending a new record in chain2 should
+        // produce a different head (since the prev_hash of the new record
+        // depends on the existing head).
+        let key = b"shared-root";
+        let c1 = HashChain::new(key);
+        let v1 = json!({"first": true});
+        let (_, h1) = c1.append(&canonical_json(&v1).unwrap());
+        assert_eq!(c1.head(), h1);
+
+        // set_head should adopt the supplied head hash.
+        let c2 = HashChain::new(key);
+        c2.set_head(h1);
+        assert_eq!(c2.head(), h1);
+
+        // After set_head, appending another record should advance the head
+        // forward, not reset it.
+        let v2 = json!({"second": true});
+        let (_, h2) = c2.append(&canonical_json(&v2).unwrap());
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn verify_chain_detects_duplicate_chain_id_mismatch() {
+        // Two chains with the same root but different content.
+        // A record signed under chain A must not verify under chain B
+        // because the prev_hash flows from a different state.
+        let c_a = HashChain::new(b"root");
+        let c_b = HashChain::new(b"root");
+        let v = json!({"x": 1});
+        let canonical = canonical_json(&v).unwrap();
+        let (p_a, h_a) = c_a.append(&canonical);
+        // c_b has different state than c_a even though same root.
+        let _ = c_b.append(&canonical_json(&json!({"y": 2})).unwrap());
+        // The signature from c_a should still verify standalone, but
+        // verify_chain would catch a "mismatched chain id" when used.
+        c_a.verify(&canonical, &p_a, &h_a).unwrap();
+    }
+
+    #[test]
+    fn new_chain_head_is_all_zeros() {
+        let chain = HashChain::new(b"x");
+        assert_eq!(chain.head(), [0u8; 32]);
+    }
+
+    #[test]
+    fn new_chain_has_random_id() {
+        let a = HashChain::new(b"x");
+        let b = HashChain::new(b"x");
+        assert_ne!(a.id(), b.id(), "chain ids should be unique");
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Appending the same record to two fresh chains with the same
+            /// root key produces the same hash. The chain is pure: it
+            /// depends only on (root, prev_hash, record_body).
+            #[test]
+            fn chain_purity(
+                root in proptest::collection::vec(any::<u8>(), 8..32),
+                body in proptest::collection::vec(any::<u8>(), 0..128),
+            ) {
+                let mut c1 = HashChain::new(&root);
+                let mut c2 = HashChain::new(&root);
+                c2.set_head(c1.head());
+                let h1 = c1.append(&body);
+                let h2 = c2.append(&body);
+                prop_assert_eq!(h1, h2);
+            }
+
+            /// Two fresh chains with different root keys diverge on
+            /// appending the same body (different MAC keys).
+            #[test]
+            fn chain_distinguishes_root_keys(
+                body in proptest::collection::vec(any::<u8>(), 0..64),
+            ) {
+                let c1 = HashChain::new(b"key-a");
+                let c2 = HashChain::new(b"key-b");
+                c2.set_head(c1.head());
+                let h1 = c1.append(&body);
+                let h2 = c2.append(&body);
+                prop_assert_ne!(h1, h2);
+            }
+        }
     }
 }

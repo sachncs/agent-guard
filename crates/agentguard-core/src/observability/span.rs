@@ -263,4 +263,69 @@ mod tests {
             "00-abababababababababababababababab-cdcdcdcdcdcdcdcd-01"
         );
     }
+
+    #[test]
+    fn traceparent_rejects_wrong_version() {
+        // W3C traceparent version "01" is reserved; we accept only "00".
+        let bad = "01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+        assert!(bad.parse::<TraceContext>().is_err());
+    }
+
+    #[test]
+    fn traceparent_rejects_wrong_segment_count() {
+        let bad = "00-aaaa-bbbb-cccc-dddd";
+        assert!(bad.parse::<TraceContext>().is_err());
+    }
+
+    #[test]
+    fn traceparent_rejects_non_hex() {
+        let bad = "00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-b7ad6b7169203331-01";
+        assert!(bad.parse::<TraceContext>().is_err());
+    }
+
+    #[test]
+    fn random_trace_id_is_unique_99pct_of_the_time() {
+        // Collision check: 1000 random IDs should have no duplicates.
+        // 128-bit space → 2^-128 collision probability per pair, so 1000
+        // pairs gives effectively zero chance. We use a small threshold to
+        // avoid flakiness on degenerate PRNGs.
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        for _ in 0..1000 {
+            set.insert(TraceId::random().0);
+        }
+        assert_eq!(set.len(), 1000, "TraceId::random had collisions");
+    }
+
+    #[test]
+    fn random_span_id_is_unique_99pct_of_the_time() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        for _ in 0..1000 {
+            set.insert(SpanId::random().0);
+        }
+        assert_eq!(set.len(), 1000, "SpanId::random had collisions");
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Parsing a printed trace context round-trips through
+            /// `Display` → `FromStr`.
+            #[test]
+            fn round_trip(seed in any::<u8>()) {
+                let trace_id = TraceId::new([seed; 16]);
+                let span_id = SpanId::new([seed.wrapping_mul(2); 8]);
+                let tc = TraceContext::new(trace_id, span_id);
+                let printed = tc.to_string();
+                let parsed: TraceContext = printed.parse().unwrap();
+                prop_assert_eq!(tc.trace_id, parsed.trace_id);
+                prop_assert_eq!(tc.span_id, parsed.span_id);
+                prop_assert_eq!(tc.flags, parsed.flags);
+            }
+        }
+    }
 }
