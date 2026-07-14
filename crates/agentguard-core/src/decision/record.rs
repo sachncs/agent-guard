@@ -1,7 +1,6 @@
 //! Decision record schema (v2).
 
 use crate::authorize::Decision;
-use crate::error::Result;
 use crate::observability::{SpanId, TraceId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

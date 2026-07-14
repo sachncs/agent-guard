@@ -1,0 +1,1 @@
+{"principal": {"type": "user", "uid": "bob", "attrs": {}}, "action": {"tool": "send_email"}, "resource": {"entity_type": "Mailbox", "uid": "alice@acme", "attrs": {}}, "context": {"args": {"to": "[email protected]", "subject": "hi", "body": "hello"}, "session": {"ip": "10.0.0.1", "user_agent": "x", "mfa": true, "ts": 0}}}

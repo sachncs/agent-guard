@@ -1,9 +1,12 @@
-// TODO(stage-1): full Sink trait + JSONL/Stdout/OTLP sinks. See stages/STAGE-1-telemetry.md.
+//! Sink trait and event payload.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use uuid::Uuid;
 
+/// Errors raised by [`Sink::emit`].
 #[derive(Debug, Error)]
 pub enum SinkError {
     #[error("io error: {0}")]
@@ -16,39 +19,134 @@ pub enum SinkError {
     Other(String),
 }
 
-/// A telemetry event emitted by agentguard.
-///
-/// Carries kind-specific payloads. The `serde_json::Value` fields keep this
-/// crate decoupled from agentguard-core's exact schema during stage-1
-/// scaffolding; Stage 1.7 wires typed payloads in.
+/// Telemetry event emitted by agentguard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SinkEvent {
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decision: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub trace_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub span_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub duration_micros: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tenant_id: Option<String>,
+    /// Unique event id (UUID v4).
+    pub id: Uuid,
+    /// Event timestamp.
+    pub timestamp: DateTime<Utc>,
+    /// Discriminator.
+    pub kind: SinkEventKind,
+}
+
+/// What the event represents.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SinkEventKind {
+    /// Authorization decision (allow or deny).
+    Decision {
+        effect: String,
+        principal: String,
+        action: String,
+        resource: String,
+        policies: Vec<String>,
+        reasons: Vec<String>,
+        duration_micros: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trace_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        span_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tenant_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subject_id: Option<String>,
+        #[serde(default)]
+        cached: bool,
+    },
+    /// Delegation token minted.
+    DelegationMint {
+        issuer: String,
+        subject: String,
+        actions: Vec<String>,
+        ttl_seconds: i64,
+    },
+    /// Delegation token verified.
+    DelegationVerify {
+        success: bool,
+        issuer: Option<String>,
+        subject: Option<String>,
+    },
+    /// Policy bundle loaded or reloaded.
+    PolicyReload {
+        version: String,
+        policy_count: usize,
+        source: String,
+    },
+    /// Decision cache hit/miss.
+    CacheLookup {
+        hit: bool,
+        principal: String,
+        action: String,
+    },
+    /// Authorization failed because the PDP could not be reached.
+    PdpError { error: String, fallback: String },
 }
 
 impl SinkEvent {
-    pub fn decision(decision: serde_json::Value) -> Self {
+    pub fn decision(
+        effect: impl Into<String>,
+        principal: impl Into<String>,
+        action: impl Into<String>,
+        resource: impl Into<String>,
+        policies: Vec<String>,
+        reasons: Vec<String>,
+        duration_micros: u64,
+    ) -> Self {
         Self {
-            kind: "decision".into(),
-            timestamp: chrono::Utc::now(),
-            decision: Some(decision),
-            trace_id: None,
-            span_id: None,
-            duration_micros: None,
-            tenant_id: None,
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            kind: SinkEventKind::Decision {
+                effect: effect.into(),
+                principal: principal.into(),
+                action: action.into(),
+                resource: resource.into(),
+                policies,
+                reasons,
+                duration_micros,
+                trace_id: None,
+                span_id: None,
+                tenant_id: None,
+                subject_id: None,
+                cached: false,
+            },
         }
+    }
+
+    pub fn with_trace(mut self, trace_id: String, span_id: String) -> Self {
+        if let SinkEventKind::Decision {
+            trace_id: ref mut t,
+            span_id: ref mut s,
+            ..
+        } = self.kind
+        {
+            *t = Some(trace_id);
+            *s = Some(span_id);
+        }
+        self
+    }
+
+    pub fn with_tenant(mut self, tenant_id: String, subject_id: Option<String>) -> Self {
+        if let SinkEventKind::Decision {
+            tenant_id: ref mut t,
+            subject_id: ref mut s,
+            ..
+        } = self.kind
+        {
+            *t = Some(tenant_id);
+            *s = subject_id;
+        }
+        self
+    }
+
+    pub fn mark_cached(mut self) -> Self {
+        if let SinkEventKind::Decision {
+            cached: ref mut c, ..
+        } = self.kind
+        {
+            *c = true;
+        }
+        self
     }
 }
 
