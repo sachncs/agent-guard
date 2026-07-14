@@ -81,6 +81,11 @@ impl CacheKey {
 }
 
 /// A cached decision record.
+///
+/// The `effect` string is `"allow"` or `"deny"`. `cached_at_policy_version`
+/// is the policy version that was active when this entry was inserted;
+/// `get` ignores entries whose version doesn't match the current
+/// `policy_version`, achieving invalidation on policy reload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedDecision {
     pub effect: String,
@@ -90,6 +95,7 @@ pub struct CachedDecision {
 }
 
 impl CachedDecision {
+    /// Construct an `Allow` decision with the current policy version.
     pub fn allow() -> Self {
         Self {
             effect: "allow".into(),
@@ -99,6 +105,7 @@ impl CachedDecision {
         }
     }
 
+    /// Construct a `Deny` decision with the current policy version.
     pub fn deny() -> Self {
         Self {
             effect: "deny".into(),

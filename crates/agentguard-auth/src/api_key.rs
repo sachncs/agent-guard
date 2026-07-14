@@ -86,6 +86,20 @@ impl ApiKeyStore {
 
     /// Create a new key. Returns the key record and the raw secret string
     /// (the caller must surface it to the user once; we never store the raw).
+    ///
+    /// # Errors
+    /// Returns `AuthError::Other` if Argon2 fails (extremely rare; only
+    /// happens on out-of-memory).
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_auth::ApiKeyStore;
+    /// use std::time::Duration;
+    /// let store = ApiKeyStore::new();
+    /// let (key, raw) = store.create("ag_live", vec!["read".into()], Some(Duration::from_secs(3600))).unwrap();
+    /// assert_eq!(key.prefix, "ag_live");
+    /// // Surface `raw` to the user once. It looks like: ag_live_<uuid>_<base64>
+    /// ```
     pub fn create(
         &self,
         prefix: impl Into<String>,

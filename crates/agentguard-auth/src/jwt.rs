@@ -63,6 +63,8 @@ pub struct JwtValidator {
 }
 
 impl JwtValidator {
+    /// Build a new validator with an empty key registry. Call [`Self::add_key`]
+    /// for each trusted issuer.
     pub fn new(config: JwtConfig) -> Self {
         Self {
             config: Arc::new(config),
@@ -71,6 +73,10 @@ impl JwtValidator {
     }
 
     /// Register a key for verification.
+    ///
+    /// # Errors
+    /// Returns `AuthError::JwtInvalid` if the key material is malformed
+    /// (e.g. wrong size for the given algorithm).
     pub fn add_key(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) -> Result<()> {
         self.keys.add(kid, alg, key)
     }

@@ -234,6 +234,13 @@ impl std::fmt::Debug for DelegationSigner {
 
 impl DelegationSigner {
     /// Generate a fresh Ed25519 signing key.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::DelegationSigner;
+    /// let signer = DelegationSigner::generate();
+    /// let _public_key = signer.public_key_b64();
+    /// ```
     pub fn generate() -> Self {
         use rand::rngs::OsRng;
         let key = SigningKey::generate(&mut OsRng);
@@ -242,6 +249,9 @@ impl DelegationSigner {
     }
 
     /// Construct from raw 32-byte Ed25519 secret bytes.
+    ///
+    /// # Errors
+    /// Returns `Error::InvalidToken` if `bytes` is not exactly 32 bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let arr: [u8; 32] = bytes
             .try_into()

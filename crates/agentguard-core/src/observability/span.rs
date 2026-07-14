@@ -145,6 +145,8 @@ pub struct TraceContext {
 }
 
 impl TraceContext {
+    /// Build a new trace context with the given trace + span IDs. Flags
+    /// default to `0x01` (sampled).
     pub fn new(trace_id: TraceId, span_id: SpanId) -> Self {
         Self {
             trace_id,

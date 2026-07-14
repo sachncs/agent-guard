@@ -82,6 +82,17 @@ pub struct AppState {
 }
 
 /// Build the AuthZEN HTTP router.
+///
+/// The router exposes:
+/// - `POST /access/v1/evaluation` — single decision
+/// - `POST /access/v1/evaluations` — batch with
+///   `evaluation_semantics: "execute_all" | "deny_on_first_deny" |
+///   "permit_on_first_permit"`
+/// - `GET /healthz` — always 200
+/// - `GET /readyz` — 200 if policies loaded, 503 otherwise
+///
+/// The body is capped at 64 KB; larger requests are rejected by
+/// axum's `DefaultBodyLimit` layer.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/access/v1/evaluation", post(evaluation))
@@ -251,6 +262,11 @@ async fn evaluations(
 }
 
 /// Build an [`AppState`] from a policy store on disk.
+///
+/// # Errors
+/// Returns a `String` error if the store can't be opened or the cedar
+/// engine can't be initialized. The error string is suitable for an HTTP
+/// 500 response body.
 pub async fn build_state(store_root: std::path::PathBuf) -> Result<AppState, String> {
     let store = PolicyStore::open(&store_root).map_err(|e| format!("open store: {}", e))?;
     let authorizer = Arc::new(Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?);

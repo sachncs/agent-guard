@@ -183,6 +183,17 @@ impl DecisionLog {
     /// # Errors
     /// Returns `Error::Other` (formatted string) on parse failure, hash
     /// mismatch, or chain head mismatch.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::decision::DecisionLog;
+    /// use std::time::Duration;
+    /// let log = DecisionLog::open_with_chain("/tmp/audit.jsonl", b"secret").unwrap();
+    /// // ... write some decisions ...
+    /// drop(log);
+    /// let chain_id = DecisionLog::verify_chain("/tmp/audit.jsonl", b"secret").unwrap();
+    /// println!("verified chain: {}", chain_id);
+    /// ```
     pub fn verify_chain(path: impl AsRef<Path>, root_key: &[u8]) -> Result<ChainId> {
         let records = Self::read_all_chained(path)?;
         let mut chain_id = None;
