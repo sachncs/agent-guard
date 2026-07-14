@@ -26,6 +26,15 @@ pub struct AgentRequest {
     /// Optional W3C Trace Context (parsed from `traceparent` header).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace: Option<TraceContext>,
+    /// Tenant ID for multi-tenant deployments. Propagated through to
+    /// `DecisionRecord` so per-tenant SAR queries, blast-radius
+    /// analyses, and audit log scans can scope by tenant.
+    ///
+    /// No format constraint is enforced here; the caller decides
+    /// (UUID, slug, email, etc). `with_tenant_id` trims whitespace
+    /// and converts empty strings to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
 }
 
 impl AgentRequest {
@@ -43,6 +52,7 @@ impl AgentRequest {
             context,
             request_id: Some(uuid::Uuid::now_v7().to_string()),
             trace: None,
+            tenant_id: None,
         }
     }
 
@@ -58,8 +68,26 @@ impl AgentRequest {
         self
     }
 
+    /// Set the tenant ID. Whitespace is trimmed; empty/whitespace-only
+    /// values become `None`. No other format constraint.
+    pub fn with_tenant_id(mut self, tid: impl Into<String>) -> Self {
+        let s = tid.into();
+        self.tenant_id = if s.trim().is_empty() {
+            None
+        } else {
+            Some(s.trim().to_string())
+        };
+        self
+    }
+
     /// Convert to a `cedar_policy::Request`. `schema` is used to construct
     /// a typed context (validates context shape per action) when available.
+    ///
+    /// # Errors
+    /// Returns `Error::InvalidPrincipal` / `Error::InvalidResource` if
+    /// the principal type or resource type name is not a valid Cedar
+    /// identifier. Returns `Error::InvalidContext` if the context cannot
+    /// be parsed against the schema.
     pub fn to_cedar_request(&self, schema: Option<&cedar_policy::Schema>) -> Result<Request> {
         let principal_eid = EntityId::new(&**self.principal.id());
         let principal_etype =
@@ -101,11 +129,13 @@ impl AgentRequest {
 
 /// Builder for [`AgentRequest`] with type-safe setters.
 ///
-/// ```ignore
+/// # Examples
+/// ```
+/// use agentguard_core::{AgentRequestBuilder, Principal, AgentAction, Resource, AgentContext};
 /// let req = AgentRequestBuilder::new(Principal::user("alice"))
 ///     .action(AgentAction::tool("send_email"))
 ///     .resource(Resource::new("Mailbox", "alice@acme"))
-///     .context(AgentContext::new().with_arg("to", "[email protected]"))
+///     .context(AgentContext::new())
 ///     .build();
 /// ```
 #[derive(Debug, Clone)]
@@ -116,6 +146,7 @@ pub struct AgentRequestBuilder {
     context: AgentContext,
     request_id: Option<String>,
     trace: Option<TraceContext>,
+    tenant_id: Option<String>,
 }
 
 impl AgentRequestBuilder {
@@ -128,6 +159,7 @@ impl AgentRequestBuilder {
             context: AgentContext::new(),
             request_id: None,
             trace: None,
+            tenant_id: None,
         }
     }
 
@@ -162,10 +194,26 @@ impl AgentRequestBuilder {
     }
 
     /// Attach a trace by parsing a `traceparent` string.
+    ///
+    /// # Errors
+    /// Returns `Error::Other` (or a parse error) if the traceparent string
+    /// is malformed.
     pub fn traceparent(mut self, tp: &str) -> Result<Self> {
         let trace: TraceContext = tp.parse()?;
         self.trace = Some(trace);
         Ok(self)
+    }
+
+    /// Set the tenant ID. Whitespace is trimmed; empty/whitespace-only
+    /// values become `None`. No other format constraint.
+    pub fn tenant_id(mut self, tid: impl Into<String>) -> Self {
+        let s = tid.into();
+        self.tenant_id = if s.trim().is_empty() {
+            None
+        } else {
+            Some(s.trim().to_string())
+        };
+        self
     }
 
     /// Finalize the request. Returns an error if action or resource is missing.
@@ -181,6 +229,7 @@ impl AgentRequestBuilder {
             req.request_id = Some(id);
         }
         req.trace = self.trace;
+        req.tenant_id = self.tenant_id;
         Ok(req)
     }
 }
@@ -188,6 +237,7 @@ impl AgentRequestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AgentAction;
 
     #[test]
     fn builder_sets_all_fields() {
@@ -228,5 +278,39 @@ mod tests {
             AgentContext::new(),
         );
         assert!(req.request_id.is_some());
+    }
+
+    #[test]
+    fn tenant_id_round_trips() {
+        let req = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .tenant_id("acme-corp")
+            .build()
+            .unwrap();
+        assert_eq!(req.tenant_id.as_deref(), Some("acme-corp"));
+
+        // Whitespace-only becomes None.
+        let req = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .tenant_id("   ")
+            .build()
+            .unwrap();
+        assert_eq!(req.tenant_id, None);
+
+        // Surrounding whitespace is trimmed.
+        let req = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .tenant_id("  acme-corp  ")
+            .build()
+            .unwrap();
+        assert_eq!(req.tenant_id.as_deref(), Some("acme-corp"));
+
+        // Serde round-trips through JSON.
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: AgentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.tenant_id.as_deref(), Some("acme-corp"));
     }
 }
