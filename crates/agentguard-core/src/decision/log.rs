@@ -29,11 +29,26 @@ enum LogMode {
 
 impl DecisionLog {
     /// Open a plain (un-chained) JSONL log at `path`.
+    ///
+    /// # Errors
+    /// Returns `Error::Io` if the path cannot be opened for append or if
+    /// the parent directory cannot be created.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::decision::DecisionLog;
+    /// let log = DecisionLog::open("/tmp/audit.jsonl").unwrap();
+    /// ```
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
         Self::open_internal(path.into(), None)
     }
 
     /// Open a hash-chained JSONL log at `path` with the given root key.
+    ///
+    /// # Errors
+    /// Returns `Error::Io` if the path cannot be opened or the parent
+    /// directory cannot be created.
+    ///
     /// # Examples
     /// ```
     /// use agentguard_core::decision::DecisionLog;
@@ -79,6 +94,10 @@ impl DecisionLog {
     }
 
     /// Append a record. When the log is chained, the record is signed.
+    ///
+    /// # Errors
+    /// Returns `Error::Json` if `rec` cannot be serialized, or
+    /// `Error::Io` if the write fails.
     pub fn append(&self, rec: &DecisionRecord) -> Result<()> {
         let canonical = canonical_json(rec)?;
         match &self.mode {
@@ -160,6 +179,10 @@ impl DecisionLog {
     ///
     /// Reads every record from `path`, checks the HMAC chain, and returns
     /// the chain head. Returns an error if any record is tampered.
+    ///
+    /// # Errors
+    /// Returns `Error::Other` (formatted string) on parse failure, hash
+    /// mismatch, or chain head mismatch.
     pub fn verify_chain(path: impl AsRef<Path>, root_key: &[u8]) -> Result<ChainId> {
         let records = Self::read_all_chained(path)?;
         let mut chain_id = None;

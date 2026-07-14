@@ -157,6 +157,16 @@ impl TraceContext {
     pub fn fresh() -> Self {
         Self::new(TraceId::random(), SpanId::random())
     }
+
+    /// Return a new context with the same trace_id but a fresh span_id.
+    /// Use this to record a child operation within the same trace.
+    pub fn child(&self) -> Self {
+        Self {
+            trace_id: self.trace_id,
+            span_id: SpanId::random(),
+            flags: self.flags,
+        }
+    }
 }
 
 impl fmt::Display for TraceContext {

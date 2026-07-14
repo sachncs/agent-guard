@@ -6,5 +6,6 @@ pub mod authzen;
 pub mod listener;
 pub mod server;
 
+pub use authzen::AppState;
 pub use listener::ServerConfig;
 pub use server::run;

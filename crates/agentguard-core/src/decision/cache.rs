@@ -1,6 +1,6 @@
 //! LRU decision cache with TTL and policy-version invalidation.
 
-use crate::decision::canonical::canonical_json;
+use crate::decision::canonical::{canonical_json, write_canonical_value};
 use crate::request::AgentRequest;
 use crate::ttl::Clock;
 use serde::{Deserialize, Serialize};
@@ -16,28 +16,49 @@ pub struct CacheKey(pub [u8; 32]);
 impl CacheKey {
     /// Derive a key from an agent request. Includes `policy_version` so a
     /// policy reload invalidates all entries.
+    ///
+    /// Streams each field's canonical JSON through the hasher, avoiding the
+    /// intermediate `String` allocations the previous implementation made.
+    /// For high-throughput PDPs (thousands of decisions/sec) this matters.
     pub fn for_request(req: &AgentRequest, policy_version: u64) -> Self {
         let mut hasher = Sha256::new();
-        // Hash a canonical-ish representation. We serialize the request
-        // ourselves for stability across serde versions.
-        let mut repr = String::new();
-        repr.push_str(&serde_json::to_string(&req.principal).unwrap_or_default());
-        repr.push('|');
-        repr.push_str(&serde_json::to_string(&req.action).unwrap_or_default());
-        repr.push('|');
-        repr.push_str(&serde_json::to_string(&req.resource).unwrap_or_default());
-        repr.push('|');
+
+        // Hash a length-prefixed JSON encoding of each component so
+        // boundaries between fields can't be ambiguous.
+        // Format: 4-byte big-endian length || canonical JSON.
+        let mut hash_field =
+            |h: &mut Sha256, value: &serde_json::Value| {
+                let mut buf = Vec::new();
+                write_canonical_value(&mut buf, value)
+                    .expect("canonical write to Vec is infallible");
+                let len = (buf.len() as u32).to_be_bytes();
+                sha2::Digest::update(h, len);
+                sha2::Digest::update(h, &buf);
+            };
+
+        if let Ok(p) = serde_json::to_value(&req.principal) {
+            hash_field(&mut hasher, &p);
+        }
+        if let Ok(a) = serde_json::to_value(&req.action) {
+            hash_field(&mut hasher, &a);
+        }
+        if let Ok(r) = serde_json::to_value(&req.resource) {
+            hash_field(&mut hasher, &r);
+        }
+        // Context is already canonical; hash it directly.
         if let Ok(bytes) = canonical_json(&req.context) {
-            if let Ok(s) = std::str::from_utf8(&bytes) {
-                repr.push_str(s);
-            }
+            let len = (bytes.len() as u32).to_be_bytes();
+            sha2::Digest::update(&mut hasher, len);
+            sha2::Digest::update(&mut hasher, &bytes);
         }
         if let Some(t) = &req.trace {
-            repr.push_str("|trace:");
-            repr.push_str(&t.to_string());
+            let s = t.to_string();
+            let len = (s.len() as u32).to_be_bytes();
+            sha2::Digest::update(&mut hasher, len);
+            sha2::Digest::update(&mut hasher, s.as_bytes());
         }
-        hasher.update(repr.as_bytes());
-        hasher.update(policy_version.to_le_bytes());
+        sha2::Digest::update(&mut hasher, policy_version.to_be_bytes());
+
         let hash: [u8; 32] = hasher.finalize().into();
         Self(hash)
     }

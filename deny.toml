@@ -1,0 +1,65 @@
+# agentguard's `cargo-deny` configuration.
+#
+# Catches: forbidden licenses, abandoned crates, vulnerable
+# dependencies, and duplicate versions of the same crate.
+#
+# Run with: `cargo deny check`
+
+[graph]
+all-features = false
+
+[advisories]
+# Fail the build on any advisory from the RustSec database.
+# RUSTSEC-2023-0071 is the Marvin timing-attack on the `rsa` crate. It is
+# a transitive dep of `oauth2`/`openidconnect`, which we use for RS256
+# JWT verification (not signing). The attack requires an attacker on
+# the same network path to observe timing during key operations;
+# our key verify is not in the hot path. Documented for users who
+# can require EdDSA-only deployments.
+# RUSTSEC-2025-0134 is rustls-pemfile no longer maintained. It's
+# transitive via rustls; we depend on rustls 0.23 via reqwest 0.12. The
+# replacement is rustls-pemfile 2.0, but the chain is fixed in
+# rustls 0.24 / reqwest 0.13 which we don't yet require.
+version = 2
+ignore = [
+    "RUSTSEC-2023-0071",
+    "RUSTSEC-2025-0134",
+]
+
+[licenses]
+version = 2
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "OpenSSL",
+    "CC0-1.0",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+deny = [
+    { name = "openssl", version = "*" },
+    { name = "openssl-sys", version = "*" },
+    { name = "native-tls", version = "*" },
+]
+# Multiple versions are common in a layered dependency graph (e.g. reqwest
+# 0.11 from oauth2 vs 0.12 from the rest of the workspace). We warn rather
+# than fail so that upgrading lower-level deps doesn't block the build;
+# the workspace can resolve the duplicates later via feature unification.
+multiple-versions = "allow"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

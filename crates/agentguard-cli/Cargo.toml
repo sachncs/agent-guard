@@ -10,7 +10,7 @@ name = "agentguard"
 path = "src/main.rs"
 
 [dependencies]
-agentguard-core = { path = "../agentguard-core" }
+agentguard-core = { path = "../agentguard-core", version = "0.2.0" }
 cedar-policy.workspace = true
 serde.workspace = true
 serde_json.workspace = true

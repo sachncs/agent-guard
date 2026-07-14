@@ -6,7 +6,7 @@ license.workspace = true
 description = "Policy operations: versioned bundles, hot reload, diff, blast radius"
 
 [dependencies]
-agentguard-core = { path = "../agentguard-core" }
+agentguard-core = { path = "../agentguard-core", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
 notify = { workspace = true, optional = true }

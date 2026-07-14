@@ -2,9 +2,12 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
+use agentguard_core::authorize::entities::build_entities;
+use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
-use axum::extract::State;
-use axum::http::StatusCode;
+use axum::extract::{Request, State};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::middleware::{from_fn, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
@@ -88,7 +91,42 @@ pub fn router(state: AppState) -> Router {
         // Cap request bodies at 64 KB. AuthZEN requests are small JSON; anything
         // larger is either misconfigured or an attack.
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
+        // Inject/propagate W3C Trace Context for every request. If the
+        // caller sent a `traceparent` header, we honor it; otherwise we
+        // generate a fresh root span. The span id is added to every
+        // response as the `x-agentguard-span-id` header so callers can
+        // correlate logs and decisions.
+        .layer(from_fn(trace_context_layer))
         .with_state(state)
+}
+
+/// W3C Trace Context middleware: read incoming `traceparent` or generate
+/// a fresh trace, and echo the span id back to the caller.
+async fn trace_context_layer(
+    headers: HeaderMap,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let traceparent = headers
+        .get("traceparent")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<TraceContext>().ok());
+    let trace = traceparent.unwrap_or_else(TraceContext::fresh);
+    // Generate a child span for this request handling hop.
+    let child = trace.child();
+    let span_id = child.span_id;
+
+    // Stash the parsed trace in request extensions so handlers can use it
+    // (e.g. to attach to a DecisionRecord).
+    req.extensions_mut().insert(child);
+
+    let mut response = next.run(req).await;
+    if let Ok(v) = HeaderValue::from_str(&span_id.to_string()) {
+        response
+            .headers_mut()
+            .insert(HeaderName::from_static("x-agentguard-span-id"), v);
+    }
+    response
 }
 
 async fn healthz() -> &'static str {

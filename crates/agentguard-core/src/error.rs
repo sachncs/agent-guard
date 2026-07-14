@@ -1,3 +1,22 @@
+//! Error types for agentguard-core.
+//!
+//! Two parallel hierarchies are intentionally maintained: this crate
+//! (`agentguard_core::Error`) covers authorization-engine failures
+//! (Cedar parse, schema validation, decision evaluation, delegation token
+//! issues), while `agentguard_auth::AuthError` covers authentication
+//! failures (JWT, OIDC, API keys, DPoP, SPIFFE). Merging them would create
+//! a circular dependency between `agentguard-core` and `agentguard-auth`,
+//! since `agentguard-auth` depends on `agentguard-core` for the
+//! `Principal` and `AgentAction` types.
+//!
+//! Callers handling both (e.g. the AuthZEN server) match on each
+//! separately. `anyhow::Result` or `Box<dyn std::error::Error + Send +
+//! Sync>` is the right type for code paths that span both.
+//!
+//! When converting from one to the other, use
+//! `.map_err(|e| Error::Other(e.to_string()))`. A future v2.1 may add a
+//! unified error type behind a feature flag without breaking this design.
+
 use thiserror::Error;
 
 /// Result alias for agentguard-core fallible operations.
