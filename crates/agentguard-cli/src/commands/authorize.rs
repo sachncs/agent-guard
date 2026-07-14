@@ -4,6 +4,15 @@ use agentguard_core::{
 use anyhow::{anyhow, Result};
 use std::io::Read;
 
+/// A policy decision returned to the caller. The exit code at the process
+/// boundary is derived from `effect`.
+#[derive(Debug)]
+pub struct AuthorizeOutcome {
+    pub effect: agentguard_core::authorize::Effect,
+    /// Indicates whether the underlying authorizer returned an `Ok` decision.
+    pub decision_was_allow: bool,
+}
+
 pub async fn run(
     store: &str,
     audit: &str,
@@ -11,7 +20,7 @@ pub async fn run(
     entities_path: Option<&str>,
     no_audit: bool,
     output: &str,
-) -> Result<()> {
+) -> Result<AuthorizeOutcome> {
     let req: AgentRequest = if request == "-" {
         let mut buf = String::new();
         std::io::stdin().read_to_string(&mut buf)?;
@@ -66,12 +75,11 @@ pub async fn run(
         log.append_decision(&decision)?;
     }
 
-    if matches!(decision.effect, agentguard_core::authorize::Effect::Deny) {
-        // Keep exit 0 so callers can still read the JSON; they can use output format if they want nonzero on deny.
-        // To preserve original CLI behavior some tools want, we exit 2 here.
-        std::process::exit(2);
-    }
-    Ok(())
+    let outcome = AuthorizeOutcome {
+        effect: decision.effect,
+        decision_was_allow: matches!(decision.effect, agentguard_core::authorize::Effect::Allow),
+    };
+    Ok(outcome)
 }
 
 fn load_entities(path: Option<&str>) -> Result<cedar_policy::Entities> {

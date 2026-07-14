@@ -181,8 +181,15 @@ enum AuditCmd {
     },
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let exit_code = run().await;
+    // std::process::exit runs after all Drop, including the tracing
+    // subscriber. This is the last thing the program does.
+    std::process::exit(exit_code);
+}
+
+async fn run() -> i32 {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -193,6 +200,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let out = cli.output.as_str();
 
+    let mut exit_code: i32 = 0;
     let res: anyhow::Result<()> = match cli.cmd {
         Cmd::Init { name } => commands::init::run(&cli.store, &name),
         Cmd::Validate => commands::validate::run(&cli.store, out),
@@ -201,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
             entities,
             no_audit,
         } => {
-            commands::authorize::run(
+            let outcome = match commands::authorize::run(
                 &cli.store,
                 &cli.audit,
                 &request,
@@ -210,6 +218,20 @@ async fn main() -> anyhow::Result<()> {
                 out,
             )
             .await
+            {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("error: {e:?}");
+                    return 1;
+                }
+            };
+            // Translate a Deny into an exit code at the end of `main`, after
+            // all Drop runs. This avoids `std::process::exit` skipping
+            // destructors inside the authorize command.
+            if !outcome.decision_was_allow {
+                exit_code = 2;
+            }
+            Ok::<(), anyhow::Error>(())
         }
         Cmd::Sim { request, entities } => {
             commands::sim::run(&cli.store, &request, entities.as_deref(), out)
@@ -291,22 +313,34 @@ async fn main() -> anyhow::Result<()> {
             let chain_secret = std::env::var("AGENTGUARD_CHAIN_SECRET")
                 .ok()
                 .map(std::path::PathBuf::from);
-            let report = commands::doctor::run(
+            let report = match commands::doctor::run(
                 std::path::Path::new(&cli.store),
                 std::path::Path::new(&cli.audit),
                 chain_secret.as_deref(),
-            )?;
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e:?}");
+                    return 1;
+                }
+            };
             report.print();
-            let code = if report.has_failures() {
+            exit_code = if report.has_failures() {
                 1
             } else if report.has_warnings() {
                 2
             } else {
                 0
             };
-            std::process::exit(code);
+            Ok::<(), anyhow::Error>(())
         }
     };
 
-    res
+    if let Err(e) = res {
+        eprintln!("error: {e:?}");
+        if exit_code == 0 {
+            exit_code = 1;
+        }
+    }
+    exit_code
 }

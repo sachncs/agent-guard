@@ -5,6 +5,7 @@
 //! Carried on [`crate::request::AgentRequest`] and threaded through every
 //! authorization decision's audit record.
 
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -31,17 +32,10 @@ impl TraceId {
         Self(bytes)
     }
 
-    /// Generate a random trace id. Useful when the caller doesn't have one.
+    /// Generate a random trace id from the OS CSPRNG.
     pub fn random() -> Self {
         let mut bytes = [0u8; TRACE_ID_LEN];
-        // Simple time-based pseudo-random; not cryptographically strong.
-        let nanos: u128 = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let nanos_high = nanos.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        bytes[..8].copy_from_slice(&nanos.to_le_bytes()[..8]);
-        bytes[8..16].copy_from_slice(&nanos_high.to_le_bytes()[..8]);
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
         Self(bytes)
     }
 
@@ -93,11 +87,7 @@ impl SpanId {
 
     pub fn random() -> Self {
         let mut bytes = [0u8; SPAN_ID_LEN];
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-        bytes.copy_from_slice(&nanos.to_le_bytes());
+        rand::rngs::OsRng.fill_bytes(&mut bytes);
         Self(bytes)
     }
 
