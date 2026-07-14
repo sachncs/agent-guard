@@ -1,20 +1,28 @@
 use thiserror::Error;
 
+/// Result alias for agentguard-core fallible operations.
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Error)]
+/// Errors produced by agentguard-core.
+///
+/// `#[non_exhaustive]` lets the v2.x line add new variants without breaking
+/// downstream exhaustive matches.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
-    #[error("cedar policy error: {0}")]
-    Cedar(String),
-
     #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(String),
 
     #[error("json error: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(String),
 
-    #[error("policy parse error in {1}: {0}")]
-    PolicyParse(String, String),
+    #[error("policy parse error in {file}: {message}")]
+    PolicyParse {
+        /// Human-readable parse error.
+        message: String,
+        /// File or virtual file where the policy lives (e.g. `policy0.cedar`).
+        file: String,
+    },
 
     #[error("schema error: {0}")]
     Schema(String),
@@ -34,8 +42,11 @@ pub enum Error {
     #[error("token expired at {0}")]
     TokenExpired(String),
 
-    #[error("token signature invalid")]
-    TokenSignatureInvalid,
+    #[error("token signature invalid: {reason}")]
+    TokenSignature {
+        /// Why the signature failed verification (bad signature, unknown kid, etc.).
+        reason: String,
+    },
 
     #[error("token not yet valid (nbf={0})")]
     TokenNotYetValid(String),
@@ -51,6 +62,18 @@ pub enum Error {
 
     #[error("other: {0}")]
     Other(String),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::Io(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Json(e.to_string())
+    }
 }
 
 impl From<anyhow::Error> for Error {

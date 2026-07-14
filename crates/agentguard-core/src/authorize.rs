@@ -3,7 +3,9 @@
 use crate::error::Result;
 use crate::policy::PolicyStore;
 use crate::request::AgentRequest;
-use cedar_policy::{Authorizer as CedarAuthorizer, Decision as CedarDecision, Entities, Entity, PolicySet, Response};
+use cedar_policy::{
+    Authorizer as CedarAuthorizer, Decision as CedarDecision, Entities, Entity, PolicySet, Response,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,18 +56,12 @@ impl Authorizer {
 
     pub fn authorize(&self, req: &AgentRequest, entities: &Entities) -> Result<Decision> {
         let cedar_req = req.to_cedar_request(self.schema.as_ref())?;
-        let resp: Response = self.inner.is_authorized(&cedar_req, &self.policies, entities);
+        let resp: Response = self
+            .inner
+            .is_authorized(&cedar_req, &self.policies, entities);
         let effect: Effect = resp.decision().into();
-        let policies: Vec<String> = resp
-            .diagnostics()
-            .reason()
-            .map(|r| r.to_string())
-            .collect();
-        let reasons: Vec<String> = resp
-            .diagnostics()
-            .errors()
-            .map(|e| e.to_string())
-            .collect();
+        let policies: Vec<String> = resp.diagnostics().reason().map(|r| r.to_string()).collect();
+        let reasons: Vec<String> = resp.diagnostics().errors().map(|e| e.to_string()).collect();
         Ok(Decision {
             effect,
             policies,

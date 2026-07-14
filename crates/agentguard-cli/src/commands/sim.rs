@@ -1,12 +1,7 @@
 use agentguard_core::{authorize::build_entities, AgentRequest, Authorizer, PolicyStore};
 use anyhow::Result;
 
-pub fn run(
-    store: &str,
-    request: &str,
-    entities_path: Option<&str>,
-    output: &str,
-) -> Result<()> {
+pub fn run(store: &str, request: &str, entities_path: Option<&str>, output: &str) -> Result<()> {
     let text = if request == "-" {
         let mut buf = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
@@ -35,7 +30,13 @@ pub fn run(
             agentguard_core::authorize::Effect::Allow => "✓ ALLOW",
             _ => "✗ DENY ",
         };
-        println!("{}  {} → {} on {}", sym, req.principal, req.action.action_uid(), req.resource);
+        println!(
+            "{}  {} → {} on {}",
+            sym,
+            req.principal,
+            req.action.action_uid(),
+            req.resource
+        );
         if !decision.policies.is_empty() {
             println!("    policies: {}", decision.policies.join(", "));
         }

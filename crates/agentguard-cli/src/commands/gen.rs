@@ -49,8 +49,9 @@ pub async fn run(
     );
 
     let api_key = match provider {
-        "openai" => std::env::var("OPENAI_API_KEY")
-            .map_err(|_| anyhow!("set OPENAI_API_KEY env var"))?,
+        "openai" => {
+            std::env::var("OPENAI_API_KEY").map_err(|_| anyhow!("set OPENAI_API_KEY env var"))?
+        }
         "anthropic" => std::env::var("ANTHROPIC_API_KEY")
             .map_err(|_| anyhow!("set ANTHROPIC_API_KEY env var"))?,
         _ => return Err(anyhow!("unknown provider: {}", provider)),
@@ -59,8 +60,14 @@ pub async fn run(
     let body = GenRequest {
         model: model.to_string(),
         messages: vec![
-            ChatMsg { role: "system".into(), content: SYSTEM_PROMPT.into() },
-            ChatMsg { role: "user".into(), content: user_prompt },
+            ChatMsg {
+                role: "system".into(),
+                content: SYSTEM_PROMPT.into(),
+            },
+            ChatMsg {
+                role: "user".into(),
+                content: user_prompt,
+            },
         ],
         temperature: 0.0,
     };
@@ -71,10 +78,7 @@ pub async fn run(
             "https://api.openai.com/v1/chat/completions",
             format!("Bearer {}", api_key),
         ),
-        "anthropic" => (
-            "https://api.anthropic.com/v1/messages",
-            api_key.clone(),
-        ),
+        "anthropic" => ("https://api.anthropic.com/v1/messages", api_key.clone()),
         _ => unreachable!(),
     };
 
@@ -102,8 +106,13 @@ pub async fn run(
     let cleaned = strip_fences(&content);
 
     // Validate the generated policies against the schema.
-    let policies = cedar_policy::PolicySet::from_str(&cleaned)
-        .map_err(|e| anyhow!("generated policies failed to parse: {}\n--- generated ---\n{}", e, cleaned))?;
+    let policies = cedar_policy::PolicySet::from_str(&cleaned).map_err(|e| {
+        anyhow!(
+            "generated policies failed to parse: {}\n--- generated ---\n{}",
+            e,
+            cleaned
+        )
+    })?;
     if let Ok(Some(s)) = store.load_schema() {
         let validator = cedar_policy::Validator::new(s.schema);
         let v = validator.validate(&policies, cedar_policy::ValidationMode::Strict);

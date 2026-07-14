@@ -20,7 +20,6 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use indexmap::IndexMap;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DelegationClaims {
@@ -67,10 +66,7 @@ impl DelegationClaims {
 
     /// Does this token permit `action` on `resource`?
     pub fn permits(&self, action: &str, resource: &str) -> bool {
-        let action_ok = self
-            .allowed_actions
-            .iter()
-            .any(|a| a == action || a == "*");
+        let action_ok = self.allowed_actions.iter().any(|a| a == action || a == "*");
         if !action_ok {
             return false;
         }
@@ -136,7 +132,15 @@ impl DelegationSigner {
         resource_patterns: Vec<String>,
         cfg: DelegationConfig,
     ) -> Result<DelegationToken> {
-        self.mint_with(iss, sub, aud, allowed_actions, resource_patterns, cfg, |_| {})
+        self.mint_with(
+            iss,
+            sub,
+            aud,
+            allowed_actions,
+            resource_patterns,
+            cfg,
+            |_| {},
+        )
     }
 
     pub fn mint_with<F>(
@@ -224,13 +228,18 @@ impl DelegationVerifier {
             .find(|(kid, _)| kid == &token.key_id)
             .map(|(_, k)| k)
             .ok_or_else(|| Error::InvalidToken(format!("unknown key id {}", token.key_id)))?;
-        key.verify(&payload, &sig).map_err(|_| Error::TokenSignatureInvalid)?;
+        key.verify(&payload, &sig)
+            .map_err(|e| Error::TokenSignature {
+                reason: e.to_string(),
+            })?;
 
         if token.claims.is_expired(now) {
             return Err(Error::TokenExpired(token.claims.exp.to_string()));
         }
         if token.claims.is_not_yet_valid(now) {
-            return Err(Error::TokenNotYetValid(token.claims.nbf.unwrap().to_string()));
+            return Err(Error::TokenNotYetValid(
+                token.claims.nbf.unwrap().to_string(),
+            ));
         }
         Ok(&token.claims)
     }
@@ -247,7 +256,10 @@ pub struct DelegationToken {
 
 impl DelegationToken {
     pub fn to_compact(&self) -> String {
-        format!("{}.{}.{}", self.payload_b64, self.signature_b64, self.key_id)
+        format!(
+            "{}.{}.{}",
+            self.payload_b64, self.signature_b64, self.key_id
+        )
     }
 
     pub fn from_compact(s: &str) -> Result<Self> {
@@ -304,11 +316,6 @@ fn glob_match(pattern: &str, value: &str) -> bool {
     true
 }
 
-/// Public bundle (key + signer) useful for distribution.
-pub struct KeyBundle {
-    pub signer: Arc<DelegationSigner>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,7 +324,9 @@ mod tests {
     fn test_mint_verify_roundtrip() {
         let signer = DelegationSigner::generate();
         let mut verifier = DelegationVerifier::new();
-        verifier.add_key(signer.key_id(), signer.public_key_b64()).unwrap();
+        verifier
+            .add_key(signer.key_id(), signer.public_key_b64())
+            .unwrap();
 
         let token = signer
             .mint(
@@ -346,9 +355,18 @@ mod tests {
     fn test_expired_token_rejected() {
         let signer = DelegationSigner::generate();
         let mut verifier = DelegationVerifier::new();
-        verifier.add_key(signer.key_id(), signer.public_key_b64()).unwrap();
+        verifier
+            .add_key(signer.key_id(), signer.public_key_b64())
+            .unwrap();
         let token = signer
-            .mint("Agent::\"a\"", "Agent::\"b\"", "svc", vec!["*".into()], vec!["*".into()], DelegationConfig { ttl_seconds: -10 })
+            .mint(
+                "Agent::\"a\"",
+                "Agent::\"b\"",
+                "svc",
+                vec!["*".into()],
+                vec!["*".into()],
+                DelegationConfig { ttl_seconds: -10 },
+            )
             .unwrap();
         assert!(verifier.verify(&token, DelegationClaims::now()).is_err());
     }
@@ -357,7 +375,14 @@ mod tests {
     fn test_token_compact_roundtrip() {
         let signer = DelegationSigner::generate();
         let token = signer
-            .mint("Agent::\"a\"", "Agent::\"b\"", "svc", vec!["*".into()], vec!["*".into()], DelegationConfig::default())
+            .mint(
+                "Agent::\"a\"",
+                "Agent::\"b\"",
+                "svc",
+                vec!["*".into()],
+                vec!["*".into()],
+                DelegationConfig::default(),
+            )
             .unwrap();
         let s = token.to_compact();
         let t2 = DelegationToken::from_compact(&s).unwrap();

@@ -145,7 +145,11 @@ fn scan(src: &str) -> SchemaSummary {
         if in_entity || in_action {
             if let Some((k, v)) = line.split_once(':') {
                 let k = k.trim().trim_end_matches('?').to_string();
-                let v = v.trim().trim_end_matches(',').trim_end_matches(';').to_string();
+                let v = v
+                    .trim()
+                    .trim_end_matches(',')
+                    .trim_end_matches(';')
+                    .to_string();
                 if !k.is_empty() {
                     let attr = AttrDef {
                         name: k,

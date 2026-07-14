@@ -48,11 +48,15 @@ impl PolicyStore {
             {
                 let src = std::fs::read_to_string(entry.path())?;
                 // Parse each file as a PolicySet (a file may contain multiple policies).
-                let file_set = PolicySet::from_str(&src)
-                    .map_err(|e| Error::PolicyParse(e.to_string(), src.clone()))?;
+                let file_set = PolicySet::from_str(&src).map_err(|e| Error::PolicyParse {
+                    message: e.to_string(),
+                    file: src.clone(),
+                })?;
                 // Merge into the master set (in place).
-                set.merge(&file_set, true)
-                    .map_err(|e| Error::PolicyParse(e.to_string(), src.clone()))?;
+                set.merge(&file_set, true).map_err(|e| Error::PolicyParse {
+                    message: e.to_string(),
+                    file: src.clone(),
+                })?;
                 sources.push(PolicySource {
                     path: entry.path().to_path_buf(),
                     text: src,
@@ -71,7 +75,10 @@ impl PolicyStore {
         let text = std::fs::read_to_string(&p)?;
         let (schema, _warnings) = cedar_policy::Schema::from_cedarschema_str(&text)
             .map_err(|e| Error::Schema(e.to_string()))?;
-        Ok(Some(crate::schema::SchemaParsed { schema, source: text }))
+        Ok(Some(crate::schema::SchemaParsed {
+            schema,
+            source: text,
+        }))
     }
 
     pub fn validate(&self) -> Result<ValidationReport> {

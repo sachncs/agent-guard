@@ -67,7 +67,10 @@ impl DecisionRecord {
             timestamp: chrono::Utc::now(),
             effect: format!("{:?}", d.effect).to_lowercase(),
             policies: d.policies.clone(),
-            request_id: req.get("request_id").and_then(|v| v.as_str()).map(String::from),
+            request_id: req
+                .get("request_id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             principal,
             action,
             resource,
@@ -80,19 +83,17 @@ impl DecisionRecord {
 
 /// Thread-safe append-only JSONL log.
 pub struct DecisionLog {
-    path: PathBuf,
     inner: Mutex<Option<File>>,
 }
 
 impl DecisionLog {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        let path = path.into();
-        if let Some(parent) = path.parent() {
+        let _path = path.into();
+        if let Some(parent) = _path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let f = OpenOptions::new().create(true).append(true).open(&path)?;
+        let f = OpenOptions::new().create(true).append(true).open(&_path)?;
         Ok(Self {
-            path,
             inner: Mutex::new(Some(f)),
         })
     }

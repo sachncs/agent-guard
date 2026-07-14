@@ -1,4 +1,6 @@
-use agentguard_core::{authorize::build_entities, AgentRequest, Authorizer, DecisionLog, PolicyStore};
+use agentguard_core::{
+    authorize::build_entities, AgentRequest, Authorizer, DecisionLog, PolicyStore,
+};
 use anyhow::{anyhow, Result};
 use std::io::Read;
 
@@ -32,7 +34,11 @@ pub async fn run(
             agentguard_core::authorize::Effect::Allow => "\x1b[32m",
             _ => "\x1b[31m",
         };
-        println!("{} {}\x1b[0m", color, format!("{:?}", decision.effect).to_uppercase());
+        println!(
+            "{} {}\x1b[0m",
+            color,
+            format!("{:?}", decision.effect).to_uppercase()
+        );
         println!("principal: {}", req.principal);
         println!("action:    {}", req.action.action_uid());
         println!("resource:  {}", req.resource);
@@ -63,7 +69,11 @@ fn load_entities(path: Option<&str>) -> Result<cedar_policy::Entities> {
         return Ok(cedar_policy::Entities::empty());
     }
     let text = std::fs::read_to_string(path)?;
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&text)
-        .map_err(|e| anyhow!("entities file must be a JSON array of entity objects: {}", e))?;
+    let arr: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| {
+        anyhow!(
+            "entities file must be a JSON array of entity objects: {}",
+            e
+        )
+    })?;
     build_entities(arr).map_err(Into::into)
 }

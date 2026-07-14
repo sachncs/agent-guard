@@ -132,23 +132,69 @@ async fn main() -> anyhow::Result<()> {
     let res: anyhow::Result<()> = match cli.cmd {
         Cmd::Init { name } => commands::init::run(&cli.store, &name),
         Cmd::Validate => commands::validate::run(&cli.store, out),
-        Cmd::Authorize { request, entities, no_audit } => {
-            commands::authorize::run(&cli.store, &cli.audit, &request, entities.as_deref(), no_audit, out).await
+        Cmd::Authorize {
+            request,
+            entities,
+            no_audit,
+        } => {
+            commands::authorize::run(
+                &cli.store,
+                &cli.audit,
+                &request,
+                entities.as_deref(),
+                no_audit,
+                out,
+            )
+            .await
         }
         Cmd::Sim { request, entities } => {
             commands::sim::run(&cli.store, &request, entities.as_deref(), out)
         }
-        Cmd::Delegate { from, to, actions, resources, ttl, key_id, key_file, out: out_path } => {
-            commands::delegate::run(&from, &to, actions, resources, ttl, key_id.as_deref(), key_file.as_deref(), out_path.as_deref(), out)
-        }
+        Cmd::Delegate {
+            from,
+            to,
+            actions,
+            resources,
+            ttl,
+            key_id,
+            key_file,
+            out: out_path,
+        } => commands::delegate::run(
+            &from,
+            &to,
+            actions,
+            resources,
+            ttl,
+            key_id.as_deref(),
+            key_file.as_deref(),
+            out_path.as_deref(),
+            out,
+        ),
         Cmd::Verify { token, keys } => commands::delegate::verify(&token, &keys, out),
         Cmd::Schema => commands::schema::run(&cli.store, out),
         Cmd::Log { action } => match action {
-            LogCmd::Tail { n, principal, action } => commands::log::tail(&cli.audit, n, principal.as_deref(), action.as_deref(), out),
+            LogCmd::Tail {
+                n,
+                principal,
+                action,
+            } => commands::log::tail(&cli.audit, n, principal.as_deref(), action.as_deref(), out),
             LogCmd::Dump => commands::log::dump(&cli.audit, out),
         },
-        Cmd::Gen { description, name, provider, model } => {
-            commands::gen::run(&cli.store, &description, name.as_deref(), &provider, &model, out).await
+        Cmd::Gen {
+            description,
+            name,
+            provider,
+            model,
+        } => {
+            commands::gen::run(
+                &cli.store,
+                &description,
+                name.as_deref(),
+                &provider,
+                &model,
+                out,
+            )
+            .await
         }
     };
 

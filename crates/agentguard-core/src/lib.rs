@@ -9,11 +9,13 @@ pub mod request;
 pub mod schema;
 pub mod simulate;
 
+pub use authorize::{Authorizer, Decision, Effect};
+pub use decision::{DecisionLog, DecisionRecord};
+pub use delegation::{
+    DelegationClaims, DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier,
+};
 pub use error::{Error, Result};
 pub use policy::{init_store, PolicyStore, ValidationReport};
-pub use request::{ActionDef, AgentAction, AgentContext, AgentRequest, Principal, Resource};
-pub use authorize::{Authorizer, Decision, Effect};
-pub use delegation::{DelegationClaims, DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier};
-pub use decision::{DecisionLog, DecisionRecord};
+pub use request::{AgentAction, AgentContext, AgentRequest, Principal, Resource};
 pub use schema::{describe, SchemaSummary};
 pub use simulate::{SimulationResult, Simulator};

@@ -76,7 +76,11 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
     Ok(())
 }
 
-fn load_signer(key_id: Option<&str>, key_file: Option<&str>, output: &str) -> Result<Arc<DelegationSigner>> {
+fn load_signer(
+    key_id: Option<&str>,
+    key_file: Option<&str>,
+    output: &str,
+) -> Result<Arc<DelegationSigner>> {
     // Resolve source: either a path (`key_file`) or inline (`key_id`).
     if let Some(p) = key_file {
         return load_signer_from_file(p, key_id);
@@ -138,8 +142,8 @@ fn hex_decode(s: &str) -> Result<Vec<u8>> {
     }
     let mut out = Vec::with_capacity(s.len() / 2);
     for i in (0..s.len()).step_by(2) {
-        let byte = u8::from_str_radix(&s[i..i + 2], 16)
-            .map_err(|e| anyhow!("invalid hex: {}", e))?;
+        let byte =
+            u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| anyhow!("invalid hex: {}", e))?;
         out.push(byte);
     }
     Ok(out)

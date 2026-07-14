@@ -10,21 +10,34 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Principal {
-    User { uid: String, #[serde(default)] attrs: IndexMap<String, serde_json::Value> },
+    User {
+        uid: String,
+        #[serde(default)]
+        attrs: IndexMap<String, serde_json::Value>,
+    },
     Agent {
         uid: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")] parent_uid: Option<String>,
-        #[serde(default)] attrs: IndexMap<String, serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent_uid: Option<String>,
+        #[serde(default)]
+        attrs: IndexMap<String, serde_json::Value>,
     },
 }
 
 impl Principal {
     pub fn user(uid: impl Into<String>) -> Self {
-        Principal::User { uid: uid.into(), attrs: IndexMap::new() }
+        Principal::User {
+            uid: uid.into(),
+            attrs: IndexMap::new(),
+        }
     }
 
     pub fn agent(uid: impl Into<String>) -> Self {
-        Principal::Agent { uid: uid.into(), parent_uid: None, attrs: IndexMap::new() }
+        Principal::Agent {
+            uid: uid.into(),
+            parent_uid: None,
+            attrs: IndexMap::new(),
+        }
     }
 
     pub fn subagent(uid: impl Into<String>, parent: impl Into<String>) -> Self {
@@ -78,7 +91,11 @@ pub struct Resource {
 
 impl Resource {
     pub fn new(entity_type: impl Into<String>, uid: impl Into<String>) -> Self {
-        Self { entity_type: entity_type.into(), uid: uid.into(), attrs: IndexMap::new() }
+        Self {
+            entity_type: entity_type.into(),
+            uid: uid.into(),
+            attrs: IndexMap::new(),
+        }
     }
 
     pub fn with_attr(mut self, k: impl Into<String>, v: impl Into<serde_json::Value>) -> Self {
@@ -106,11 +123,17 @@ pub struct AgentAction {
 
 impl AgentAction {
     pub fn tool(name: impl Into<String>) -> Self {
-        Self { tool: name.into(), operation: None }
+        Self {
+            tool: name.into(),
+            operation: None,
+        }
     }
 
     pub fn tool_op(name: impl Into<String>, op: impl Into<String>) -> Self {
-        Self { tool: name.into(), operation: Some(op.into()) }
+        Self {
+            tool: name.into(),
+            operation: Some(op.into()),
+        }
     }
 
     pub fn action_uid(&self) -> String {
@@ -145,7 +168,10 @@ impl AgentContext {
         if !self.args.is_object() {
             self.args = serde_json::json!({});
         }
-        self.args.as_object_mut().unwrap().insert(k.into(), v.into());
+        self.args
+            .as_object_mut()
+            .unwrap()
+            .insert(k.into(), v.into());
         self
     }
 
@@ -194,7 +220,13 @@ impl AgentRequest {
         resource: Resource,
         context: AgentContext,
     ) -> Self {
-        Self { principal, action, resource, context, request_id: None }
+        Self {
+            principal,
+            action,
+            resource,
+            context,
+            request_id: None,
+        }
     }
 
     pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
@@ -206,8 +238,10 @@ impl AgentRequest {
     /// a typed context (validates context shape per action) when available.
     pub fn to_cedar_request(&self, schema: Option<&cedar_policy::Schema>) -> Result<Request> {
         let principal_eid = EntityId::new(self.principal.id());
-        let principal_etype = EntityTypeName::from_str(self.principal.entity_type())
-            .map_err(|e| Error::InvalidPrincipal(format!("{}: {}", self.principal.entity_type(), e)))?;
+        let principal_etype =
+            EntityTypeName::from_str(self.principal.entity_type()).map_err(|e| {
+                Error::InvalidPrincipal(format!("{}: {}", self.principal.entity_type(), e))
+            })?;
         let principal_uid = EntityUid::from_type_name_and_id(principal_etype, principal_eid);
 
         let action_eid = EntityId::new(self.action.action_id());
@@ -222,7 +256,6 @@ impl AgentRequest {
 
         // Build context JSON.
         let mut ctx_map = self.context.to_json_object();
-        // Add session metadata at top level for convenience.
         let ctx_json = serde_json::Value::Object(std::mem::take(&mut ctx_map));
 
         let context = match schema {
@@ -235,22 +268,12 @@ impl AgentRequest {
                 .map_err(|e| Error::InvalidContext(e.to_string()))?,
         };
 
-        let req = Request::new(
-            principal_uid,
-            action_uid,
-            resource_uid,
-            context,
-            schema,
-        )
-        .map_err(|e| Error::InvalidContext(e.to_string()))?;
+        let req = Request::new(principal_uid, action_uid, resource_uid, context, schema)
+            .map_err(|e| Error::InvalidContext(e.to_string()))?;
 
         Ok(req)
     }
 }
-
-/// Empty stub kept for backwards-compat re-exports.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ActionDef;
 
 #[cfg(test)]
 mod tests {
