@@ -6,18 +6,24 @@ license.workspace = true
 description = "Policy operations: versioned bundles, hot reload, diff, blast radius"
 
 [dependencies]
+agentguard-core = { path = "../agentguard-core" }
 serde.workspace = true
 serde_json.workspace = true
-notify.workspace = true
-tokio.workspace = true
+notify = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 async-trait.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
-ed25519-dalek.workspace = true
 chrono.workspace = true
-uuid.workspace = true
 parking_lot.workspace = true
 anyhow.workspace = true
 similar = "2"
 tracing.workspace = true
+
+[features]
+default = []
+watch = ["dep:notify", "dep:tokio"]
+
+[dev-dependencies]
+tempfile = "3"
