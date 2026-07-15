@@ -293,6 +293,7 @@ impl CacheStats {
 }
 
 /// Helper: convert a request + policy_version into a cache key.
+#[cfg(test)]
 pub fn cache_key_for(req: &AgentRequest, policy_version: u64) -> CacheKey {
     CacheKey::for_request(req, policy_version)
 }
@@ -318,7 +319,7 @@ mod tests {
     fn cache_miss_then_hit() {
         let clock = Arc::new(MockClock::new());
         let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
-        let key = cache_key_for(&req(), 0);
+        let key = CacheKey::for_request(&req(), 0);
         assert!(cache.get(&key).is_none());
         cache.put(key.clone(), CachedDecision::allow());
         let got = cache.get(&key).unwrap();
@@ -334,7 +335,7 @@ mod tests {
         let mut cfg = CacheConfig::default();
         cfg.allow_ttl = Duration::from_secs(5);
         let cache = DecisionCache::new(cfg, clock.clone());
-        let key = cache_key_for(&req(), 0);
+        let key = CacheKey::for_request(&req(), 0);
         cache.put(key.clone(), CachedDecision::allow());
         clock.advance_unix(Duration::from_secs(10));
         assert!(cache.get(&key).is_none(), "should have expired");
@@ -344,7 +345,7 @@ mod tests {
     fn invalidate_on_policy_version_bump() {
         let clock = Arc::new(MockClock::new());
         let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
-        let key = cache_key_for(&req(), 0);
+        let key = CacheKey::for_request(&req(), 0);
         cache.put(key.clone(), CachedDecision::allow());
         assert!(cache.get(&key).is_some());
         cache.invalidate_all();
@@ -355,7 +356,7 @@ mod tests {
     fn deny_cached_when_enabled() {
         let clock = Arc::new(MockClock::new());
         let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
-        let key = cache_key_for(&req(), 0);
+        let key = CacheKey::for_request(&req(), 0);
         cache.put(key.clone(), CachedDecision::deny());
         assert_eq!(cache.get(&key).unwrap().effect, "deny");
     }
@@ -367,7 +368,7 @@ mod tests {
         let mut cfg = CacheConfig::default();
         cfg.cache_denies = false;
         let cache = DecisionCache::new(cfg, clock.clone());
-        let key = cache_key_for(&req(), 0);
+        let key = CacheKey::for_request(&req(), 0);
         cache.put(key.clone(), CachedDecision::deny());
         assert!(cache.get(&key).is_none(), "denies not cached");
     }

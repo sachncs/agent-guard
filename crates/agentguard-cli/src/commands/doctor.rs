@@ -3,7 +3,6 @@
 //! Checks schema loads, policies parse, schema validation passes, audit log
 //! writable, hash chain (if configured) verifies, telemetry configured.
 
-use agentguard_core::decision::chain::HashChain;
 use agentguard_core::decision::DecisionLog;
 use agentguard_core::policy::PolicyStore;
 use anyhow::Result;
@@ -158,9 +157,6 @@ pub fn run(
             .checks
             .push(("authorizer", CheckStatus::Fail(e.to_string()))),
     }
-
-    // Suppress unused warning
-    let _ = HashChain::new(b"");
 
     Ok(report)
 }

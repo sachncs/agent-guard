@@ -13,7 +13,6 @@ pub mod principal;
 pub mod request;
 pub mod resource;
 pub mod schema;
-pub mod simulate;
 pub mod ttl;
 
 pub use action::AgentAction;

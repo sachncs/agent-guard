@@ -165,6 +165,3 @@ fn strip_fences(s: &str) -> String {
     }
     s.to_string()
 }
-
-#[allow(dead_code)]
-fn _anchor() {}

@@ -6,7 +6,6 @@ use agentguard_core::decision::{
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use std::path::Path;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -144,8 +143,6 @@ pub fn erase(
     }
     Ok(())
 }
-
-fn _path_helper(_: &Path) {}
 
 #[cfg(test)]
 mod tests {
