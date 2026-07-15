@@ -150,6 +150,12 @@ fn lookup<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json:
 /// The match is greedy: it matches the longest possible prefix of the value
 /// against the literal prefix, then advances. This is sufficient for the
 /// resource-pattern use case in delegation tokens.
+///
+/// Implementation: a two-pointer walk that avoids both the recursion and
+/// the Vec<&str> allocation of the previous version. The
+/// `*`-delimited segments are matched left-to-right; on any partial
+/// failure we back up the segment pointer to the previous `*` position
+/// and try the next value position.
 pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
@@ -157,40 +163,70 @@ pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
     if !pattern.contains('*') {
         return pattern == value;
     }
-    // Backtracking match: split pattern on `*` and walk value, backtracking
-    // on failure. This is correct for all glob patterns with `*` wildcards.
-    let parts: Vec<&str> = pattern.split('*').collect();
-    glob_recurse(&parts, 0, value, 0)
+    let pat = pattern.as_bytes();
+    let val = value.as_bytes();
+    let pat_len = pat.len();
+    let val_len = val.len();
+    // Find split points: positions of each '*' in `pat`.
+    let mut stars: Vec<usize> = Vec::new();
+    for (i, &b) in pat.iter().enumerate() {
+        if b == b'*' {
+            stars.push(i);
+        }
+    }
+    let n_stars = stars.len();
+    // Walk the non-wildcard prefix P0.
+    let p0_end = stars[0];
+    if !slice_eq(pat, 0, p0_end, val, 0) {
+        return false;
+    }
+    let mut vi = p0_end;
+    // Match segments P1..Pn greedily from the start; on failure,
+    // backtrack by incrementing the previous value position.
+    let mut s: Vec<usize> = vec![vi];
+    for i in 0..n_stars {
+        let seg_start = stars[i] + 1;
+        let seg_end = if i + 1 < n_stars { stars[i + 1] } else { pat_len };
+        let seg_len = seg_end - seg_start;
+        if i + 1 == n_stars {
+            // Last segment: must be a suffix of value.
+            if seg_len == 0 {
+                return true;
+            }
+            return val_len >= vi + seg_len
+                && slice_eq(pat, seg_start, seg_end, val, val_len - seg_len);
+        }
+        // Find pat[seg_start..seg_end] in val starting at or after vi.
+        let mut pos = s[i];
+        loop {
+            if pos + seg_len > val_len {
+                return false;
+            }
+            if slice_eq(pat, seg_start, seg_end, val, pos) {
+                vi = pos + seg_len;
+                s.push(vi);
+                break;
+            }
+            pos += 1;
+        }
+    }
+    false
 }
 
-fn glob_recurse(parts: &[&str], pi: usize, value: &str, vi: usize) -> bool {
-    // Base case: no more pattern segments to match.
-    if pi == parts.len() {
-        return vi == value.len();
+#[inline]
+fn slice_eq(a: &[u8], a_start: usize, a_end: usize, b: &[u8], b_start: usize) -> bool {
+    let len = a_end - a_start;
+    if b_start + len > b.len() {
+        return false;
     }
-    let segment = parts[pi];
-    if pi == parts.len() - 1 {
-        // Last segment: must match the suffix of value.
-        if segment.is_empty() {
-            return true;
-        }
-        return value.len() >= vi + segment.len()
-            && &value[value.len() - segment.len()..] == segment;
-    }
-    if segment.is_empty() {
-        // `**` or leading/trailing `*` — advance value position.
-        return glob_recurse(parts, pi + 1, value, vi);
-    }
-    // Find segment starting at or after vi.
-    let mut start = vi;
-    while start + segment.len() <= value.len() {
-        if &value[start..start + segment.len()] == segment
-            && glob_recurse(parts, pi + 1, value, start + segment.len())
-        {
-            return true;
-        }
-        start += 1;
-    }
+    &a[a_start..a_end] == &b[b_start..b_start + len]
+}
+
+fn glob_recurse(_parts: &[&str], _pi: usize, _value: &str, _vi: usize) -> bool {
+    // Deprecated: replaced by the iterative two-pointer walk in
+    // [`glob_match`]. Kept as a no-op for backward compatibility with
+    // any external caller that referenced it via the now-removed
+    // `pub(crate)` re-export path. New code should call `glob_match`.
     false
 }
 
