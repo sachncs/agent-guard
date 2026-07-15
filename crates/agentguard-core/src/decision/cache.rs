@@ -35,12 +35,20 @@ impl CacheKey {
     /// ```
     pub fn for_request(req: &AgentRequest, policy_version: u64) -> Self {
         let mut hasher = Sha256::new();
+        // Reusable buffer for canonical-JSON serialization. Capacity
+        // 256 is a heuristic: the principal/action/resource/context
+        // JSON blobs fit comfortably for typical requests; a deeper
+        // path or many attributes will grow the Vec automatically.
+        let mut buf: Vec<u8> = Vec::with_capacity(256);
 
         // Hash a length-prefixed JSON encoding of each component so
         // boundaries between fields can't be ambiguous.
         // Format: 4-byte big-endian length || canonical JSON.
-        let hash_field = |h: &mut Sha256, value: &serde_json::Value| {
-            let mut buf = Vec::new();
+        // Reusing `buf` across fields avoids 3-4 small Vec allocations
+        // per cache-miss (the prior implementation allocated a fresh
+        // Vec for every field).
+        let mut hash_value = |h: &mut Sha256, value: &serde_json::Value| {
+            buf.clear();
             write_canonical_value(&mut buf, value).expect("canonical write to Vec is infallible");
             let len = (buf.len() as u32).to_be_bytes();
             sha2::Digest::update(h, len);
@@ -48,13 +56,13 @@ impl CacheKey {
         };
 
         if let Ok(p) = serde_json::to_value(&req.principal) {
-            hash_field(&mut hasher, &p);
+            hash_value(&mut hasher, &p);
         }
         if let Ok(a) = serde_json::to_value(&req.action) {
-            hash_field(&mut hasher, &a);
+            hash_value(&mut hasher, &a);
         }
         if let Ok(r) = serde_json::to_value(&req.resource) {
-            hash_field(&mut hasher, &r);
+            hash_value(&mut hasher, &r);
         }
         // Context is already canonical; hash it directly.
         if let Ok(bytes) = canonical_json(&req.context) {
@@ -63,6 +71,7 @@ impl CacheKey {
             sha2::Digest::update(&mut hasher, &bytes);
         }
         if let Some(t) = &req.trace {
+            buf.clear();
             let s = t.to_string();
             let len = (s.len() as u32).to_be_bytes();
             sha2::Digest::update(&mut hasher, len);
