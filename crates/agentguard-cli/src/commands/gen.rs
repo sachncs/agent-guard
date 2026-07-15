@@ -32,12 +32,15 @@ Rules:
 6. Keep policies minimal and composable.
 7. Always output at least one policy."#;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     store: &str,
     description: &str,
     name: Option<&str>,
     provider: &str,
     model: &str,
+    dry_run: bool,
+    confirm: bool,
     _output: &str,
 ) -> Result<()> {
     let store = PolicyStore::open(store)?;
@@ -124,6 +127,29 @@ pub async fn run(
         }
     }
 
+    if dry_run {
+        // --dry-run: print to stdout, do not write. The LLM output
+        // is shown with the would-be filename so the operator can
+        // review before installing.
+        let fname = name.unwrap_or("generated");
+        println!("--- generated policy (dry run, would write to policies/{fname}.cedar) ---");
+        println!("{cleaned}");
+        return Ok(());
+    }
+    if confirm {
+        // --confirm: prompt for 'y/N' on stderr. Reads one byte, no
+        // echo (so the prompt doesn't leak into stdout where the
+        // generated policy is printed).
+        use std::io::{Read, Write};
+        eprint!("Apply generated policy? [y/N] ");
+        std::io::stderr().flush().ok();
+        let mut answer = [0u8; 1];
+        let n = std::io::stdin().read(&mut answer).unwrap_or(0);
+        if n == 0 || (answer[0] != b'y' && answer[0] != b'Y') {
+            eprintln!("aborted");
+            return Ok(());
+        }
+    }
     let fname = name.unwrap_or("generated");
     let path = store.write_policy(fname, &cleaned)?;
     println!("wrote {}", path.display());

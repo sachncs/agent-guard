@@ -101,7 +101,7 @@ enum Cmd {
         #[command(subcommand)]
         action: AuditCmd,
     },
-    /// Generate Cedar policy from a natural language description (requires --api-key or OPENAI_API_KEY env).
+    /// Generate Cedar policy from a natural language description (requires OPENAI_API_KEY or ANTHROPIC_API_KEY env).
     Gen {
         description: String,
         /// Write generated policy to this file under policies/
@@ -113,6 +113,15 @@ enum Cmd {
         /// Model name
         #[arg(long, default_value = "gpt-4o-mini")]
         model: String,
+        /// Print the generated policy to stdout instead of writing to
+        /// the store. Use this to inspect the LLM output before
+        /// installing it.
+        #[arg(long)]
+        dry_run: bool,
+        /// Prompt for confirmation ('y/N') on stderr before writing
+        /// the policy. Has no effect with --dry-run.
+        #[arg(long)]
+        confirm: bool,
     },
     /// Diagnose a deployment: schema, policies, audit log, chain, authorizer.
     Doctor,
@@ -272,6 +281,8 @@ async fn run() -> i32 {
             name,
             provider,
             model,
+            dry_run,
+            confirm,
         } => {
             commands::gen::run(
                 &cli.store,
@@ -279,6 +290,8 @@ async fn run() -> i32 {
                 name.as_deref(),
                 &provider,
                 &model,
+                dry_run,
+                confirm,
                 out,
             )
             .await
