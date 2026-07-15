@@ -49,9 +49,10 @@ enum Cmd {
         /// Path to entities.json (default: .agentguard/entities.json)
         #[arg(long)]
         entities: Option<String>,
-        /// Skip the audit log for this decision
-        #[arg(long)]
-        no_audit: bool,
+        /// Skip writing to the audit log for this decision.
+        /// Aliases: --no-audit (deprecated).
+        #[arg(long, alias = "no-audit")]
+        skip_audit: bool,
     },
     /// Simulate: same as authorize, but always reads from a file and pretty-prints.
     Sim {
@@ -207,14 +208,14 @@ async fn run() -> i32 {
         Cmd::Authorize {
             request,
             entities,
-            no_audit,
+            skip_audit,
         } => {
             let outcome = match commands::authorize::run(
                 &cli.store,
                 &cli.audit,
                 &request,
                 entities.as_deref(),
-                no_audit,
+                skip_audit,
                 out,
             )
             .await

@@ -53,7 +53,7 @@ pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Res
     };
     let _token = DelegationToken::parse(&compact)?;
 
-    let mut verifier = agentguard_core::DelegationVerifier::new();
+    let verifier = agentguard_core::DelegationVerifier::new();
     let text = std::fs::read_to_string(keys_path.as_ref())?;
     for line in text.lines() {
         let line = line.trim();
@@ -64,9 +64,7 @@ pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Res
             .split_once('=')
             .ok_or_else(|| anyhow!("expected `kid=base64pubkey` in keys file"))?;
         let bytes = base64_decode(key.trim())?;
-        verifier
-            .add_key(id.trim(), Algorithm::EdDSA, &bytes)
-            .map_err(|e| anyhow!("add key: {}", e))?;
+        verifier.add_key(id.trim(), Algorithm::EdDSA, &bytes);
     }
 
     let verified = verifier

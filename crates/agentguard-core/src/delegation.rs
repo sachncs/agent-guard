@@ -480,33 +480,49 @@ impl DelegationVerifier {
     pub fn new() -> Self {
         Self::default()
     }
-
     /// Add a public key (raw Ed25519 bytes).
-    pub fn add_key(&mut self, kid: impl Into<String>, alg: Algorithm, raw: &[u8]) -> Result<()> {
+    ///
+    /// Replaces any existing key under the same `kid`. Takes `&self`
+    /// (not `&mut self`) because the internal registry is behind an
+    /// `RwLock`. Infallible: invalid keys (wrong length, unsupported
+    /// alg) are silently dropped with a tracing warning rather than
+    /// returning an error, mirroring the infallible signature of
+    /// `KeyRegistry::add`. Callers that need strict validation
+    /// should validate the key bytes before passing them in.
+    pub fn add_key(&self, kid: impl Into<String>, alg: Algorithm, raw: &[u8]) {
+        let kid_str = kid.into();
         let key = match alg {
             Algorithm::EdDSA => {
                 if raw.len() != 32 {
-                    return Err(Error::InvalidToken(
-                        "ed25519 pubkey must be 32 bytes".into(),
-                    ));
+                    tracing::warn!(
+                        kid = %kid_str,
+                        len = raw.len(),
+                        "ed25519 pubkey must be 32 bytes; skipping"
+                    );
+                    return;
                 }
-                let bytes: [u8; 32] = raw.try_into().unwrap();
-                VerifyingKey::from_bytes(&bytes)
-                    .map_err(|e| Error::InvalidToken(format!("ed25519 key: {}", e)))?
+                let bytes: [u8; 32] = match raw.try_into() {
+                    Ok(b) => b,
+                    Err(_) => return,
+                };
+                match VerifyingKey::from_bytes(&bytes) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "ed25519 key parse failed; skipping");
+                        return;
+                    }
+                }
             }
             _ => {
-                return Err(Error::InvalidToken(format!(
-                    "alg {:?} not yet supported for verification",
-                    alg
-                )));
+                tracing::warn!(?alg, "alg not yet supported for verification; skipping");
+                return;
             }
         };
-        self.keys.write().insert(kid.into(), (alg, key));
-        Ok(())
+        self.keys.write().insert(kid_str, (alg, key));
     }
 
     /// Remove all keys.
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         self.keys.write().clear();
     }
 
@@ -658,14 +674,13 @@ mod tests {
             )
             .unwrap();
 
-        let mut verifier = DelegationVerifier::new();
+        let verifier = DelegationVerifier::new();
         verifier
             .add_key(
                 signer.key_id(),
                 Algorithm::EdDSA,
                 &signer.public_key_b64_bytes(),
-            )
-            .unwrap();
+            );
         let v = verifier
             .verify(
                 token.to_jws(),
@@ -693,14 +708,13 @@ mod tests {
         let bogus = "A".repeat(86);
         let forged = format!("{}.{}.{}", parts[0], parts[1], bogus);
 
-        let mut verifier = DelegationVerifier::new();
+        let verifier = DelegationVerifier::new();
         verifier
             .add_key(
                 signer.key_id(),
                 Algorithm::EdDSA,
                 &signer.public_key_b64_bytes(),
-            )
-            .unwrap();
+            );
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -718,14 +732,13 @@ mod tests {
                 DelegationConfig::default(),
             )
             .unwrap();
-        let mut verifier = DelegationVerifier::new();
+        let verifier = DelegationVerifier::new();
         verifier
             .add_key(
                 signer.key_id(),
                 Algorithm::EdDSA,
                 &signer.public_key_b64_bytes(),
-            )
-            .unwrap();
+            );
         let res = verifier.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -765,14 +778,13 @@ mod tests {
         let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig);
         let forged = format!("{}.{}.{}", header_b64, parts[1], sig_b64);
 
-        let mut verifier = DelegationVerifier::new();
+        let verifier = DelegationVerifier::new();
         verifier
             .add_key(
                 signer.key_id(),
                 Algorithm::EdDSA,
                 &signer.public_key_b64_bytes(),
-            )
-            .unwrap();
+            );
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -865,14 +877,13 @@ mod tests {
                 },
             )
             .unwrap();
-        let mut verifier = DelegationVerifier::new();
+        let verifier = DelegationVerifier::new();
         verifier
             .add_key(
                 signer.key_id(),
                 Algorithm::EdDSA,
                 &signer.public_key_b64_bytes(),
-            )
-            .unwrap();
+            );
         let v = verifier
             .verify(token.to_jws(), "aud", chrono::Utc::now().timestamp())
             .unwrap();

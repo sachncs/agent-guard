@@ -91,13 +91,32 @@ pub struct BatchEvaluationResponse {
 }
 
 /// Shared state for HTTP handlers.
+///
+/// `authorizer` and `audit` are private with public accessors
+/// (`authorizer()`, `audit()`). The handler closures use
+/// `state.authorizer()` etc. The fields are read-only after the
+/// router is built; the struct is `Clone` so each Axum worker
+/// gets its own `Arc` clones.
 #[derive(Clone)]
 pub struct AppState {
-    pub authorizer: Arc<Authorizer>,
-    /// Audit log writer. Every authorization decision is appended here.
-    /// `None` only when the operator explicitly opts out (the CLI
-    /// `--no-audit` flag, not yet exposed).
-    pub audit: Arc<Option<DecisionLog>>,
+    authorizer: Arc<Authorizer>,
+    /// Audit log writer. Every authorization decision is appended
+    /// here. `None` only when the operator explicitly opts out (the
+    /// CLI `--skip-audit` flag).
+    audit: Arc<Option<DecisionLog>>,
+}
+
+impl AppState {
+    /// The authorization engine. Cheap to clone (already an `Arc`).
+    pub fn authorizer(&self) -> &Arc<Authorizer> {
+        &self.authorizer
+    }
+
+    /// The audit log writer, if configured. `None` when the operator
+    /// disabled audit logging.
+    pub fn audit(&self) -> Option<&DecisionLog> {
+        self.audit.as_ref().as_ref()
+    }
 }
 
 /// Build the AuthZEN HTTP router.
@@ -168,7 +187,7 @@ async fn readyz(State(state): State<AppState>) -> Response {
         return readyz_unavailable("policies not loaded");
     }
     // 2. Audit log must be configured and open.
-    match state.audit.as_ref() {
+    match state.audit() {
         Some(audit) if audit.chain_id().is_some() => (),
         Some(_) => return readyz_unavailable("audit log not opened"),
         None => return readyz_unavailable("audit log not configured"),
@@ -246,7 +265,7 @@ async fn evaluation(
             // returned to the caller — an authorization result that was
             // already computed is more valuable than a 500 caused by a
             // full disk.
-            if let Some(audit) = state.audit.as_ref() {
+            if let Some(audit) = state.audit() {
                 if let Err(e) = audit.append_decision(&decision) {
                     tracing::error!(error = %e, "audit append failed");
                 }
@@ -295,7 +314,7 @@ async fn evaluations(
         match state.authorizer.authorize(&agent_req, &entities) {
             Ok(decision) => {
                 let allow = matches!(decision.effect, Effect::Allow);
-                if let Some(audit) = state.audit.as_ref() {
+                if let Some(audit) = state.audit() {
                     if let Err(e) = audit.append_decision(&decision) {
                         tracing::error!(error = %e, "audit append failed");
                     }
