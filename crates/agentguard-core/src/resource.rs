@@ -1,5 +1,6 @@
 //! Resources acted on: any Cedar entity (Mailbox, Repository, Document, ...).
 
+use crate::ids::ResourceId;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -10,14 +11,14 @@ use std::fmt;
 #[non_exhaustive]
 pub struct Resource {
     pub entity_type: String,
-    pub uid: String,
+    pub uid: ResourceId,
     #[serde(default)]
     pub attrs: IndexMap<String, serde_json::Value>,
 }
 
 impl Resource {
     /// Construct a resource with no attributes.
-    pub fn new(entity_type: impl Into<String>, uid: impl Into<String>) -> Self {
+    pub fn new(entity_type: impl Into<String>, uid: impl Into<ResourceId>) -> Self {
         Self {
             entity_type: entity_type.into(),
             uid: uid.into(),
@@ -71,5 +72,16 @@ mod tests {
     fn resource_attrs_default_to_empty() {
         let r = Resource::new("Mailbox", "x");
         assert!(r.attrs.is_empty());
+    }
+
+    #[test]
+    fn resource_uid_is_typed() {
+        // The compile-time type prevents passing a PrincipalId where
+        // a ResourceId is expected.
+        let r = Resource::new("Mailbox", "alice@acme");
+        let _uid: &ResourceId = &r.uid;
+        // &str also works (ResourceId: From<&str>).
+        let r2 = Resource::new("Mailbox", "alice@acme");
+        assert_eq!(&*r2.uid, "alice@acme");
     }
 }

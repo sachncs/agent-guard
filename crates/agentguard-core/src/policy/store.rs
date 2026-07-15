@@ -133,9 +133,40 @@ impl PolicyStore {
         })
     }
 
+    /// Write a policy file under `policies/`. `name` is sanitized to a
+    /// single filename component: path separators and `..` segments are
+    /// stripped, and the result is rejected if it would be empty or a
+    /// parent-directory reference.
     pub fn write_policy(&self, name: &str, text: &str) -> Result<PathBuf> {
-        let safe = name.replace(['/', '\\'], "_").replace("..", "_");
+        // Strip path separators, NULs, and the like. We keep the
+        // sanitization simple: anything that's not [A-Za-z0-9._-] is
+        // replaced with '_'. This blocks '..' and '/'.
+        let safe: String = name
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+            .collect();
+        // Reject any name that, after sanitization, is empty or starts
+        // with '.' (a hidden file or '.' / '..').
+        if safe.is_empty() || safe.starts_with('.') {
+            return Err(crate::error::Error::PolicyParse {
+                message: format!("invalid policy name: {:?}", name),
+                file: name.to_string(),
+            });
+        }
         let path = self.policies_dir().join(format!("{}.cedar", safe));
+        // Defense in depth: confirm the resolved path stays inside the
+        // policies directory (guards against symlink races).
+        let policies_dir = self.policies_dir();
+        let canonical_policies = std::fs::canonicalize(&policies_dir).unwrap_or(policies_dir);
+        let resolved = path.clone();
+        if let Ok(canonical) = std::fs::canonicalize(&resolved) {
+            if !canonical.starts_with(&canonical_policies) {
+                return Err(crate::error::Error::PolicyParse {
+                    message: "policy path escapes policies dir".into(),
+                    file: path.display().to_string(),
+                });
+            }
+        }
         std::fs::create_dir_all(self.policies_dir())?;
         std::fs::write(&path, text)?;
         Ok(path)

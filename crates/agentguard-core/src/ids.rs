@@ -29,6 +29,12 @@ impl Deref for PrincipalId {
     }
 }
 
+impl AsRef<str> for PrincipalId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl fmt::Display for PrincipalId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -59,6 +65,12 @@ impl Deref for ActionId {
     }
 }
 
+impl AsRef<str> for ActionId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl fmt::Display for ActionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -85,6 +97,12 @@ impl ResourceId {
 impl Deref for ResourceId {
     type Target = str;
     fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for ResourceId {
+    fn as_ref(&self) -> &str {
         &self.0
     }
 }

@@ -72,7 +72,7 @@ impl DecisionRecord {
             .unwrap_or_default();
 
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::now_v7().to_string(),
             timestamp: chrono::Utc::now(),
             effect: format!("{:?}", d.effect).to_lowercase(),
             policies: d.policies.clone(),

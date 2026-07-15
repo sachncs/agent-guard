@@ -256,7 +256,11 @@ impl DecisionCache {
         // Fill takes an EXCLUSIVE lock. This is rare relative to reads.
         let mut guard = self.inner.write();
         let prev = guard.push(key, (decision, now + ttl));
-        if prev.is_none() && guard.len() >= self.config.capacity {
+        // `lru.push` returns `Some(old)` if the key already existed
+        // (i.e., we just refreshed the entry — no eviction) and `None`
+        // if the key was new (in which case an existing entry may have
+        // been evicted to make room). Count only the eviction case.
+        if prev.is_some() && guard.len() >= self.config.capacity {
             self.evictions.fetch_add(1, Ordering::Relaxed);
         }
     }
