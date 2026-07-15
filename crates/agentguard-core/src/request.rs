@@ -313,4 +313,21 @@ mod tests {
         let parsed: AgentRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.tenant_id.as_deref(), Some("acme-corp"));
     }
+
+    /// T1: full serde round-trip with every optional field populated.
+    /// Catches drift between Serialize/Deserialize impls.
+    #[test]
+    fn full_serde_round_trip() {
+        let req = AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool_op("send", "email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .context(AgentContext::new().with_arg("to", "[email protected]"))
+            .request_id("req-123")
+            .tenant_id("acme-corp")
+            .build()
+            .unwrap();
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: AgentRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, req);
+    }
 }

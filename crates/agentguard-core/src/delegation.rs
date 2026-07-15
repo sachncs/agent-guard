@@ -415,8 +415,14 @@ impl DelegationToken {
     }
 
     /// Parse the JWS structure (header, payload, signature) without
-    /// cryptographic verification. Use [`DelegationVerifier::verify`] for
-    /// full signature + claim validation.
+    /// cryptographic verification.
+    ///
+    /// # Warning
+    /// The returned `DelegationToken` is **not authenticated**. The
+    /// `claims` field comes from the unverified payload and can be
+    /// arbitrarily chosen by an attacker. Always use
+    /// [`DelegationVerifier::verify`] before trusting any field
+    /// of the returned value.
     pub fn parse(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() != 3 {
@@ -802,6 +808,42 @@ mod tests {
         // The previous "overly strict" bug: pattern "a*x*" should match "axxby"
         // (first * matches "xx", second * matches "y" after consuming "b").
         assert!(glob_match("a*x*", "axxby"));
+    }
+
+    /// T2: double negation collapses. `Not(Not(x))` must equal `x`.
+    #[test]
+    fn double_negation_collapses() {
+        let inner = ConstraintExpr::GreaterThan {
+            path: "context.args.amount".into(),
+            value: 100,
+        };
+        let doubly_negated = ConstraintExpr::Not {
+            inner: Box::new(ConstraintExpr::Not {
+                inner: Box::new(inner.clone()),
+            }),
+        };
+        let mut high = serde_json::Map::new();
+        high.insert("amount".into(), serde_json::json!(200));
+        let mut ctx = serde_json::Map::new();
+        ctx.insert("args".into(), serde_json::Value::Object(high));
+        let req = serde_json::Value::Object(ctx);
+        // The inner says amount > 100. Negated says amount <= 100.
+        // Double-negated says amount > 100 again. Both branches should
+        // agree with the inner.
+        assert_eq!(doubly_negated.evaluate(&req), inner.evaluate(&req));
+    }
+
+    /// T3: missing path evaluates to false (not a panic). Constraints
+    /// reference context paths; if the path is absent the constraint
+    /// does not match.
+    #[test]
+    fn missing_path_evaluates_false() {
+        let c = ConstraintExpr::Equals {
+            path: "context.args.missing".into(),
+            value: serde_json::json!("x"),
+        };
+        let req = serde_json::json!({"context": {"args": {"present": "x"}}});
+        assert!(!c.evaluate(&req));
     }
 
     #[cfg(test)]

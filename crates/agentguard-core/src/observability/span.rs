@@ -193,7 +193,12 @@ impl FromStr for TraceContext {
             )));
         }
         let version = parts[0];
-        if version != "00" {
+        // W3C Trace Context §3.2.2.5: implementations MUST accept any
+        // future 00-XX version as long as the leading 2 chars are
+        // "00". Reject only versions that don't start with "00" (which
+        // would mean a non-zero leading byte, indicating a different
+        // format).
+        if !version.starts_with("00") {
             return Err(Error::Other(format!(
                 "unsupported traceparent version: {}",
                 version

@@ -451,4 +451,21 @@ mod tests {
         assert!(text.contains("agentguard_cache_hit_total 2"));
         assert!(text.contains("agentguard_cache_miss_total 1"));
     }
+
+    /// T4: render_prometheus on an empty registry returns the
+    /// HELP/TYPE headers and no series lines for label-keyed metrics
+    /// (Prometheus requires the headers to be emitted even with no
+    /// data). Label-free counters are always emitted with their
+    /// initial 0 value.
+    #[test]
+    fn render_prometheus_empty_registry() {
+        let m = Metrics::new();
+        let text = m.render_prometheus();
+        // Label-keyed metric: headers but no series.
+        assert!(text.contains("# HELP agentguard_decision_total"));
+        assert!(text.contains("# TYPE agentguard_decision_total counter"));
+        assert!(!text.contains("agentguard_decision_total{"));
+        // Label-free counter: always present with value 0.
+        assert!(text.contains("agentguard_cache_hit_total 0"));
+    }
 }

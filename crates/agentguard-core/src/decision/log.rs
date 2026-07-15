@@ -446,4 +446,48 @@ mod tests {
         let id = DecisionLog::verify_chain(&path, b"root").unwrap();
         assert_eq!(id, log.chain_id().unwrap());
     }
+
+    /// T5: read_all handles a mixed-format log (plain + chained
+    /// records interleaved). Each line is parsed independently.
+    #[test]
+    fn read_all_handles_mixed_plain_and_chained() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mixed.jsonl");
+        // Write a plain line, then a chained line, then a plain line.
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        // Write 1 plain, 1 chained, 1 plain.
+        {
+            let log = DecisionLog::open(&path).unwrap();
+            log.append(&rec).unwrap();
+        }
+        {
+            let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+            log.append(&rec).unwrap();
+        }
+        {
+            let log = DecisionLog::open(&path).unwrap();
+            log.append(&rec).unwrap();
+        }
+        let records = DecisionLog::read_all(&path).unwrap();
+        assert_eq!(records.len(), 3, "all 3 records must be readable");
+        for r in &records {
+            assert_eq!(r.principal, "alice");
+        }
+    }
 }
