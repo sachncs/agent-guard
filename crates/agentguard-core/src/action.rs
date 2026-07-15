@@ -1,6 +1,7 @@
 //! Agent actions: tool calls, optionally with an operation.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A tool-call action: e.g. `send_email`, or `s3::PutObject`.
 ///
@@ -34,6 +35,10 @@ impl AgentAction {
     }
 
     /// Cedar action UID like `Action::"ToolCall::send_email"`.
+    #[deprecated(
+        since = "0.2.1",
+        note = "Use the Display impl to write into an existing buffer (no allocation)."
+    )]
     pub fn action_uid(&self) -> String {
         match &self.operation {
             Some(op) => format!("Action::\"ToolCall::{}::{}\"", self.tool, op),
@@ -50,6 +55,18 @@ impl AgentAction {
     }
 }
 
+impl fmt::Display for AgentAction {
+    /// Writes the Cedar action UID into the formatter without allocating
+    /// a `String`. Equivalent to the deprecated `action_uid()` but
+    /// allocation-free.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.operation {
+            Some(op) => write!(f, "Action::\"ToolCall::{}::{}\"", self.tool, op),
+            None => write!(f, "Action::\"ToolCall::{}\"", self.tool),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,14 +74,14 @@ mod tests {
     #[test]
     fn tool_action_uid() {
         let a = AgentAction::tool("send_email");
-        assert_eq!(a.action_uid(), "Action::\"ToolCall::send_email\"");
+        assert_eq!(format!("{}", a), "Action::\"ToolCall::send_email\"");
         assert_eq!(a.action_id(), "ToolCall::send_email");
     }
 
     #[test]
     fn tool_op_action_uid() {
         let a = AgentAction::tool_op("s3", "PutObject");
-        assert_eq!(a.action_uid(), "Action::\"ToolCall::s3::PutObject\"");
+        assert_eq!(format!("{}", a), "Action::\"ToolCall::s3::PutObject\"");
         assert_eq!(a.action_id(), "ToolCall::s3::PutObject");
     }
 

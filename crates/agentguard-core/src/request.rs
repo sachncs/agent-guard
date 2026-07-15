@@ -247,9 +247,9 @@ mod tests {
             .context(AgentContext::new().with_arg("to", "[email protected]"))
             .build()
             .unwrap();
-        assert_eq!(req.principal.entity_uid(), "User::\"alice\"");
-        assert_eq!(req.action.action_uid(), "Action::\"ToolCall::send_email\"");
-        assert_eq!(req.resource.entity_uid(), "Mailbox::\"alice@acme\"");
+        assert_eq!(format!("{}", req.principal), "User::\"alice\"");
+        assert_eq!(format!("{}", req.action), "Action::\"ToolCall::send_email\"");
+        assert_eq!(format!("{}", req.resource), "Mailbox::\"alice@acme\"");
         assert!(req.request_id.is_some());
     }
 

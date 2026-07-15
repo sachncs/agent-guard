@@ -41,7 +41,7 @@ pub fn run(
             "{}  {} → {} on {}",
             sym,
             req.principal,
-            req.action.action_uid(),
+            req.action,
             req.resource
         );
         if !decision.policies.is_empty() {

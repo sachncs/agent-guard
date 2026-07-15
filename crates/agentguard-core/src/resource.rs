@@ -33,6 +33,15 @@ impl Resource {
     }
 
     /// Full Cedar entity UID like `Mailbox::"alice@acme"`.
+    ///
+    /// Prefer the [`Display`](std::fmt::Display) impl for formatting into
+    /// an existing buffer (avoids a `String` allocation on the hot path).
+    /// This method is retained for callers that genuinely need an owned
+    /// `String` (e.g. serialization to JSON).
+    #[deprecated(
+        since = "0.2.1",
+        note = "Use the Display impl to write into an existing buffer (no allocation)."
+    )]
     pub fn entity_uid(&self) -> String {
         format!("{}::\"{}\"", self.entity_type, self.uid)
     }
@@ -40,7 +49,7 @@ impl Resource {
 
 impl fmt::Display for Resource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.entity_uid())
+        write!(f, "{}::\"{}\"", self.entity_type, self.uid)
     }
 }
 
@@ -51,13 +60,13 @@ mod tests {
     #[test]
     fn resource_entity_uid_uses_type_and_id() {
         let r = Resource::new("Mailbox", "alice@acme");
-        assert_eq!(r.entity_uid(), "Mailbox::\"alice@acme\"");
+        assert_eq!(format!("{}", r), "Mailbox::\"alice@acme\"");
     }
 
     #[test]
     fn resource_display_matches_entity_uid() {
         let r = Resource::new("Document", "doc-1");
-        assert_eq!(format!("{}", r), r.entity_uid());
+        assert_eq!(format!("{}", r), "Document::\"doc-1\"");
     }
 
     #[test]

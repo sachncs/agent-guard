@@ -53,7 +53,7 @@ pub async fn run(
             format!("{:?}", decision.effect).to_uppercase()
         );
         println!("principal: {}", req.principal);
-        println!("action:    {}", req.action.action_uid());
+        println!("action:    {}", req.action);
         println!("resource:  {}", req.resource);
         if !decision.policies.is_empty() {
             println!("policies:  {}", decision.policies.join(", "));

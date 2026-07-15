@@ -101,6 +101,15 @@ impl Principal {
     }
 
     /// Full Cedar entity UID like `User::"alice"`.
+    ///
+    /// Prefer the [`Display`](std::fmt::Display) impl for formatting into
+    /// an existing buffer (avoids a `String` allocation on the hot path).
+    /// This method is retained for callers that genuinely need an owned
+    /// `String` (e.g. serialization to JSON via `serde_json::json!`).
+    #[deprecated(
+        since = "0.2.1",
+        note = "Use the Display impl to write into an existing buffer (no allocation)."
+    )]
     pub fn entity_uid(&self) -> String {
         format!("{}::\"{}\"", self.entity_type(), self.id())
     }
@@ -115,7 +124,7 @@ impl Principal {
 
 impl fmt::Display for Principal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.entity_uid())
+        write!(f, "{}::\"{}\"", self.entity_type(), self.id())
     }
 }
 
@@ -127,14 +136,14 @@ mod tests {
     fn user_principal_entity_uid() {
         let p = Principal::user("alice").with_attr("role", "admin");
         assert_eq!(p.entity_type(), "User");
-        assert_eq!(p.entity_uid(), "User::\"alice\"");
+        assert_eq!(format!("{}", p), "User::\"alice\"");
     }
 
     #[test]
     fn subagent_has_parent() {
         let p = Principal::subagent("summarizer", "research");
         assert_eq!(p.entity_type(), "Agent");
-        assert_eq!(p.entity_uid(), "Agent::\"summarizer\"");
+        assert_eq!(format!("{}", p), "Agent::\"summarizer\"");
         assert_eq!(p.id(), &PrincipalId::from("summarizer"));
     }
 
