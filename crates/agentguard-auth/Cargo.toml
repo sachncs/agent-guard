@@ -12,6 +12,7 @@ reqwest = ["dep:reqwest"]
 spiffe = ["dep:rust-spiffe"]
 
 [dependencies]
+agentguard-core = { path = "../agentguard-core", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true

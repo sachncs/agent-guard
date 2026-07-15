@@ -65,7 +65,7 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
         verifier
             .add_key(
                 id.trim(),
-                agentguard_core::delegation::Algorithm::EdDSA,
+                agentguard_core::auth_keys::Algorithm::EdDSA,
                 &bytes,
             )
             .map_err(|e| anyhow!("add key: {}", e))?;

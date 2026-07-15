@@ -5,6 +5,7 @@
 
 use crate::error::{AuthError, Result};
 use crate::jwt::{JwtConfig, JwtValidator};
+use agentguard_core::auth_keys::Algorithm;
 use serde::Deserialize;
 
 /// OIDC discovery configuration.
@@ -12,7 +13,7 @@ use serde::Deserialize;
 pub struct OidcConfig {
     pub issuer: String,
     pub audience: String,
-    pub algorithms: Vec<crate::key_registry::Algorithm>,
+    pub algorithms: Vec<Algorithm>,
 }
 
 impl OidcConfig {
@@ -20,10 +21,7 @@ impl OidcConfig {
         Self {
             issuer: issuer.into(),
             audience: audience.into(),
-            algorithms: vec![
-                crate::key_registry::Algorithm::EdDSA,
-                crate::key_registry::Algorithm::RS256,
-            ],
+            algorithms: vec![Algorithm::EdDSA, Algorithm::RS256],
         }
     }
 }

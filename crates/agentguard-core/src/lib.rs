@@ -1,6 +1,7 @@
 //! agentguard-core: Cedar-powered authorization primitives for AI agents.
 
 pub mod action;
+pub mod auth_keys;
 pub mod authorize;
 pub mod context;
 pub mod decision;
@@ -16,6 +17,7 @@ pub mod schema;
 pub mod ttl;
 
 pub use action::AgentAction;
+pub use auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
 pub use authorize::{Authorizer, Decision, Effect};
 pub use context::AgentContext;
 pub use decision::{DecisionCache, DecisionLog, DecisionRecord};

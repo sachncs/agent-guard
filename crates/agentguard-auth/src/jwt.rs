@@ -4,7 +4,7 @@
 //! validation, and JWKS refresh.
 
 use crate::error::{AuthError, Result};
-use crate::key_registry::{Algorithm, KeyMaterial, KeyRegistry};
+use agentguard_core::auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -73,11 +73,7 @@ impl JwtValidator {
     }
 
     /// Register a key for verification.
-    ///
-    /// # Errors
-    /// Returns `AuthError::JwtInvalid` if the key material is malformed
-    /// (e.g. wrong size for the given algorithm).
-    pub fn add_key(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) -> Result<()> {
+    pub fn add_key(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) {
         self.keys.add(kid, alg, key)
     }
 
@@ -102,7 +98,8 @@ impl JwtValidator {
             .get("alg")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AuthError::JwtInvalid("missing alg".into()))?;
-        let alg = parse_alg(alg_str)?;
+        let alg = parse_alg(alg_str)
+            .ok_or_else(|| AuthError::JwtInvalid(format!("unsupported alg: {}", alg_str)))?;
         if !self.config.algorithms.contains(&alg) {
             return Err(AuthError::JwtInvalid(format!(
                 "algorithm {:?} not in whitelist",
@@ -125,7 +122,10 @@ impl JwtValidator {
         let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(parts[2])
             .map_err(|e| AuthError::JwtInvalid(format!("sig b64: {}", e)))?;
-        let keys = self.keys.get(kid, alg)?;
+        let keys = self.keys.get(kid, alg);
+        if keys.is_empty() {
+            return Err(AuthError::JwtUnknownKid(kid.to_string()));
+        }
         let mut verified = false;
         for key in keys {
             if verify_signature(alg, &key, &signing_input, &signature).is_ok() {
@@ -229,8 +229,8 @@ impl JwtValidator {
         }
         for k in jwks.keys {
             let alg = match parse_alg(&k.alg) {
-                Ok(a) => a,
-                Err(_) => {
+                Some(a) => a,
+                None => {
                     tracing::warn!(alg = %k.alg, "skipping unknown JWKS alg");
                     continue;
                 }
@@ -256,12 +256,7 @@ impl JwtValidator {
                     tracing::warn!("JWKS key without kid; auto-generating");
                     format!("jwks-{}", k.alg)
                 });
-                if let Err(e) = self
-                    .keys
-                    .add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw))
-                {
-                    tracing::warn!(error = %e, kid = %kid, "failed to register JWKS key");
-                }
+                self.keys.add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw));
             } else {
                 // RSA/ECDSA/HS256 would be supported here in v2.1.
                 tracing::debug!(alg = ?alg, "skipping non-Ed25519 JWKS key");
@@ -309,16 +304,6 @@ struct JwksKey {
     y: Option<String>,
     #[serde(default)]
     crv: Option<String>,
-}
-
-fn parse_alg(s: &str) -> Result<Algorithm> {
-    match s {
-        "HS256" => Ok(Algorithm::HS256),
-        "RS256" => Ok(Algorithm::RS256),
-        "ES256" => Ok(Algorithm::ES256),
-        "EdDSA" => Ok(Algorithm::EdDSA),
-        other => Err(AuthError::JwtInvalid(format!("unsupported alg: {}", other))),
-    }
 }
 
 fn verify_signature(
@@ -382,8 +367,7 @@ mod tests {
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
 
         let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
 
         let claims = serde_json::json!({
             "iss": "https://idp.example.com",
@@ -402,8 +386,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
         let claims = serde_json::json!({
             "iss": "https://idp.example.com",
             "aud": "agentguard",
@@ -420,8 +403,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
         let claims = serde_json::json!({
             "iss": "https://idp.example.com",
             "aud": "wrong-audience",
@@ -448,8 +430,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
 
         // Forge a token with alg=HS256 and a real HMAC-SHA256 over the
         // signing input. Our EdDSA-only verifier must reject it.
@@ -477,8 +458,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
         let claims = serde_json::json!({
             "iss": "https://idp.example.com",
             "aud": "agentguard",
@@ -513,8 +493,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
         let now = chrono::Utc::now().timestamp();
         let claims = serde_json::json!({
             "iss": "iss",
@@ -536,8 +515,7 @@ mod tests {
         let signing_key = SigningKey::generate(&mut csprng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let v = JwtValidator::new(JwtConfig::new("iss", "agentguard"));
-        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes))
-            .unwrap();
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
         let claims = serde_json::json!({
             "iss": "iss",
             "aud": ["agentguard", "other"],

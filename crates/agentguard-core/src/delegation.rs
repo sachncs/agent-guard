@@ -4,25 +4,14 @@
 //! (RFC 7515) using EdDSA. Supports structured constraints, RFC 8693 act
 //! chain, and algorithm agility via [`Algorithm`].
 
+use crate::auth_keys::Algorithm;
 use crate::error::{Error, Result};
+pub use crate::auth_keys::parse_alg;
 use base64::Engine as _;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-
-/// JWT/Delegation signing algorithm (RFC 8725 §3.1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-#[non_exhaustive]
-pub enum Algorithm {
-    HS256,
-    RS256,
-    ES256,
-    EdDSA,
-}
-
-impl Algorithm {}
 
 /// Standard JWS compact serialization: `base64url(header).base64url(payload).base64url(signature)`.
 ///
@@ -503,7 +492,8 @@ impl DelegationVerifier {
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::InvalidToken("missing kid in header".into()))?
             .to_string();
-        let alg = parse_alg(alg_str)?;
+        let alg = parse_alg(alg_str)
+            .ok_or_else(|| Error::InvalidToken(format!("unsupported alg: {}", alg_str)))?;
 
         // Step 3: reject HS* with asymmetric keys (algorithm confusion).
         // We never accept HS256 for delegation — symmetric algorithms don't
@@ -583,16 +573,6 @@ fn verify_ed255sa(
             reason: "ed25519 signature verification failed".into(),
         })?;
     Ok(())
-}
-
-fn parse_alg(s: &str) -> Result<Algorithm> {
-    match s {
-        "EdDSA" => Ok(Algorithm::EdDSA),
-        "RS256" => Ok(Algorithm::RS256),
-        "ES256" => Ok(Algorithm::ES256),
-        "HS256" => Ok(Algorithm::HS256),
-        other => Err(Error::InvalidToken(format!("unsupported alg: {}", other))),
-    }
 }
 
 // Test helpers.
