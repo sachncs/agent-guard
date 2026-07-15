@@ -27,10 +27,7 @@ chrono.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 axum = "0.7"
 tower = "0.5"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
 hyper = { version = "1", features = ["server", "http1"] }
-tonic = "0.12"
-prost = "0.13"
 uuid.workspace = true
 parking_lot.workspace = true
 axum-server = { version = "0.7", features = ["tls-rustls"] }

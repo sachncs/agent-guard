@@ -187,7 +187,6 @@ impl JwtValidator {
     ///
     /// Supports Ed25519 keys (kty=OK, crv=Ed25519, x=base64url-32-bytes).
     /// Other key types are skipped with a tracing warning.
-    #[cfg(feature = "jwt")]
     pub async fn refresh_jwks(&self) -> Result<()> {
         use base64::Engine as _;
         let uri = self
@@ -272,7 +271,6 @@ impl JwtValidator {
     }
 
     /// Background task that periodically refreshes JWKS.
-    #[cfg(feature = "jwt")]
     pub fn spawn_jwks_refresher(self: Arc<Self>, interval: Duration) {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
@@ -355,11 +353,9 @@ fn verify_signature(
     }
 }
 
-// Suppress unused warning when jwt feature is off
-#[cfg(not(feature = "jwt"))]
-use AuthError as _Unused;
+// Suppress unused warning
 #[allow(dead_code)]
-type _Unused = AuthError;
+type _Unused = ();
 
 #[cfg(test)]
 mod tests {

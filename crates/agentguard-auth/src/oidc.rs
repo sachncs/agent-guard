@@ -41,7 +41,6 @@ pub struct OidcMetadata {
     pub introspection_endpoint: Option<String>,
 }
 
-#[cfg(feature = "jwt")]
 impl OidcConfig {
     /// Discover OIDC metadata + JWKS and return a configured [`JwtValidator`].
     ///
