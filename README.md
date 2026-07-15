@@ -1,14 +1,12 @@
-<p align="center">
-  <h1 align="center">agentguard</h1>
-  <p align="center">Enterprise-grade Cedar-powered authorization for AI agents.</p>
-  <p align="center">
-    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
-    <a href="https://github.com/sachncs/agent-guard/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master" alt="CI"></a>
-    <a href="https://crates.io/crates/agentguard-core"><img src="https://img.shields.io/crates/v/agentguard-core" alt="crates.io"></a>
-    <a href="https://github.com/sachncs/agent-guard/stargazers"><img src="https://img.shields.io/github/stars/sachncs/agent-guard" alt="Stars"></a>
-  </p>
-</p>
+# agentguard
+
+> **Enterprise-grade Cedar-powered authorization for AI agents.**
+
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master)](https://github.com/sachncs/agent-guard/actions)
+[![crates.io](https://img.shields.io/crates/v/agentguard-core)](https://crates.io/crates/agentguard-core)
+[![Stars](https://img.shields.io/github/stars/sachncs/agent-guard)](https://github.com/sachncs/agent-guard/stargazers)
 
 **agentguard** wraps [Cedar](https://www.cedarpolicy.com) — an
 open-source policy language designed for these requirements, with formal
@@ -19,45 +17,53 @@ to a short-lived identity. Tokens are JWS-signed, policies are versioned
 and hot-reloaded, and the engine speaks the
 [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                    your agent / service                       │
-│   ┌──────────────┐    ┌────────────────┐    ┌───────────────┐ │
-│   │ LangChain /  │ →  │  agentguard    │ →  │ cedar-policy  │ │
-│   │ Vercel AI /  │    │  SDK (Py/TS)   │    │   + Cedar     │ │
-│   │ raw HTTP     │    │  in-process or │    │   schema      │ │
-│   └──────────────┘    │  subprocess    │    └───────────────┘ │
-│                       └────────────────┘             │        │
-│                                │                    │        │
-│                                ▼                    ▼        │
-│                       ┌────────────────────────────────┐    │
-│                       │   agentguard-server (PDP)       │    │
-│                       │   AuthZEN HTTP + gRPC           │    │
-│                       └────────────────────────────────┘    │
-│                                │                             │
-│                                ▼                             │
-│              ┌──────────────────────────────────┐            │
-│              │  hash-chained audit log           │            │
-│              │  CEF / LEEF / ECS / JSONL         │            │
-│              │  W3C trace context per decision   │            │
-│              └──────────────────────────────────┘            │
-└────────────────────────────────────────────────────────────────┘
+```text
+                          your agent / service
+  ┌────────────────┐    ┌─────────────────┐    ┌──────────────┐
+  │ LangChain /     │ →  │   agentguard    │ →  │ cedar-policy │
+  │ Vercel AI /     │    │  SDK (Py/Node)   │    │   + Cedar    │
+  │ raw HTTP / WS   │    │  in-process or   │    │   schema     │
+  └────────────────┘    │  subprocess      │    └──────────────┘
+                        └─────────────────┘            │
+                                │                     │
+                                ▼                     ▼
+                  ┌──────────────────────────────────────┐
+                  │       agentguard-server (PDP)       │
+                  │      AuthZEN HTTP PDP              │
+                  └──────────────────────────────────────┘
+                                │
+                                ▼
+              ┌──────────────────────────────────┐
+              │    hash-chained audit log          │
+              │   CEF / LEEF / ECS / JSONL        │
+              │   W3C trace context per decision  │
+              └──────────────────────────────────┘
 ```
 
 ---
 
 ## Features
 
-- **Per-call authorization** — does this user/agent have permission to call this tool on this resource, right now, with this context?
-- **Tamper-evident audit trail** — every decision recorded, hash-chained, exportable to your SIEM in CEF/LEEF/ECS.
-- **Scoped delegation** — parent agent gives sub-agent a *scoped subset* of permissions, time-boxed, sender-constrained (DPoP), revocable.
-- **Schema-validated policies** — your security team writes Cedar, not imperative code. Policies are validated at authoring time.
-- **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE. RFC 8725 BCP for crypto. RFC 8693 for delegation. No proprietary protocols.
-- **OpenTelemetry-native observability** — every decision is a span with `authz.*` attributes; every decision is a metric.
-- **Hot reload + rollback + blast radius** — push policies without downtime; see what would break before you push.
-- **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP.
-- **Local-first** — files in `.agentguard/` are the source of truth. `git diff` your policies. Run the server in-process or as a sidecar.
-- **Multi-language SDKs** — Rust core, Python (`agentguard`, `agentguard_langchain`, `agentguard_server_sdk`), TypeScript (`agentguard`, `@agentguard/vercel-ai`, `@agentguard/server-sdk`).
+- **Per-call authorization** — does this user/agent have permission to call
+  this tool on this resource, right now, with this context?
+- **Tamper-evident audit trail** — every decision recorded, hash-chained,
+  exportable to your SIEM in CEF/LEEF/ECS/JSONL.
+- **Scoped delegation** — parent agent gives sub-agent a *scoped subset*
+  of permissions, time-boxed, sender-constrained (DPoP), revocable.
+- **Schema-validated policies** — your security team writes Cedar, not
+  imperative code. Policies are validated at authoring time.
+- **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE. RFC 8725 BCP for
+  crypto. RFC 8693 for delegation. No proprietary protocols.
+- **OpenTelemetry-native observability** — every decision is a span with
+  `authz.*` attributes; every decision is a metric.
+- **Hot reload + rollback + blast radius** — push policies without
+  downtime; see what would break before you push.
+- **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway,
+  federation tool, and replacement PDP.
+- **Local-first** — files in `.agentguard/` are the source of truth.
+  `git diff` your policies. Run the server in-process or as a sidecar.
+- **Multi-language SDKs** — Rust core, Python
+  (`agentguard`, `agentguard_langchain`).
 
 ---
 
@@ -70,12 +76,10 @@ and hot-reloaded, and the engine speaks the
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
 | `agentguard-auth` (Rust) | JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, jti replay protection, RFC 8693 token exchange |
 | `agentguard-policy` (Rust) | Versioned bundles, file watcher, hot reload, diff, blast radius, dry-run |
-| `agentguard-server` (Rust) | `agentguard serve` — AuthZEN HTTP + gRPC PDP, sidecar mode |
+| `agentguard-server` (Rust) | `agentguard serve` — AuthZEN HTTP PDP, sidecar mode |
 | `agentguard` (Python SDK) | In-process or subprocess mode, JWT/DPoP passthrough, step-up auth, traceparent |
 | `agentguard-langchain` (Python) | Middleware for every LangChain tool call, surfaces step-up |
-| `agentguard` (TypeScript SDK) | Mirror of Python SDK |
-| `@agentguard/vercel-ai` (TS) | Middleware for Vercel AI SDK tool calls |
-| `@agentguard/server-sdk` (TS) | AuthZEN client for talking to `agentguard serve` |
+| `agentguard` (TypeScript SDK) | In-process Cedar bindings, JWT/DPoP passthrough, step-up auth |
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete v0.2.0 change list.
 The implementation plan lives in [`stages/`](stages/README.md).
@@ -90,19 +94,17 @@ The implementation plan lives in [`stages/`](stages/README.md).
 cargo install --path crates/agentguard-cli
 ```
 
-### Python SDK + LangChain + Server SDK
+### Python SDK + LangChain
 
 ```bash
 pip install -e python/agentguard
 pip install -e python/agentguard_langchain
-pip install -e python/agentguard_server_sdk
 ```
 
-### TypeScript SDKs
+### TypeScript SDK
 
 ```bash
 cd typescript/agentguard && npm install && npm run build
-cd typescript/packages/vercel-ai && npm install && npm run build
 ```
 
 **Requirements:** Rust 1.85+, Python 3.10+, Node.js ≥ 20.
@@ -120,7 +122,7 @@ agentguard init --name acme
 
 This creates:
 
-```
+```text
 .agentguard/
 ├── schema.cedarschema       # entity types, actions, context shapes
 └── policies/
@@ -138,7 +140,7 @@ agentguard validate
 
 ```bash
 agentguard authorize request.json
-# ✓ ALLOW alice send_email alice@acme
+# ✗  DENY alice send_email alice@acme
 ```
 
 Or with full audit output:
@@ -154,7 +156,6 @@ agentguard serve \
     --listen tcp://0.0.0.0:8443 \
     --tls-cert ./server.pem --tls-key ./server.key \
     --store ./.agentguard \
-    --auth jwt=https://idp.example.com \
     --audit .audit/decisions.jsonl
 ```
 
@@ -162,7 +163,6 @@ Server is now speaking [AuthZEN](https://openid.github.io/authzen/):
 
 ```bash
 curl -X POST https://localhost:8443/access/v1/evaluation \
-    -H "Authorization: Bearer $JWT" \
     -H "Content-Type: application/json" \
     -d '{
       "subject":  {"type": "User", "id": "alice"},
@@ -178,13 +178,11 @@ curl -X POST https://localhost:8443/access/v1/evaluation \
 ```python
 from agentguard import (
     Client, Principal, AgentAction, Resource, Context,
-    BearerAuth, DpopKey,
 )
 
 client = Client(
     store=".agentguard",
     mode="in_process",                 # uses cedar-policy bindings (fast)
-    auth=BearerAuth(token=os.environ["JWT"]),
     traceparent="00-aaaa...bbbb-01",    # optional W3C trace context
 )
 
@@ -195,9 +193,6 @@ client.check(
     Resource("Mailbox", "alice@acme"),
     Context(args={"to": "[email protected]"}, session={"ip": "10.0.0.1", "mfa": True}),
 )
-
-# Step-up auth (MFA required) surfaces as an exception:
-# agentguard.errors.StepUpRequired(acr_values=..., amr_values="mfa hwk")
 ```
 
 ### LangChain middleware
@@ -237,6 +232,24 @@ token = client.delegate(
 # JWS compact: eyJhbGciOiJFZERTQSIs...
 ```
 
+### TypeScript SDK
+
+```typescript
+import { Client, Principal, AgentAction, Resource, Context } from "agentguard";
+
+const client = new Client({
+  store: ".agentguard",
+  mode: "in_process",
+});
+
+await client.check({
+  principal: Principal.user("alice"),
+  action: AgentAction.tool("send_email"),
+  resource: new Resource("Mailbox", "alice@acme"),
+  context: new Context({ args: { to: "[email protected]" }, session: { ip: "10.0.0.1", mfa: true } }),
+});
+```
+
 ### Verify and audit
 
 ```bash
@@ -253,7 +266,6 @@ agentguard doctor
 # ✓ schema validation passes
 # ✓ audit log writable
 # ✓ hash chain verifies
-# ⚠ JWT validator configured but jwks_uri unreachable (cached 30s)
 ```
 
 ---
@@ -264,7 +276,6 @@ agentguard doctor
 |---------|------------|---------|-------------|
 | Audit log path | `--audit` | `./.audit/decisions.jsonl` | Hash-chained audit log destination |
 | Chain secret | `--secret-file` | `./.chain-secret` | HMAC key for the audit chain |
-| Auth provider | `--auth jwt=...` / `--auth api-key=...` | `none` | Authentication provider |
 | Listen address | `--listen` | `tcp://127.0.0.1:8443` | Server listen address |
 | Store path | `--store` | `./.agentguard` | Cedar schema and policy directory |
 | Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache |
@@ -275,15 +286,14 @@ agentguard doctor
 
 ## Examples
 
-[`examples/`](examples/) — 7 working examples:
+[`examples/`](examples/) — 6 working examples:
 
 - `examples/basic-tool-authz/` — minimum viable authorization with audit
 - `examples/multi-agent-delegation/` — parent → sub-agent JWS delegation
+- `examples/jwt-auth/` — bearer-token authentication
+- `examples/dpop-protected/` — sender-constrained tokens
+- `examples/hash-chain-verify/` — audit log tamper detection
 - `examples/nl-policy-gen/` — natural language → Cedar generation
-- `examples/jwt-auth/` — bearer-token authentication (added in v2)
-- `examples/oidc-discovery/` — OIDC metadata + JWKS refresh (added in v2)
-- `examples/dpop-protected/` — sender-constrained tokens (added in v2)
-- `examples/hash-chain-verify/` — audit log tamper detection (added in v2)
 
 ---
 
@@ -298,20 +308,16 @@ See [`docs/architecture.md`](docs/architecture.md).
 - **W3C Trace Context** — distributed tracing propagation
 - **RFC 7519** (JWT) + **RFC 8725** (JWT BCP) — token validation
 - **RFC 8414** (OAuth 2.0 Authorization Server Metadata) — OIDC discovery
-- **RFC 7662** (OAuth 2.0 Token Introspection)
-- **RFC 7009** (OAuth 2.0 Token Revocation)
 - **RFC 8693** (OAuth 2.0 Token Exchange) — agent-to-agent delegation
 - **RFC 8707** (Resource Indicators) — audience restriction
 - **RFC 9449** (DPoP) — sender-constrained tokens
-- **RFC 8785** (JSON Canonicalization Scheme) — hash chain input
 - **SPIFFE X.509-SVID** — workload identity
-- **NIST SP 800-204** alignment — microservices security patterns
 
 ---
 
 ## Project Structure
 
-```
+```text
 agent-guard/
 ├── crates/
 │   ├── agentguard-core/         # Type-safe wrappers, decision cache, audit log
@@ -319,17 +325,13 @@ agent-guard/
 │   ├── agentguard-telemetry/    # OTel/OTLP sink trait + Prometheus metrics
 │   ├── agentguard-auth/         # JWT/OIDC/API-key/DPoP/SPIFFE
 │   ├── agentguard-policy/       # Versioned bundles, hot reload, blast radius
-│   └── agentguard-server/       # AuthZEN HTTP + gRPC PDP
+│   └── agentguard-server/       # AuthZEN HTTP PDP
 ├── python/
 │   ├── agentguard/              # Python SDK
-│   ├── agentguard_langchain/    # LangChain middleware
-│   └── agentguard_server_sdk/   # AuthZEN client
+│   └── agentguard_langchain/    # LangChain middleware
 ├── typescript/
-│   ├── agentguard/              # TypeScript SDK
-│   └── packages/
-│       ├── vercel-ai/           # @agentguard/vercel-ai
-│       └── server-sdk/          # @agentguard/server-sdk
-├── examples/                    # 7 working examples
+│   └── agentguard/              # TypeScript SDK
+├── examples/                    # 6 working examples
 ├── schemas/                     # Cedar schema fragments
 ├── docs/                        # Architecture & API documentation
 └── stages/                      # Stage-by-stage implementation plan
@@ -367,7 +369,7 @@ python examples/basic-tool-authz/main.py
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat: add step-up auth flow to Python SDK
 fix: clamp TTL to configured maximum in decision cache
 docs: document RFC 9449 DPoP binding
@@ -394,7 +396,6 @@ cd typescript/agentguard && npm test  # TypeScript SDK
 ```bash
 cargo build --workspace --release
 cd typescript/agentguard && npm run build
-cd typescript/packages/vercel-ai && npm run build
 ```
 
 ---
@@ -430,9 +431,15 @@ cd typescript/packages/vercel-ai && npm run build
 
 ## Roadmap
 
-- **v0.2.0** — Current: AuthZEN HTTP + gRPC PDP, JWT/OIDC/API-key/DPoP/SPIFFE auth, RFC 8693 token exchange, hash-chained audit log + SIEM formatters, TTL & decision cache, CLI (init/validate/authorize/sim/delegate/verify/audit/policy/serve/doctor)
-- **v0.3.0** — Planned: distributed decision cache (Redis), policy A/B testing, multi-tenant audit namespaces, OpenTelemetry collector integration
-- **v1.0.0** — Stable API, semantic-versioning guarantees, LTS support window
+- **v0.2.0** — Current: AuthZEN HTTP PDP, JWT/OIDC/API-key/DPoP/SPIFFE auth,
+  RFC 8693 token exchange, hash-chained audit log + SIEM formatters,
+  TTL & decision cache, CLI (init/validate/authorize/sim/delegate/
+  verify/audit/policy/serve/doctor)
+- **v0.3.0** — Planned: distributed decision cache (Redis), policy A/B
+  testing, multi-tenant audit namespaces, OpenTelemetry collector
+  integration
+- **v1.0.0** — Stable API, semantic-versioning guarantees, LTS support
+  window
 
 ---
 
