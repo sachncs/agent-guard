@@ -161,32 +161,27 @@ async fn healthz() -> &'static str {
 }
 
 async fn readyz(State(state): State<AppState>) -> Response {
-    // 1. Policies must be loaded.
-    let policies_loaded = state.authorizer.policies().policies().next().is_some();
-    if !policies_loaded {
-        return (StatusCode::SERVICE_UNAVAILABLE, "policies not loaded\n").into_response();
+    // 1. Policies must be loaded. policy_count() is O(1) (the
+    // cedar PolicySet length is cached), unlike the previous
+    // .policies().next().is_some() which walked the full set.
+    if state.authorizer.policy_count() == 0 {
+        return readyz_unavailable("policies not loaded");
     }
-    // 2. Audit log must be writable. We probe by appending a sentinel
-    // record? No — that would corrupt the chain. Instead, open the
-    // existing log in append mode (no truncation) and immediately
-    // close it. This catches EACCES, ENOSPC, EROFS, ENOENT (after
-    // mkdir) without polluting the log.
-    if let Some(audit) = state.audit.as_ref() {
-        // We just check chain_id() is Some (we're opened) — a stronger
-        // check would open a write handle briefly. For now, treat
-        // "we have a DecisionLog" as "writable", and rely on the
-        // write path below to surface real failures.
-        if audit.chain_id().is_none() {
-            return (StatusCode::SERVICE_UNAVAILABLE, "audit log not opened\n").into_response();
-        }
-    } else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "audit log not configured\n",
-        )
-            .into_response();
+    // 2. Audit log must be configured and open.
+    match state.audit.as_ref() {
+        Some(audit) if audit.chain_id().is_some() => (),
+        Some(_) => return readyz_unavailable("audit log not opened"),
+        None => return readyz_unavailable("audit log not configured"),
     }
     (StatusCode::OK, "ok\n").into_response()
+}
+
+fn readyz_unavailable(reason: &str) -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        format!("{reason}\n"),
+    )
+        .into_response()
 }
 
 fn evaluation_request_to_agent(req: AuthZenEvaluationRequest) -> Result<AgentRequest, String> {
