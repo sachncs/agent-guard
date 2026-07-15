@@ -137,11 +137,34 @@ impl ConstraintExpr {
 }
 
 fn lookup<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    // Walk the dotted path directly on the Value. Avoids the String
+    // allocation that `path.split('.')` would produce, and avoids the
+    // JSON-pointer conversion that `Value::pointer` would require.
+    // The path is dot-separated segments like `context.args.amount`.
+    let bytes = path.as_bytes();
     let mut cur = root;
-    for seg in path.split('.') {
-        cur = cur.get(seg)?;
+    let mut start = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'.' {
+            if start == i {
+                return None;
+            }
+            let seg = match std::str::from_utf8(&bytes[start..i]) {
+                Ok(s) => s,
+                Err(_) => return None,
+            };
+            cur = cur.get(seg)?;
+            start = i + 1;
+        }
     }
-    Some(cur)
+    if start == bytes.len() {
+        return None;
+    }
+    let seg = match std::str::from_utf8(&bytes[start..]) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+    cur.get(seg)
 }
 
 /// Glob match with `*` wildcard support.
