@@ -3,7 +3,7 @@
 //! Thread-safe via interior mutability. Renderable to Prometheus text format
 //! for the `/metrics` endpoint (Stage 7).
 
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -127,33 +127,33 @@ impl Histogram {
 /// Standard metrics for agentguard.
 pub struct Metrics {
     /// `agentguard.decision.total{effect,policy_id,action,tenant_id}`
-    decision_total: Mutex<HashMap<String, Arc<Counter>>>,
+    decision_total: RwLock<HashMap<String, Arc<Counter>>>,
     /// `agentguard.decision.duration_seconds{action,tenant_id}`
-    decision_duration: Mutex<HashMap<String, Arc<Histogram>>>,
+    decision_duration: RwLock<HashMap<String, Arc<Histogram>>>,
     /// `agentguard.delegation.mint.total`
     delegation_mint_total: Counter,
     /// `agentguard.delegation.verify.total{outcome}`
-    delegation_verify_total: Mutex<HashMap<String, Arc<Counter>>>,
+    delegation_verify_total: RwLock<HashMap<String, Arc<Counter>>>,
     /// `agentguard.cache.hit.total` / `agentguard.cache.miss.total`
     cache_hit_total: Counter,
     cache_miss_total: Counter,
     /// `agentguard.policy.reload.total`
     policy_reload_total: Counter,
     /// `agentguard.pdp.error.total{fallback}`
-    pdp_error_total: Mutex<HashMap<String, Arc<Counter>>>,
+    pdp_error_total: RwLock<HashMap<String, Arc<Counter>>>,
 }
 
 impl Default for Metrics {
     fn default() -> Self {
         Self {
-            decision_total: Mutex::new(HashMap::new()),
-            decision_duration: Mutex::new(HashMap::new()),
+            decision_total: RwLock::new(HashMap::new()),
+            decision_duration: RwLock::new(HashMap::new()),
             delegation_mint_total: Counter::new(),
-            delegation_verify_total: Mutex::new(HashMap::new()),
+            delegation_verify_total: RwLock::new(HashMap::new()),
             cache_hit_total: Counter::new(),
             cache_miss_total: Counter::new(),
             policy_reload_total: Counter::new(),
-            pdp_error_total: Mutex::new(HashMap::new()),
+            pdp_error_total: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -177,12 +177,12 @@ impl Metrics {
     ) {
         let key = Self::label_key(&[effect, policy_id, action, tenant_id]);
         self.decision_total
-            .lock()
+            .write()
             .entry(key)
             .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
         let dur_key = Self::label_key(&[action, tenant_id]);
-        let mut durations = self.decision_duration.lock();
+        let mut durations = self.decision_duration.write();
         durations
             .entry(dur_key)
             .or_insert_with(|| {
@@ -201,7 +201,7 @@ impl Metrics {
     pub fn record_delegation_verify(&self, success: bool) {
         let key = if success { "success" } else { "failure" };
         self.delegation_verify_total
-            .lock()
+            .write()
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
@@ -221,7 +221,7 @@ impl Metrics {
 
     pub fn record_pdp_error(&self, fallback: &str) {
         self.pdp_error_total
-            .lock()
+            .write()
             .entry(fallback.to_string())
             .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
@@ -233,7 +233,7 @@ impl Metrics {
 
         out.push_str("# HELP agentguard_decision_total Total authorization decisions\n");
         out.push_str("# TYPE agentguard_decision_total counter\n");
-        let totals = self.decision_total.lock();
+        let totals = self.decision_total.read();
         for (key, c) in totals.iter() {
             let parts: Vec<&str> = key.split('\x1f').collect();
             let effect = parts.first().copied().unwrap_or("");
@@ -253,7 +253,7 @@ impl Metrics {
 
         out.push_str("# HELP agentguard_decision_duration_seconds Decision evaluation time\n");
         out.push_str("# TYPE agentguard_decision_duration_seconds histogram\n");
-        let durations = self.decision_duration.lock();
+        let durations = self.decision_duration.read();
         for (key, h) in durations.iter() {
             let parts: Vec<&str> = key.split('\x1f').collect();
             let action = parts.first().copied().unwrap_or("");
@@ -296,7 +296,7 @@ impl Metrics {
 
         out.push_str("# HELP agentguard_delegation_verify_total Total delegation verifications\n");
         out.push_str("# TYPE agentguard_delegation_verify_total counter\n");
-        let verify = self.delegation_verify_total.lock();
+        let verify = self.delegation_verify_total.read();
         for (outcome, c) in verify.iter() {
             out.push_str(&format!(
                 "agentguard_delegation_verify_total{{outcome=\"{}\"}} {}\n",
@@ -322,7 +322,7 @@ impl Metrics {
             self.policy_reload_total.get()
         ));
 
-        let pdp = self.pdp_error_total.lock();
+        let pdp = self.pdp_error_total.read();
         for (fallback, c) in pdp.iter() {
             out.push_str(&format!(
                 "agentguard_pdp_error_total{{fallback=\"{}\"}} {}\n",
@@ -338,13 +338,13 @@ impl Metrics {
     pub fn snapshot(&self) -> MetricsSnapshot {
         let decision_total: HashMap<String, u64> = self
             .decision_total
-            .lock()
+            .read()
             .iter()
             .map(|(k, v)| (k.clone(), v.get()))
             .collect();
         let decision_duration: HashMap<String, (u64, f64)> = self
             .decision_duration
-            .lock()
+            .read()
             .iter()
             .map(|(k, h)| (k.clone(), (h.count(), h.sum_seconds())))
             .collect();
@@ -354,7 +354,7 @@ impl Metrics {
             delegation_mint_total: self.delegation_mint_total.get(),
             delegation_verify_total: self
                 .delegation_verify_total
-                .lock()
+                .read()
                 .iter()
                 .map(|(k, v)| (k.clone(), v.get()))
                 .collect(),
@@ -363,7 +363,7 @@ impl Metrics {
             policy_reload_total: self.policy_reload_total.get(),
             pdp_error_total: self
                 .pdp_error_total
-                .lock()
+                .read()
                 .iter()
                 .map(|(k, v)| (k.clone(), v.get()))
                 .collect(),
