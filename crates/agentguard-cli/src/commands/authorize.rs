@@ -2,7 +2,9 @@ use agentguard_core::{
     authorize::build_entities, AgentRequest, Authorizer, DecisionLog, PolicyStore,
 };
 use anyhow::{anyhow, Result};
+use base64::Engine as _;
 use std::io::Read;
+use std::path::Path;
 
 /// A policy decision returned to the caller.
 #[derive(Debug)]
@@ -16,23 +18,23 @@ pub struct AuthorizeOutcome {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
-    store: &str,
-    audit: &str,
-    request: &str,
-    entities_path: Option<&str>,
+    store: impl AsRef<Path>,
+    audit: impl AsRef<Path>,
+    request: impl AsRef<Path>,
+    entities_path: Option<impl AsRef<Path>>,
     no_audit: bool,
     output: &str,
 ) -> Result<AuthorizeOutcome> {
-    let req: AgentRequest = if request == "-" {
+    let req: AgentRequest = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
         std::io::stdin().read_to_string(&mut buf)?;
         serde_json::from_str(&buf)?
     } else {
-        let text = std::fs::read_to_string(request)?;
+        let text = std::fs::read_to_string(request.as_ref())?;
         serde_json::from_str(&text)?
     };
 
-    let entities = load_entities(entities_path)?;
+    let entities = load_entities(entities_path.as_ref().map(|p| p.as_ref()))?;
 
     let store = PolicyStore::open(store)?;
     let engine = Authorizer::new(store)?;
@@ -67,12 +69,12 @@ pub async fn run(
             let key = std::fs::read(&secret_path).unwrap_or_default();
             if !key.is_empty() {
                 let key = trim_key(&key);
-                DecisionLog::open_with_chain(audit, &key)?
+                DecisionLog::open_with_chain(audit.as_ref(), &key)?
             } else {
-                DecisionLog::open(audit)?
+                DecisionLog::open(audit.as_ref())?
             }
         } else {
-            DecisionLog::open(audit)?
+            DecisionLog::open(audit.as_ref())?
         };
         log.append_decision(&decision)?;
     }
@@ -84,9 +86,9 @@ pub async fn run(
     Ok(outcome)
 }
 
-fn load_entities(path: Option<&str>) -> Result<cedar_policy::Entities> {
-    let path = path.unwrap_or(".agentguard/entities.json");
-    if !std::path::Path::new(path).exists() {
+fn load_entities(path: Option<&Path>) -> Result<cedar_policy::Entities> {
+    let path = path.unwrap_or_else(|| Path::new(".agentguard/entities.json"));
+    if !path.exists() {
         return Ok(cedar_policy::Entities::empty());
     }
     let text = std::fs::read_to_string(path)?;
@@ -99,15 +101,19 @@ fn load_entities(path: Option<&str>) -> Result<cedar_policy::Entities> {
     build_entities(arr).map_err(Into::into)
 }
 
+/// Parse a chain secret: hex (64 chars) or base64. Falls back to raw bytes
+/// on decode error.
 fn trim_key(bytes: &[u8]) -> Vec<u8> {
-    let s = std::str::from_utf8(bytes)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return hex::decode(&s).unwrap_or_else(|_| s.into_bytes());
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        let s = s.trim();
+        if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+            if let Ok(b) = hex::decode(s) {
+                return b;
+            }
+        }
+        if let Ok(b) = base64::engine::general_purpose::STANDARD.decode(s) {
+            return b;
+        }
     }
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD
-        .decode(s.as_bytes())
-        .unwrap_or_else(|_| s.into_bytes())
+    bytes.to_vec()
 }

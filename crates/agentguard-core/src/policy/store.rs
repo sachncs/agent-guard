@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::policy::types::{PolicySource, Severity, ValidationIssue, ValidationReport};
 use crate::schema::SchemaParsed;
 use cedar_policy::{Policy, PolicyId, PolicySet, ValidationMode, Validator};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use walkdir::WalkDir;
 
@@ -14,8 +14,8 @@ pub struct PolicyStore {
 }
 
 impl PolicyStore {
-    pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
-        let root = root.into();
+    pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
         if !root.exists() {
             std::fs::create_dir_all(root.join("policies"))?;
         }

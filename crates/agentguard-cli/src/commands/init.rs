@@ -2,8 +2,8 @@ use agentguard_core::{init_store, PolicyStore};
 use anyhow::Result;
 use std::path::Path;
 
-pub fn run(store: &str, name: &str) -> Result<()> {
-    let path = Path::new(store);
+pub fn run(store: impl AsRef<Path>, name: &str) -> Result<()> {
+    let path = store.as_ref();
     init_store(path)?;
     let store = PolicyStore::open(path)?;
 

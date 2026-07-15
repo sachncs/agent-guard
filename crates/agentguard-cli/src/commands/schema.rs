@@ -1,7 +1,8 @@
 use agentguard_core::{describe, PolicyStore};
 use anyhow::Result;
+use std::path::Path;
 
-pub fn run(store: &str, output: &str) -> Result<()> {
+pub fn run(store: impl AsRef<Path>, output: &str) -> Result<()> {
     let store = PolicyStore::open(store)?;
     match store.load_schema()? {
         Some(schema) => {

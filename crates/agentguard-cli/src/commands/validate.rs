@@ -1,7 +1,8 @@
 use agentguard_core::PolicyStore;
 use anyhow::Result;
+use std::path::Path;
 
-pub fn run(store: &str, _output: &str) -> Result<()> {
+pub fn run(store: impl AsRef<Path>, _output: &str) -> Result<()> {
     let store = PolicyStore::open(store)?;
     let report = store.validate()?;
     println!("Loaded {} policies.", report.policy_count);

@@ -1,14 +1,15 @@
 use agentguard_core::DecisionLog;
 use anyhow::Result;
+use std::path::Path;
 
 pub fn tail(
-    audit: &str,
+    audit: impl AsRef<Path>,
     n: usize,
     principal: Option<&str>,
     action: Option<&str>,
     output: &str,
 ) -> Result<()> {
-    let records = DecisionLog::read_all(audit)?;
+    let records = DecisionLog::read_all(audit.as_ref())?;
     let mut filtered: Vec<_> = records
         .into_iter()
         .filter(|r| principal.map(|p| r.principal.contains(p)).unwrap_or(true))
@@ -39,8 +40,8 @@ pub fn tail(
     Ok(())
 }
 
-pub fn dump(audit: &str, output: &str) -> Result<()> {
-    let records = DecisionLog::read_all(audit)?;
+pub fn dump(audit: impl AsRef<Path>, output: &str) -> Result<()> {
+    let records = DecisionLog::read_all(audit.as_ref())?;
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(&records)?);
     } else {

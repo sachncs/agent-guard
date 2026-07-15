@@ -1,5 +1,7 @@
+use agentguard_core::auth_keys::Algorithm;
 use agentguard_core::{DelegationConfig, DelegationSigner, DelegationToken};
 use anyhow::{anyhow, Result};
+use base64::Engine as _;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,11 +14,11 @@ pub fn run(
     resources: Vec<String>,
     ttl: i64,
     key_id: Option<&str>,
-    key_file: Option<&str>,
-    out_path: Option<&str>,
+    key_file: Option<impl AsRef<Path>>,
+    out_path: Option<impl AsRef<Path>>,
     output: &str,
 ) -> Result<()> {
-    let signer = load_signer(key_id, key_file, output)?;
+    let signer = load_signer(key_id, key_file.as_ref().map(|p| p.as_ref()), output)?;
     let token = signer.mint(
         from,
         to,
@@ -30,9 +32,9 @@ pub fn run(
 
     let jws = token.to_jws().to_string();
     if let Some(p) = out_path {
-        std::fs::write(p, &jws)?;
+        std::fs::write(p.as_ref(), &jws)?;
         if output != "json" {
-            println!("wrote token to {}", p);
+            println!("wrote token to {}", p.as_ref().display());
         }
     } else if output == "json" {
         println!("{}", serde_json::to_string_pretty(&token)?);
@@ -42,7 +44,7 @@ pub fn run(
     Ok(())
 }
 
-pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
+pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Result<()> {
     let path = Path::new(token_str);
     let compact = if path.exists() && path.is_file() {
         std::fs::read_to_string(path)?.trim().to_string()
@@ -52,7 +54,7 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
     let _token = DelegationToken::parse(&compact)?;
 
     let mut verifier = agentguard_core::DelegationVerifier::new();
-    let text = std::fs::read_to_string(keys_path)?;
+    let text = std::fs::read_to_string(keys_path.as_ref())?;
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -63,11 +65,7 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
             .ok_or_else(|| anyhow!("expected `kid=base64pubkey` in keys file"))?;
         let bytes = base64_decode(key.trim())?;
         verifier
-            .add_key(
-                id.trim(),
-                agentguard_core::auth_keys::Algorithm::EdDSA,
-                &bytes,
-            )
+            .add_key(id.trim(), Algorithm::EdDSA, &bytes)
             .map_err(|e| anyhow!("add key: {}", e))?;
     }
 
@@ -96,7 +94,7 @@ pub fn verify(token_str: &str, keys_path: &str, output: &str) -> Result<()> {
 
 fn load_signer(
     key_id: Option<&str>,
-    key_file: Option<&str>,
+    key_file: Option<&Path>,
     output: &str,
 ) -> Result<Arc<DelegationSigner>> {
     if let Some(p) = key_file {
@@ -104,7 +102,7 @@ fn load_signer(
     }
     if let Some(p) = key_id {
         if Path::new(p).exists() {
-            return Ok(Arc::new(load_signer_from_file(p, Some(p))?));
+            return Ok(Arc::new(load_signer_from_file(Path::new(p), Some(p))?));
         }
         let bytes = decode_payload(p)?;
         let mut s = DelegationSigner::from_bytes(&bytes)?;
@@ -124,7 +122,7 @@ fn load_signer(
     Ok(Arc::new(s))
 }
 
-fn load_signer_from_file(path: &str, kid_hint: Option<&str>) -> Result<DelegationSigner> {
+fn load_signer_from_file(path: &Path, kid_hint: Option<&str>) -> Result<DelegationSigner> {
     let text = std::fs::read_to_string(path)?;
     let payload = if let Some(idx) = text.find('=') {
         text[idx + 1..].trim().to_string()
@@ -144,25 +142,11 @@ fn load_signer_from_file(path: &str, kid_hint: Option<&str>) -> Result<Delegatio
 fn decode_payload(s: &str) -> Result<Vec<u8>> {
     let s = s.trim();
     if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return hex_decode(s);
+        return hex::decode(s).map_err(|e| anyhow!("hex: {}", e));
     }
-    use base64::Engine as _;
     base64::engine::general_purpose::STANDARD
         .decode(s)
         .map_err(|e| anyhow!("invalid key payload (need 64-char hex or base64): {}", e))
-}
-
-fn hex_decode(s: &str) -> Result<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return Err(anyhow!("hex string has odd length"));
-    }
-    let mut out = Vec::with_capacity(s.len() / 2);
-    for i in (0..s.len()).step_by(2) {
-        let byte =
-            u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| anyhow!("invalid hex: {}", e))?;
-        out.push(byte);
-    }
-    Ok(out)
 }
 
 fn base64_decode(s: &str) -> Result<Vec<u8>> {

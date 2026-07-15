@@ -1,8 +1,15 @@
-use agentguard_core::{authorize::build_entities, AgentRequest, Authorizer, PolicyStore};
+use agentguard_core::authorize::build_entities;
+use agentguard_core::{AgentRequest, Authorizer, PolicyStore};
 use anyhow::Result;
+use std::path::Path;
 
-pub fn run(store: &str, request: &str, entities_path: Option<&str>, output: &str) -> Result<()> {
-    let text = if request == "-" {
+pub fn run(
+    store: impl AsRef<Path>,
+    request: impl AsRef<Path>,
+    entities_path: Option<impl AsRef<Path>>,
+    output: &str,
+) -> Result<()> {
+    let text = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
         buf
@@ -12,7 +19,7 @@ pub fn run(store: &str, request: &str, entities_path: Option<&str>, output: &str
     let req: AgentRequest = serde_json::from_str(&text)?;
 
     let entities = if let Some(p) = entities_path {
-        let text = std::fs::read_to_string(p)?;
+        let text = std::fs::read_to_string(p.as_ref())?;
         let arr: Vec<serde_json::Value> = serde_json::from_str(&text)?;
         build_entities(arr)?
     } else {

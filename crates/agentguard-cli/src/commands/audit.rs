@@ -4,13 +4,14 @@ use agentguard_core::decision::{AuditFormat, DecisionLog};
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::path::Path;
 use std::str::FromStr;
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub fn verify(audit_path: &str, secret_file: &str, output: &str) -> Result<()> {
-    let key = std::fs::read(secret_file)
-        .map_err(|e| anyhow!("read secret file {}: {}", secret_file, e))?;
+pub fn verify(audit_path: impl AsRef<Path>, secret_file: impl AsRef<Path>, output: &str) -> Result<()> {
+    let key = std::fs::read(secret_file.as_ref())
+        .map_err(|e| anyhow!("read secret file: {}", e))?;
     let key_str = std::str::from_utf8(&key)
         .map_err(|e| anyhow!("secret must be utf-8: {}", e))?
         .trim();
@@ -19,7 +20,7 @@ pub fn verify(audit_path: &str, secret_file: &str, output: &str) -> Result<()> {
     } else {
         key.to_vec()
     };
-    let chain_id = DecisionLog::verify_chain(audit_path, &key_bytes)?;
+    let chain_id = DecisionLog::verify_chain(audit_path.as_ref(), &key_bytes)?;
     if output == "json" {
         println!(
             "{}",
@@ -28,19 +29,23 @@ pub fn verify(audit_path: &str, secret_file: &str, output: &str) -> Result<()> {
     } else {
         println!("✓ audit log chain verified");
         println!("  chain_id: {}", chain_id);
-        println!("  file:     {}", audit_path);
+        println!("  file:     {}", audit_path.as_ref().display());
     }
     Ok(())
 }
 
-pub fn export(audit_path: &str, format: &str, out_path: Option<&str>, _output: &str) -> Result<()> {
-    let format = AuditFormat::from_str(format)
-        .map_err(|e| anyhow!(e))?;
-    let records = DecisionLog::read_all(audit_path)?;
+pub fn export(
+    audit_path: impl AsRef<Path>,
+    format: &str,
+    out_path: Option<impl AsRef<Path>>,
+    _output: &str,
+) -> Result<()> {
+    let format = AuditFormat::from_str(format).map_err(anyhow::Error::msg)?;
+    let records = DecisionLog::read_all(audit_path.as_ref())?;
     let lines: Vec<String> = records.iter().map(|r| format.format(r)).collect();
     if let Some(p) = out_path {
-        std::fs::write(p, lines.join("\n") + "\n")?;
-        println!("wrote {} records to {}", lines.len(), p);
+        std::fs::write(p.as_ref(), lines.join("\n") + "\n")?;
+        println!("wrote {} records to {}", lines.len(), p.as_ref().display());
     } else {
         for line in &lines {
             println!("{}", line);
@@ -49,8 +54,8 @@ pub fn export(audit_path: &str, format: &str, out_path: Option<&str>, _output: &
     Ok(())
 }
 
-pub fn sar(audit_path: &str, subject_id: &str, output: &str) -> Result<()> {
-    let records = DecisionLog::read_all(audit_path)?;
+pub fn sar(audit_path: impl AsRef<Path>, subject_id: &str, output: &str) -> Result<()> {
+    let records = DecisionLog::read_all(audit_path.as_ref())?;
     let matching: Vec<_> = records
         .into_iter()
         .filter(|r| r.principal == subject_id || r.subject_id.as_deref() == Some(subject_id))
@@ -78,14 +83,13 @@ pub fn sar(audit_path: &str, subject_id: &str, output: &str) -> Result<()> {
 }
 
 pub fn erase(
-    audit_path: &str,
+    audit_path: impl AsRef<Path>,
     subject_id: &str,
-    salt_file: &str,
-    out_path: Option<&str>,
+    salt_file: impl AsRef<Path>,
+    out_path: Option<impl AsRef<Path>>,
 ) -> Result<()> {
-    let salt =
-        std::fs::read(salt_file).map_err(|e| anyhow!("read salt file {}: {}", salt_file, e))?;
-    let records = DecisionLog::read_all_chained(audit_path)?;
+    let salt = std::fs::read(salt_file.as_ref()).map_err(|e| anyhow!("read salt file: {}", e))?;
+    let records = DecisionLog::read_all_chained(audit_path.as_ref())?;
     let mut out = Vec::new();
     let mut erased = 0;
     for mut cr in records {
@@ -106,7 +110,8 @@ pub fn erase(
         // the HMAC no longer recomputes for erased rows.
         out.push(cr);
     }
-    let target = out_path.unwrap_or(audit_path);
+    // Default to in-place rewrite; honor explicit --out if given.
+    let target = out_path.as_ref().map(|p| p.as_ref()).unwrap_or_else(|| audit_path.as_ref());
     let file = std::fs::File::create(target)?;
     let mut writer = std::io::BufWriter::new(file);
     for cr in &out {
@@ -118,7 +123,7 @@ pub fn erase(
         "erased {} records; wrote {} records to {}",
         erased,
         out.len(),
-        target
+        target.display()
     );
     if erased > 0 {
         println!(
@@ -171,7 +176,7 @@ mod tests {
 
         let salt_path = dir.path().join("salt");
         std::fs::write(&salt_path, b"random-salt-bytes").unwrap();
-        erase(path.to_str().unwrap(), "alice", salt_path.to_str().unwrap(), None).unwrap();
+        erase(&path, "alice", &salt_path, None::<&Path>).unwrap();
 
         // Re-read as ChainedRecord and verify the chain metadata is intact.
         let records = DecisionLog::read_all_chained(&path).unwrap();
