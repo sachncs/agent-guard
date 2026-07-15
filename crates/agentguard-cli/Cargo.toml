@@ -31,3 +31,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 [dev-dependencies]
 tempfile = "3"
+
+# Workspace lint policy (see /Cargo.toml).
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Allow pedantic lints globally - they would require a separate
+# cleanup commit to address. Track in a follow-up issue.
+pedantic = "allow"

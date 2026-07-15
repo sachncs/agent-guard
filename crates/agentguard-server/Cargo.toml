@@ -37,3 +37,12 @@ cedar-policy.workspace = true
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+
+# Workspace lint policy (see /Cargo.toml).
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Allow pedantic lints globally - they would require a separate
+# cleanup commit to address. Track in a follow-up issue.
+pedantic = "allow"

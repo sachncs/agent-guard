@@ -33,3 +33,12 @@ rand = { workspace = true, optional = true }
 
 argon2 = { version = "0.5", optional = true }
 rust-spiffe = { version = "0.5", optional = true, package = "spiffe" }
+
+# Workspace lint policy (see /Cargo.toml).
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Allow pedantic lints globally - they would require a separate
+# cleanup commit to address. Track in a follow-up issue.
+pedantic = "allow"

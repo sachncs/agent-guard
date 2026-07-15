@@ -52,3 +52,15 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
+
+# Benchmarks keep debug info so flamegraphs and profilers resolve
+# symbols; release optimizations otherwise (per the profile above).
+[profile.bench]
+debug = true
+
+# Workspace lint policy (applied to every member crate). Each crate
+# inherits these by default; a crate can opt out by re-declaring
+# [lints.rust] / [lints.clippy] in its own Cargo.toml (rare).
+#
+# Per-crate [lints] tables in each Cargo.toml re-declare the same
+# allow-list so individual crates can lint independently."
