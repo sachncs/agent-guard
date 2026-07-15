@@ -1,12 +1,22 @@
+<div align="center">
+
 # agentguard
 
-> **Enterprise-grade Cedar-powered authorization for AI agents.**
+**Enterprise-grade Cedar-powered authorization for AI agents.**
+
+</div>
+
+<div align="center">
 
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master)](https://github.com/sachncs/agent-guard/actions)
 [![crates.io](https://img.shields.io/crates/v/agentguard-core)](https://crates.io/crates/agentguard-core)
 [![Stars](https://img.shields.io/github/stars/sachncs/agent-guard)](https://github.com/sachncs/agent-guard/stargazers)
+
+</div>
+
+<div align="center">
 
 **agentguard** wraps [Cedar](https://www.cedarpolicy.com) — an
 open-source policy language designed for these requirements, with formal
@@ -17,26 +27,79 @@ to a short-lived identity. Tokens are JWS-signed, policies are versioned
 and hot-reloaded, and the engine speaks the
 [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 
+</div>
+
+## How it works
+
 ```text
-                          your agent / service
-  ┌────────────────┐    ┌─────────────────┐    ┌──────────────┐
-  │ LangChain /     │ →  │   agentguard    │ →  │ cedar-policy │
-  │ Vercel AI /     │    │  SDK (Py/Node)   │    │   + Cedar    │
-  │ raw HTTP / WS   │    │  in-process or   │    │   schema     │
-  └────────────────┘    │  subprocess      │    └──────────────┘
-                        └─────────────────┘            │
-                                │                     │
-                                ▼                     ▼
-                  ┌──────────────────────────────────────┐
-                  │       agentguard-server (PDP)       │
-                  │      AuthZEN HTTP PDP              │
-                  └──────────────────────────────────────┘
+   Agent (LLM)
+     │  "I want to call send_email(...)"
+     ▼
+   ╔════════════════════════════════════════════════════════════════╗
+   ║                         agentguard                              ║
+   ║                                                                ║
+   ║   1. intercept every tool call (SDK or HTTP PDP)               ║
+   ║                                                                ║
+   ║   2. evaluate against Cedar policies                           ║
+   ║      ┌──────────────────────────────────────────┐              ║
+   ║      │  principal: User::"alice"                │              ║
+   ║      │  action:    Action::"ToolCall::…"       │              ║
+   ║      │  resource:  Mailbox::"alice@acme"        │              ║
+   ║      │  context:   { session, args, … }        │              ║
+   ║      │              ▼                          │              ║
+   ║      │   .agentguard/policies/*.cedar evaluated │              ║
+   ║      │   + per-request entities (AuthZEN body) │              ║
+   ║      └──────────────────────────────────────────┘              ║
+   ║                                                                ║
+   ║   3. return Allow | Deny                                        ║
+   ╚════════════════════════════╤═══════════════════════════════════╝
                                 │
-                                ▼
+                 ┌──────────────┴──────────────┐
+                 │                             │
+              Allow                         Deny
+                 │                             │
+                 ▼                             ▼
+          tool call runs              raise AuthorizationDenied
+                                                exception
+                 │
+                 │  every decision
+                 ▼
+   ┌──────────────────────────────────────────────────┐
+   │  audit log (hash-chained, tamper-evident)         │
+   │  per record: id, ts, principal, action,         │
+   │               resource, effect, decision,         │
+   │               prev_hash, record_hash, chain_id    │
+   │                                                  │
+   │  exports: CEF / LEEF / ECS / JSONL                │
+   └──────────────────────────────────────────────────┘
+```
+
+## Surfaces
+
+agentguard is invoked in one of four ways; they all converge on the
+same Cedar engine and the same audit log:
+
+```text
+   ┌───────────────────────┐
+   │  your app / agent      │
+   └───────────┬───────────┘
+               │ tool call
+   ┌───────────┴────────────────────────────────────────┐
+   │                                                    │
+   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐  │
+   │  │ Python  │  │   TS /   │  │   CLI    │  │ HTTP │  │
+   │  │  SDK    │  │  Node    │  │ `agent-  │  │Auth- │  │
+   │  │ (in-    │  │  SDK     │  │  guard`  │  │ ZEN  │  │
+   │  │ process)│  │ (in-proc)│  │  (sub-   │  │ (PDP)│  │
+   │  └────┬────┘  └────┬─────┘  │  process)│  └──┬───┘  │
+   │       │             │        └────┬──────┘    │      │
+   │       └─────────────┴─────────────┘           │      │
+   │                          │                   │      │
+   └──────────────────────────┼───────────────────┼──────┘
+                              ▼
               ┌──────────────────────────────────┐
-              │    hash-chained audit log          │
-              │   CEF / LEEF / ECS / JSONL        │
-              │   W3C trace context per decision  │
+              │  agentguard-core (Cedar engine)   │
+              │  decision cache, audit log        │
               └──────────────────────────────────┘
 ```
 
