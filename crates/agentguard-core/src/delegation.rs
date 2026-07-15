@@ -681,12 +681,11 @@ mod tests {
             .unwrap();
 
         let verifier = DelegationVerifier::new();
-        verifier
-            .add_key(
-                signer.key_id(),
-                Algorithm::EdDSA,
-                &signer.public_key_b64_bytes(),
-            );
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        );
         let v = verifier
             .verify(
                 token.to_jws(),
@@ -715,12 +714,11 @@ mod tests {
         let forged = format!("{}.{}.{}", parts[0], parts[1], bogus);
 
         let verifier = DelegationVerifier::new();
-        verifier
-            .add_key(
-                signer.key_id(),
-                Algorithm::EdDSA,
-                &signer.public_key_b64_bytes(),
-            );
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        );
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -739,12 +737,11 @@ mod tests {
             )
             .unwrap();
         let verifier = DelegationVerifier::new();
-        verifier
-            .add_key(
-                signer.key_id(),
-                Algorithm::EdDSA,
-                &signer.public_key_b64_bytes(),
-            );
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        );
         let res = verifier.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -785,12 +782,11 @@ mod tests {
         let forged = format!("{}.{}.{}", header_b64, parts[1], sig_b64);
 
         let verifier = DelegationVerifier::new();
-        verifier
-            .add_key(
-                signer.key_id(),
-                Algorithm::EdDSA,
-                &signer.public_key_b64_bytes(),
-            );
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        );
         let res = verifier.verify(&forged, "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
     }
@@ -920,12 +916,11 @@ mod tests {
             )
             .unwrap();
         let verifier = DelegationVerifier::new();
-        verifier
-            .add_key(
-                signer.key_id(),
-                Algorithm::EdDSA,
-                &signer.public_key_b64_bytes(),
-            );
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        );
         let v = verifier
             .verify(token.to_jws(), "aud", chrono::Utc::now().timestamp())
             .unwrap();

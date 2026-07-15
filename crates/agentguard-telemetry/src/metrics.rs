@@ -73,9 +73,7 @@ impl Histogram {
         let mut sorted = buckets.to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         sorted.dedup();
-        let bucket_counts = (0..sorted.len() + 1)
-            .map(|_| Counter::new())
-            .collect();
+        let bucket_counts = (0..sorted.len() + 1).map(|_| Counter::new()).collect();
         Self {
             name: name.into(),
             buckets: sorted,

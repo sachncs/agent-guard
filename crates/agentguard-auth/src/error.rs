@@ -1,4 +1,4 @@
-// TODO(stage-3): full AuthError hierarchy with structured context. See stages/STAGE-3-auth.md.
+//! Error types for agentguard-auth.
 
 use thiserror::Error;
 

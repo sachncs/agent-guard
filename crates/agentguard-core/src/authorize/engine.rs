@@ -145,7 +145,6 @@ impl Authorizer {
 mod tests {
     use super::*;
     use crate::request::AgentRequestBuilder;
-    use crate::ttl::SystemClock;
     use crate::{AgentAction, AgentContext, Principal, Resource};
     use tempfile::tempdir;
 
@@ -156,7 +155,9 @@ mod tests {
     fn make_authorizer() -> Authorizer {
         let dir = tempdir().unwrap();
         let store = PolicyStore::open(dir.path()).unwrap();
-        store.write_policy("allow_alice", allow_alice_email()).unwrap();
+        store
+            .write_policy("allow_alice", allow_alice_email())
+            .unwrap();
         Authorizer::new(store).unwrap()
     }
 
@@ -181,7 +182,10 @@ mod tests {
         let trace = decision.trace.expect("trace must be populated");
         assert_eq!(trace["decision"], serde_json::json!("Allow"));
         let matched = trace["matched_policies"].as_array().unwrap();
-        assert!(!matched.is_empty(), "matched_policies should list the matched policy");
+        assert!(
+            !matched.is_empty(),
+            "matched_policies should list the matched policy"
+        );
         // Cedar auto-generates policy IDs (policy0, policy1, ...) when
         // none is supplied. Just verify the array is populated.
         assert!(matched[0].is_string());
@@ -232,10 +236,5 @@ mod tests {
         assert_eq!(decision.effect, Effect::Deny);
         let trace = decision.trace.expect("trace must be populated");
         assert_eq!(trace["decision"], serde_json::json!("Deny"));
-    }
-
-    #[allow(dead_code)]
-    fn _unused() {
-        let _ = SystemClock;
     }
 }

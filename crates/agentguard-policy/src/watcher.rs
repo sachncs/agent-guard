@@ -113,10 +113,7 @@ impl PolicyWatcher {
 /// Watch a directory for changes to `*.cedar` files. The returned
 /// `Watcher` is debounced: events that arrive within `debounce` of
 /// each other are coalesced into a single batch.
-pub fn watch<P: AsRef<Path>>(
-    dir: P,
-    debounce: Duration,
-) -> std::io::Result<PolicyWatcher> {
+pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<PolicyWatcher> {
     let (tx, rx) = channel();
     let dir = dir.as_ref().to_path_buf();
     let mut inner = notify::recommended_watcher(move |res: notify::Result<Event>| {
@@ -160,7 +157,8 @@ mod tests {
         let path = dir.path().join("test.cedar");
         {
             let mut f = fs::File::create(&path).unwrap();
-            f.write_all(b"permit (principal, action, resource);\n").unwrap();
+            f.write_all(b"permit (principal, action, resource);\n")
+                .unwrap();
         }
         // Wait for the debounce window to elapse plus a small margin.
         std::thread::sleep(Duration::from_millis(150));

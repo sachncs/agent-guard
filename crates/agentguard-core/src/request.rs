@@ -248,7 +248,10 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(format!("{}", req.principal), "User::\"alice\"");
-        assert_eq!(format!("{}", req.action), "Action::\"ToolCall::send_email\"");
+        assert_eq!(
+            format!("{}", req.action),
+            "Action::\"ToolCall::send_email\""
+        );
         assert_eq!(format!("{}", req.resource), "Mailbox::\"alice@acme\"");
         assert!(req.request_id.is_some());
     }

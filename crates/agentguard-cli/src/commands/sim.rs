@@ -39,10 +39,7 @@ pub fn run(
         };
         println!(
             "{}  {} → {} on {}",
-            sym,
-            req.principal,
-            req.action,
-            req.resource
+            sym, req.principal, req.action, req.resource
         );
         if !decision.policies.is_empty() {
             println!("    policies: {}", decision.policies.join(", "));

@@ -196,11 +196,7 @@ async fn readyz(State(state): State<AppState>) -> Response {
 }
 
 fn readyz_unavailable(reason: &str) -> Response {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        format!("{reason}\n"),
-    )
-        .into_response()
+    (StatusCode::SERVICE_UNAVAILABLE, format!("{reason}\n")).into_response()
 }
 
 fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
@@ -246,10 +242,7 @@ fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, Strin
     build_entities(items.to_vec()).map_err(|e| format!("entities: {}", e))
 }
 
-async fn evaluation(
-    State(state): State<AppState>,
-    Json(req): Json<EvaluationRequest>,
-) -> Response {
+async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationRequest>) -> Response {
     let per_request_entities = req.entities.clone();
     let agent_req = match evaluation_request_to_agent(req) {
         Ok(r) => r,
