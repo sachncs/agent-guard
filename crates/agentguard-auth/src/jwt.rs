@@ -84,6 +84,23 @@ impl JwtValidator {
     /// signature) in this release; RS256/ES256 support requires adding the
     /// `jsonwebtoken` crate as a feature in v2.1.
     pub fn validate(&self, token: &str) -> Result<ValidatedJwt> {
+        let (header, claims, signing_input, signature) = Self::parse_token(token)?;
+        let (alg, kid) = self.check_header(&header)?;
+        self.check_signature(&signing_input, &signature, &kid, alg)?;
+        self.check_claims(&claims)?;
+        Ok(ValidatedJwt { header, claims })
+    }
+
+    /// Parse a compact JWS into its constituent parts. Returns the decoded
+    /// header, claims, signing input bytes, and signature bytes.
+    fn parse_token(
+        token: &str,
+    ) -> Result<(
+        HashMap<String, serde_json::Value>,
+        serde_json::Value,
+        Vec<u8>,
+        Vec<u8>,
+    )> {
         let parts: Vec<&str> = token.split('.').collect();
         if parts.len() != 3 {
             return Err(AuthError::JwtInvalid("expected 3 parts".into()));
@@ -94,6 +111,24 @@ impl JwtValidator {
         let header: HashMap<String, serde_json::Value> = serde_json::from_slice(&header_bytes)
             .map_err(|e| AuthError::JwtInvalid(format!("header json: {}", e)))?;
 
+        let claims_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[1])
+            .map_err(|e| AuthError::JwtInvalid(format!("claims b64: {}", e)))?;
+        let claims: serde_json::Value = serde_json::from_slice(&claims_bytes)
+            .map_err(|e| AuthError::JwtInvalid(format!("claims json: {}", e)))?;
+
+        let signing_input = format!("{}.{}", parts[0], parts[1]).into_bytes();
+        let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[2])
+            .map_err(|e| AuthError::JwtInvalid(format!("sig b64: {}", e)))?;
+        Ok((header, claims, signing_input, signature))
+    }
+
+    /// Extract and validate the `alg` and `kid` from the JOSE header.
+    fn check_header(
+        &self,
+        header: &HashMap<String, serde_json::Value>,
+    ) -> Result<(Algorithm, String)> {
         let alg_str = header
             .get("alg")
             .and_then(|v| v.as_str())
@@ -109,38 +144,37 @@ impl JwtValidator {
         let kid = header
             .get("kid")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AuthError::JwtInvalid("missing kid".into()))?;
+            .ok_or_else(|| AuthError::JwtInvalid("missing kid".into()))?
+            .to_string();
+        Ok((alg, kid))
+    }
 
-        let claims_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(parts[1])
-            .map_err(|e| AuthError::JwtInvalid(format!("claims b64: {}", e)))?;
-        let claims: serde_json::Value = serde_json::from_slice(&claims_bytes)
-            .map_err(|e| AuthError::JwtInvalid(format!("claims json: {}", e)))?;
-
-        // Verify signature.
-        let signing_input = format!("{}.{}", parts[0], parts[1]).into_bytes();
-        let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(parts[2])
-            .map_err(|e| AuthError::JwtInvalid(format!("sig b64: {}", e)))?;
+    /// Verify the JWS signature using one of the keys registered for `(kid, alg)`.
+    fn check_signature(
+        &self,
+        signing_input: &[u8],
+        signature: &[u8],
+        kid: &str,
+        alg: Algorithm,
+    ) -> Result<()> {
         let keys = self.keys.get(kid, alg);
         if keys.is_empty() {
             return Err(AuthError::JwtUnknownKid(kid.to_string()));
         }
-        let mut verified = false;
         for key in keys {
-            if verify_signature(alg, &key, &signing_input, &signature).is_ok() {
-                verified = true;
-                break;
+            if verify_signature(alg, &key, signing_input, signature).is_ok() {
+                return Ok(());
             }
         }
-        if !verified {
-            return Err(AuthError::JwtInvalid(
-                "signature verification failed".into(),
-            ));
-        }
+        Err(AuthError::JwtInvalid(
+            "signature verification failed".into(),
+        ))
+    }
 
-        // Validate iss (REQUIRED — RFC 8725 §3.1: a JWT without `iss` is
-        // not bound to a known issuer and must be rejected).
+    /// Validate the standard claims: `iss` (required), `aud` (matches),
+    /// `exp` (required, not expired), `nbf` (not in future).
+    fn check_claims(&self, claims: &serde_json::Value) -> Result<()> {
+        // iss (RFC 8725 §3.1: required).
         let iss = claims
             .get("iss")
             .and_then(|v| v.as_str())
@@ -154,6 +188,8 @@ impl JwtValidator {
                 actual: iss.to_string(),
             });
         }
+
+        // aud: must contain self.config.audience.
         let aud_ok = match claims.get("aud") {
             Some(serde_json::Value::String(s)) => *s == self.config.audience,
             Some(serde_json::Value::Array(arr)) => arr
@@ -167,20 +203,33 @@ impl JwtValidator {
                 actual: format!("{:?}", claims.get("aud")),
             });
         }
+
+        // exp (required, RFC 8725 §3.12).
+        let exp = claims
+            .get("exp")
+            .and_then(|v| v.as_i64())
+            .ok_or(AuthError::JwtExpired)?;
         let now = chrono::Utc::now().timestamp();
         let skew = self.config.clock_skew.as_secs() as i64;
-        if let Some(exp) = claims.get("exp").and_then(|v| v.as_i64()) {
-            if exp + skew < now {
-                return Err(AuthError::JwtExpired);
-            }
+        if exp + skew < now {
+            return Err(AuthError::JwtExpired);
         }
+
+        // nbf (optional): not in the future (with skew).
         if let Some(nbf) = claims.get("nbf").and_then(|v| v.as_i64()) {
             if nbf > now + skew {
                 return Err(AuthError::JwtInvalid("token not yet valid".into()));
             }
         }
 
-        Ok(ValidatedJwt { header, claims })
+        // iat (optional): not in the future (with skew).
+        if let Some(iat) = claims.get("iat").and_then(|v| v.as_i64()) {
+            if iat > now + skew {
+                return Err(AuthError::JwtInvalid("iat is in the future".into()));
+            }
+        }
+
+        Ok(())
     }
 
     /// Fetch JWKS from `jwks_uri` and populate the key registry. Idempotent.
@@ -395,6 +444,45 @@ mod tests {
         let token = sign_token(&signing_key, "kid1", claims);
         let res = v.validate(&token);
         assert!(matches!(res, Err(AuthError::JwtExpired)));
+    }
+
+    #[test]
+    fn missing_exp_rejected() {
+        // RFC 8725 §3.12: a JWT without `exp` is dangerous (a leaked
+        // token is forever valid). Reject at the validator.
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
+        let claims = serde_json::json!({
+            "iss": "https://idp.example.com",
+            "aud": "agentguard",
+            // no exp
+        });
+        let token = sign_token(&signing_key, "kid1", claims);
+        let res = v.validate(&token);
+        assert!(matches!(res, Err(AuthError::JwtExpired)));
+    }
+
+    #[test]
+    fn iat_in_future_rejected() {
+        // iat > now+skew should be rejected as suspicious (the token
+        // claims to have been issued in the future).
+        let mut csprng = OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("https://idp.example.com", "agentguard"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
+        let claims = serde_json::json!({
+            "iss": "https://idp.example.com",
+            "aud": "agentguard",
+            "exp": chrono::Utc::now().timestamp() + 3600,
+            "iat": chrono::Utc::now().timestamp() + 7200, // 2h in future
+        });
+        let token = sign_token(&signing_key, "kid1", claims);
+        let res = v.validate(&token);
+        assert!(matches!(res, Err(AuthError::JwtInvalid(_))));
     }
 
     #[test]

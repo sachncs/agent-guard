@@ -65,7 +65,35 @@ impl DpopVerifier {
         htu: &str,
         expected_jkt: &str,
     ) -> Result<()> {
-        // 1. Parse the compact JWS.
+        // 1. Parse the compact JWS into (header, claims, signing_input, signature).
+        let (header, claims, signing_input, signature) = Self::parse_proof(dpop_header)?;
+        // 2. Validate header typ + alg, extract jwk.
+        let jwk = self.check_header(&header)?;
+        // 3. Compute JWK thumbprint and verify it matches expected_jkt.
+        let raw_key = parse_ed25519_jwk(jwk)?;
+        let thumbprint = jwk_thumbprint_ed25519(jwk)?;
+        if !constant_time_eq(thumbprint.as_bytes(), expected_jkt.as_bytes()) {
+            return Err(AuthError::DpopInvalid("jkt mismatch".into()));
+        }
+        // 4. Verify the EdDSA signature using the jwk.
+        verify_dpop_signature(&raw_key, &signing_input, &signature)?;
+        // 5. Validate htm / htu / ath claims.
+        self.check_htm_htu_ath(&claims, htm, htu, access_token)?;
+        // 6. Replay protection: hash the jti to a 16-byte key.
+        let jti_key = jti_to_replay_key(claims.get("jti").and_then(|v| v.as_str()))?;
+        self.keys.check_and_record(&jti_key)?;
+        Ok(())
+    }
+
+    /// Parse the compact JWS into header, claims, signing input, signature.
+    fn parse_proof(
+        dpop_header: &str,
+    ) -> Result<(
+        serde_json::Value,
+        serde_json::Value,
+        Vec<u8>,
+        Vec<u8>,
+    )> {
         let parts: Vec<&str> = dpop_header.split('.').collect();
         if parts.len() != 3 {
             return Err(AuthError::DpopInvalid("expected 3 segments".into()));
@@ -83,8 +111,13 @@ impl DpopVerifier {
         let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(parts[2])
             .map_err(|e| AuthError::DpopInvalid(format!("sig b64: {}", e)))?;
+        let signing_input = format!("{}.{}", parts[0], parts[1]).into_bytes();
+        Ok((header, claims, signing_input, signature))
+    }
 
-        // 2. Validate header typ + alg.
+    /// Validate header `typ == "dpop+jwt"` and `alg == "EdDSA"`. Return the
+    /// `jwk` object for downstream use.
+    fn check_header<'a>(&self, header: &'a serde_json::Value) -> Result<&'a serde_json::Value> {
         let header_typ = header.get("typ").and_then(|v| v.as_str()).unwrap_or("");
         if header_typ != "dpop+jwt" {
             return Err(AuthError::DpopInvalid(format!(
@@ -102,29 +135,19 @@ impl DpopVerifier {
                 header_alg
             )));
         }
-
-        // 3. Extract the jwk public key.
-        let jwk = header
+        header
             .get("jwk")
-            .ok_or_else(|| AuthError::DpopInvalid("missing jwk in header".into()))?;
-        let raw_key = parse_ed25519_jwk(jwk)?;
+            .ok_or_else(|| AuthError::DpopInvalid("missing jwk in header".into()))
+    }
 
-        // 4. Compute the JWK thumbprint (RFC 7638) and compare to expected_jkt.
-        let thumbprint = jwk_thumbprint_ed25519(jwk)?;
-        if !constant_time_eq(thumbprint.as_bytes(), expected_jkt.as_bytes()) {
-            return Err(AuthError::DpopInvalid("jkt mismatch".into()));
-        }
-
-        // 5. Verify the EdDSA signature over the signing input using the jwk.
-        let signing_input = format!("{}.{}", parts[0], parts[1]);
-        let vk = VerifyingKey::from_bytes(&raw_key)
-            .map_err(|e| AuthError::DpopInvalid(format!("jwk key: {}", e)))?;
-        let sig = Signature::from_slice(&signature)
-            .map_err(|e| AuthError::DpopInvalid(format!("ed25519 sig: {}", e)))?;
-        vk.verify(signing_input.as_bytes(), &sig)
-            .map_err(|_| AuthError::DpopInvalid("signature verification failed".into()))?;
-
-        // 6. Validate htm / htu / ath claims.
+    /// Validate htm / htu / ath claims.
+    fn check_htm_htu_ath(
+        &self,
+        claims: &serde_json::Value,
+        htm: &str,
+        htu: &str,
+        access_token: &str,
+    ) -> Result<()> {
         let claim_htm = claims.get("htm").and_then(|v| v.as_str()).unwrap_or("");
         if claim_htm != htm {
             return Err(AuthError::DpopInvalid(format!(
@@ -141,27 +164,37 @@ impl DpopVerifier {
         }
         let mut hasher = Sha256::new();
         hasher.update(access_token.as_bytes());
-        let expected_ath =
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let expected_ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
         let claim_ath = claims.get("ath").and_then(|v| v.as_str()).unwrap_or("");
         if claim_ath != expected_ath {
             return Err(AuthError::DpopInvalid("ath mismatch".into()));
         }
-
-        // 7. Replay protection: hash the jti to a 16-byte key.
-        let jti_str = claims
-            .get("jti")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AuthError::DpopInvalid("missing jti".into()))?;
-        let mut hasher = Sha256::new();
-        hasher.update(jti_str.as_bytes());
-        let digest = hasher.finalize();
-        let mut jti_key = [0u8; 16];
-        jti_key.copy_from_slice(&digest[..16]);
-        self.keys.check_and_record(&jti_key)?;
-
         Ok(())
     }
+}
+
+/// Verify an EdDSA signature over `signing_input` using the Ed25519
+/// verifying key. The signature is in JWS format (raw 64 bytes).
+fn verify_dpop_signature(raw_key: &[u8; 32], signing_input: &[u8], signature: &[u8]) -> Result<()> {
+    let vk = VerifyingKey::from_bytes(raw_key)
+        .map_err(|e| AuthError::DpopInvalid(format!("jwk key: {}", e)))?;
+    let sig = Signature::from_slice(signature)
+        .map_err(|e| AuthError::DpopInvalid(format!("ed25519 sig: {}", e)))?;
+    vk.verify(signing_input, &sig)
+        .map_err(|_| AuthError::DpopInvalid("signature verification failed".into()))
+}
+
+/// Hash a DPoP `jti` string to a 16-byte replay-detection key. Per RFC 9449
+/// the jti is an opaque case-sensitive string; SHA-256 is sufficient since
+/// the JtiTracker is the authoritative store, this hash just buckets.
+fn jti_to_replay_key(jti: Option<&str>) -> Result<[u8; 16]> {
+    let jti_str = jti.ok_or_else(|| AuthError::DpopInvalid("missing jti".into()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(jti_str.as_bytes());
+    let digest = hasher.finalize();
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&digest[..16]);
+    Ok(key)
 }
 
 /// Parse the JWK members required for Ed25519 (`kty`, `crv`, `x`) and return
