@@ -1,7 +1,10 @@
 //! jti tracker for replay protection.
 //!
-//! Backed by a Bloom filter for probabilistic dedup at scale. The TTL eviction
-//! prunes entries whose `iat + ttl` is in the past.
+//! Backed by a `HashMap` keyed on the SHA-256(jti) prefix with TTL eviction.
+//! Entries whose `insert_time + ttl` is in the past are pruned on the next
+//! `check_and_record` call (opportunistic). For deployments with very high
+//! `jti` cardinality, replace the inner `HashMap` with a probabilistic
+//! structure (e.g. cuckoo filter or rolling Bloom filter).
 
 use crate::error::Result;
 use parking_lot::Mutex;

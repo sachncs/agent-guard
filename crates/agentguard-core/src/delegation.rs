@@ -226,15 +226,6 @@ fn slice_eq(a: &[u8], a_start: usize, a_end: usize, b: &[u8], b_start: usize) ->
     a[a_start..a_end] == b[b_start..b_start + len]
 }
 
-#[allow(dead_code)]
-fn glob_recurse(_parts: &[&str], _pi: usize, _value: &str, _vi: usize) -> bool {
-    // Deprecated: replaced by the iterative two-pointer walk in
-    // [`glob_match`]. Kept as a no-op for backward compatibility with
-    // any external caller that referenced it via the now-removed
-    // `pub(crate)` re-export path. New code should call `glob_match`.
-    false
-}
-
 /// TTL configuration for minting tokens.
 #[derive(Debug, Clone, Copy)]
 pub struct DelegationConfig {

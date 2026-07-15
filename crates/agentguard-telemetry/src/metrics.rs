@@ -9,45 +9,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Snapshot of a counter at a point in time. Snapshot semantics — for
-/// a live counter that can be incremented from multiple threads, use
-/// [`AtomicCounter`] (cheap, lock-free) instead.
-///
-/// `Counter` is deprecated and kept only for snapshot/boundary use.
-#[deprecated(
-    since = "0.2.1",
-    note = "Counter is a snapshot type and cannot increment. Use AtomicCounter for live counters."
-)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Counter {
-    value: u64,
-}
-
-#[allow(deprecated)]
-impl Counter {
-    /// Construct a snapshot from a value.
-    pub fn new(value: u64) -> Self {
-        Self { value }
-    }
-
-    /// Returns the snapshot value (does NOT mutate).
-    ///
-    /// The previous implementation returned `0` from `inc()` while
-    /// leaving `value` unchanged, which silently broke every caller
-    /// that relied on counter increments. Replaced with `new`/`get`
-    /// to make the snapshot semantics explicit.
-    pub fn get(&self) -> u64 {
-        self.value
-    }
-}
-
 /// Atomic-backed counter for cheap `inc()` from hot paths.
 #[derive(Debug, Default)]
-pub struct AtomicCounter {
+pub struct Counter {
     inner: AtomicU64,
 }
 
-impl AtomicCounter {
+impl Counter {
     pub fn new() -> Self {
         Self::default()
     }
@@ -95,9 +63,9 @@ pub struct Histogram {
     name: String,
     buckets: Vec<f64>,
     /// Counts of observations ≤ the bucket boundary. Last bucket is +Inf.
-    bucket_counts: Vec<AtomicCounter>,
+    bucket_counts: Vec<Counter>,
     sum_micros: AtomicU64,
-    count: AtomicCounter,
+    count: Counter,
 }
 
 impl Histogram {
@@ -106,14 +74,14 @@ impl Histogram {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         sorted.dedup();
         let bucket_counts = (0..sorted.len() + 1)
-            .map(|_| AtomicCounter::new())
+            .map(|_| Counter::new())
             .collect();
         Self {
             name: name.into(),
             buckets: sorted,
             bucket_counts,
             sum_micros: AtomicU64::new(0),
-            count: AtomicCounter::new(),
+            count: Counter::new(),
         }
     }
 
@@ -159,20 +127,20 @@ impl Histogram {
 /// Standard metrics for agentguard.
 pub struct Metrics {
     /// `agentguard.decision.total{effect,policy_id,action,tenant_id}`
-    decision_total: Mutex<HashMap<String, Arc<AtomicCounter>>>,
+    decision_total: Mutex<HashMap<String, Arc<Counter>>>,
     /// `agentguard.decision.duration_seconds{action,tenant_id}`
     decision_duration: Mutex<HashMap<String, Arc<Histogram>>>,
     /// `agentguard.delegation.mint.total`
-    delegation_mint_total: AtomicCounter,
+    delegation_mint_total: Counter,
     /// `agentguard.delegation.verify.total{outcome}`
-    delegation_verify_total: Mutex<HashMap<String, Arc<AtomicCounter>>>,
+    delegation_verify_total: Mutex<HashMap<String, Arc<Counter>>>,
     /// `agentguard.cache.hit.total` / `agentguard.cache.miss.total`
-    cache_hit_total: AtomicCounter,
-    cache_miss_total: AtomicCounter,
+    cache_hit_total: Counter,
+    cache_miss_total: Counter,
     /// `agentguard.policy.reload.total`
-    policy_reload_total: AtomicCounter,
+    policy_reload_total: Counter,
     /// `agentguard.pdp.error.total{fallback}`
-    pdp_error_total: Mutex<HashMap<String, Arc<AtomicCounter>>>,
+    pdp_error_total: Mutex<HashMap<String, Arc<Counter>>>,
 }
 
 impl Default for Metrics {
@@ -180,11 +148,11 @@ impl Default for Metrics {
         Self {
             decision_total: Mutex::new(HashMap::new()),
             decision_duration: Mutex::new(HashMap::new()),
-            delegation_mint_total: AtomicCounter::new(),
+            delegation_mint_total: Counter::new(),
             delegation_verify_total: Mutex::new(HashMap::new()),
-            cache_hit_total: AtomicCounter::new(),
-            cache_miss_total: AtomicCounter::new(),
-            policy_reload_total: AtomicCounter::new(),
+            cache_hit_total: Counter::new(),
+            cache_miss_total: Counter::new(),
+            policy_reload_total: Counter::new(),
             pdp_error_total: Mutex::new(HashMap::new()),
         }
     }
@@ -211,7 +179,7 @@ impl Metrics {
         self.decision_total
             .lock()
             .entry(key)
-            .or_insert_with(|| Arc::new(AtomicCounter::new()))
+            .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
         let dur_key = Self::label_key(&[action, tenant_id]);
         let mut durations = self.decision_duration.lock();
@@ -235,7 +203,7 @@ impl Metrics {
         self.delegation_verify_total
             .lock()
             .entry(key.to_string())
-            .or_insert_with(|| Arc::new(AtomicCounter::new()))
+            .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
     }
 
@@ -255,7 +223,7 @@ impl Metrics {
         self.pdp_error_total
             .lock()
             .entry(fallback.to_string())
-            .or_insert_with(|| Arc::new(AtomicCounter::new()))
+            .or_insert_with(|| Arc::new(Counter::new()))
             .inc();
     }
 
@@ -430,7 +398,7 @@ mod tests {
 
     #[test]
     fn counter_increments() {
-        let c = AtomicCounter::new();
+        let c = Counter::new();
         assert_eq!(c.inc(), 1);
         assert_eq!(c.inc(), 2);
         assert_eq!(c.add(5), 7);

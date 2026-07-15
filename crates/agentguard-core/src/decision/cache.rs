@@ -296,9 +296,9 @@ impl CacheStats {
     }
 }
 
-/// Helper: convert a request + policy_version into a cache key.
+/// Test helper: convert a request + policy_version into a cache key.
 #[cfg(test)]
-pub fn cache_key_for(req: &AgentRequest, policy_version: u64) -> CacheKey {
+fn cache_key_for(req: &AgentRequest, policy_version: u64) -> CacheKey {
     CacheKey::for_request(req, policy_version)
 }
 

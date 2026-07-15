@@ -86,11 +86,6 @@ impl Sink for OtlpSink {
 }
 
 #[cfg(feature = "otlp")]
-impl OtlpSink {
-    // No additional impl; placeholder for future helpers.
-}
-
-#[cfg(feature = "otlp")]
 impl Drop for OtlpSink {
     fn drop(&mut self) {
         // Best-effort shutdown; if it fails, the provider still flushes on drop.

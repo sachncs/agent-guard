@@ -8,6 +8,8 @@ use agentguard_core::policy::PolicyStore;
 use anyhow::Result;
 use std::path::Path;
 
+/// Status of a single diagnostic check.
+#[derive(Debug, Clone)]
 pub enum CheckStatus {
     Ok,
     Warn(String),
@@ -15,7 +17,7 @@ pub enum CheckStatus {
 }
 
 impl CheckStatus {
-    #[allow(dead_code)]
+    /// Single-character symbol for terminal output.
     pub fn symbol(&self) -> &'static str {
         match self {
             CheckStatus::Ok => "✓",
@@ -25,7 +27,8 @@ impl CheckStatus {
     }
 }
 
-#[allow(clippy::to_string_trait_impl)]
+/// Aggregated doctor report.
+#[derive(Debug, Clone)]
 pub struct DoctorReport {
     pub checks: Vec<(&'static str, CheckStatus)>,
 }
@@ -44,9 +47,13 @@ impl DoctorReport {
     pub fn print(&self) {
         for (name, status) in &self.checks {
             match status {
-                CheckStatus::Ok => println!("  \x1b[32m✓\x1b[0m {}", name),
-                CheckStatus::Warn(msg) => println!("  \x1b[33m!\x1b[0m {}: {}", name, msg),
-                CheckStatus::Fail(msg) => println!("  \x1b[31m✗\x1b[0m {}: {}", name, msg),
+                CheckStatus::Ok => println!("  \x1b[32m{}\x1b[0m {}", status.symbol(), name),
+                CheckStatus::Warn(msg) => {
+                    println!("  \x1b[33m{}\x1b[0m {}: {}", status.symbol(), name, msg)
+                }
+                CheckStatus::Fail(msg) => {
+                    println!("  \x1b[31m{}\x1b[0m {}: {}", status.symbol(), name, msg)
+                }
             }
         }
     }

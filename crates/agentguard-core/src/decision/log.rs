@@ -203,7 +203,7 @@ impl DecisionLog {
     }
 
     pub fn read_all(path: impl AsRef<Path>) -> Result<Vec<DecisionRecord>> {
-        Self::read_all_with_format(path, false)
+        Self::read_all_mixed(path)
     }
 
     pub fn read_all_chained(path: impl AsRef<Path>) -> Result<Vec<ChainedRecord>> {
@@ -221,7 +221,10 @@ impl DecisionLog {
         Ok(out)
     }
 
-    fn read_all_with_format(path: impl AsRef<Path>, _chained: bool) -> Result<Vec<DecisionRecord>> {
+    /// Read a JSONL audit log that may contain either plain
+    /// `DecisionRecord` lines or `ChainedRecord` lines (with the chain
+    /// metadata flattened). The format is auto-detected per line.
+    fn read_all_mixed(path: impl AsRef<Path>) -> Result<Vec<DecisionRecord>> {
         let f = File::open(path.as_ref())?;
         let r = BufReader::new(f);
         let mut out = Vec::new();
@@ -230,11 +233,14 @@ impl DecisionLog {
             if line.trim().is_empty() {
                 continue;
             }
-            // Try as ChainedRecord first, fall back to plain.
+            // Try as DecisionRecord first; on failure, treat as a
+            // ChainedRecord and extract the embedded record. This order
+            // is correct because ChainedRecord has additional fields
+            // (`prev_hash`, `record_hash`, `chain_id`) that would make
+            // DecisionRecord parsing fail.
             let rec: DecisionRecord = match serde_json::from_str(&line) {
                 Ok(r) => r,
                 Err(_) => {
-                    // Try unwrapping as ChainedRecord.
                     let chained: ChainedRecord = serde_json::from_str(&line)?;
                     chained.record
                 }
