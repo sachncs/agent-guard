@@ -28,10 +28,10 @@ use std::sync::Arc;
 /// resolves `principal in Group::"admins"` against an empty store. This
 /// is the single most common AuthZEN integration bug.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AuthZenEvaluationRequest {
-    pub subject: AuthZenEntityRef,
-    pub action: AuthZenEntityRef,
-    pub resource: AuthZenEntityRef,
+pub struct EvaluationRequest {
+    pub subject: EntityRef,
+    pub action: EntityRef,
+    pub resource: EntityRef,
     #[serde(default)]
     pub context: serde_json::Value,
     /// Optional list of entity JSON objects to make available to the
@@ -42,7 +42,7 @@ pub struct AuthZenEvaluationRequest {
 
 /// Subject/Action/Resource reference: a single entity.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AuthZenEntityRef {
+pub struct EntityRef {
     #[serde(rename = "type")]
     pub entity_type: String,
     pub id: String,
@@ -50,7 +50,7 @@ pub struct AuthZenEntityRef {
 
 /// AuthZEN EvaluationResponse.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthZenEvaluationResponse {
+pub struct EvaluationResponse {
     /// `true` = allow, `false` = deny.
     pub decision: bool,
     /// Optional context to return to the PEP (e.g. acr_values for step-up).
@@ -75,19 +75,19 @@ pub enum EvaluationSemantics {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AuthZenEvaluationsRequest {
-    pub evaluations: Vec<AuthZenEvaluationRequest>,
+pub struct BatchEvaluationRequest {
+    pub evaluations: Vec<EvaluationRequest>,
     #[serde(default)]
     pub evaluation_semantics: Option<EvaluationSemantics>,
     #[serde(default)]
-    pub subject: Option<AuthZenEntityRef>,
+    pub subject: Option<EntityRef>,
     #[serde(default)]
-    pub resource: Option<AuthZenEntityRef>,
+    pub resource: Option<EntityRef>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthZenEvaluationsResponse {
-    pub evaluations: Vec<AuthZenEvaluationResponse>,
+pub struct BatchEvaluationResponse {
+    pub evaluations: Vec<EvaluationResponse>,
 }
 
 /// Shared state for HTTP handlers.
@@ -184,7 +184,7 @@ fn readyz_unavailable(reason: &str) -> Response {
         .into_response()
 }
 
-fn evaluation_request_to_agent(req: AuthZenEvaluationRequest) -> Result<AgentRequest, String> {
+fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
     let principal = agentguard_core::Principal::user(req.subject.id.clone());
     // AuthZEN action.id is the full action UID like "ToolCall::send_email".
     // Strip the leading "ToolCall::" to fit agentguard's AgentAction shape.
@@ -229,7 +229,7 @@ fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, Strin
 
 async fn evaluation(
     State(state): State<AppState>,
-    Json(req): Json<AuthZenEvaluationRequest>,
+    Json(req): Json<EvaluationRequest>,
 ) -> Response {
     let per_request_entities = req.entities.clone();
     let agent_req = match evaluation_request_to_agent(req) {
@@ -251,7 +251,7 @@ async fn evaluation(
                     tracing::error!(error = %e, "audit append failed");
                 }
             }
-            let resp = AuthZenEvaluationResponse {
+            let resp = EvaluationResponse {
                 decision: matches!(decision.effect, Effect::Allow),
                 context: None,
                 reason: decision.reasons.first().cloned(),
@@ -273,7 +273,7 @@ async fn evaluation(
 
 async fn evaluations(
     State(state): State<AppState>,
-    Json(req): Json<AuthZenEvaluationsRequest>,
+    Json(req): Json<BatchEvaluationRequest>,
 ) -> Response {
     let semantics = req.evaluation_semantics.unwrap_or_default();
     // Use the top-level request entities for the whole batch. Per-item
@@ -300,7 +300,7 @@ async fn evaluations(
                         tracing::error!(error = %e, "audit append failed");
                     }
                 }
-                responses.push(AuthZenEvaluationResponse {
+                responses.push(EvaluationResponse {
                     decision: allow,
                     context: None,
                     reason: decision.reasons.first().cloned(),
@@ -324,7 +324,7 @@ async fn evaluations(
 
     (
         StatusCode::OK,
-        Json(AuthZenEvaluationsResponse {
+        Json(BatchEvaluationResponse {
             evaluations: responses,
         }),
     )
