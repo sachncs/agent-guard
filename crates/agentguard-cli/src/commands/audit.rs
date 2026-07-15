@@ -1,11 +1,10 @@
 //! Audit log commands: verify, export, sar, erase.
 
-use agentguard_core::decision::{
-    CefFormatter, DecisionLog, EcsFormatter, JsonlFormatter, LeefFormatter,
-};
+use agentguard_core::decision::{AuditFormat, DecisionLog};
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::str::FromStr;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -35,20 +34,10 @@ pub fn verify(audit_path: &str, secret_file: &str, output: &str) -> Result<()> {
 }
 
 pub fn export(audit_path: &str, format: &str, out_path: Option<&str>, _output: &str) -> Result<()> {
+    let format = AuditFormat::from_str(format)
+        .map_err(|e| anyhow!(e))?;
     let records = DecisionLog::read_all(audit_path)?;
-    let formatter: Box<dyn agentguard_core::decision::AuditFormatter> = match format {
-        "jsonl" => Box::new(JsonlFormatter),
-        "cef" => Box::new(CefFormatter),
-        "leef" => Box::new(LeefFormatter),
-        "ecs" => Box::new(EcsFormatter),
-        _ => {
-            return Err(anyhow!(
-                "unknown format: {} (use jsonl|cef|leef|ecs)",
-                format
-            ))
-        }
-    };
-    let lines: Vec<String> = records.iter().map(|r| formatter.format(r)).collect();
+    let lines: Vec<String> = records.iter().map(|r| format.format(r)).collect();
     if let Some(p) = out_path {
         std::fs::write(p, lines.join("\n") + "\n")?;
         println!("wrote {} records to {}", lines.len(), p);
