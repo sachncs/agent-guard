@@ -66,14 +66,22 @@ permit (
     (store / "policies" / "40_mfa_required.cedar").write_text(
         """\
 // All ToolCall actions require MFA in the session context.
+//
+// Cedar's Strict validator requires optional attributes to be
+// accessed inside an exhaustive `if then else` (the `||` operator
+// is not modelled as short-circuit by the static validator, so
+// a disjunction like `!has mfa || mfa == false` still triggers
+// the optional-access warning). The `if then else` form below
+// is exhaustive: in the `then` branch `mfa` is statically known
+// to exist; in the `else` branch it is not accessed.
 forbid (
   principal,
   action,
   resource
 ) when {
-  !(context has session) ||
-  !(context.session has mfa) ||
-  context.session.mfa == false
+  if context has session.mfa
+  then context.session.mfa == false
+  else true
 };
 """
     )
