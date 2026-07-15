@@ -65,10 +65,7 @@ impl OidcConfig {
             .await
             .map_err(|e| AuthError::OidcDiscovery(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(AuthError::OidcDiscovery(format!(
-                "HTTP {}",
-                resp.status()
-            )));
+            return Err(AuthError::OidcDiscovery(format!("HTTP {}", resp.status())));
         }
         let body = resp
             .text()

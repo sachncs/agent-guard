@@ -88,12 +88,7 @@ impl DpopVerifier {
     /// Parse the compact JWS into header, claims, signing input, signature.
     fn parse_proof(
         dpop_header: &str,
-    ) -> Result<(
-        serde_json::Value,
-        serde_json::Value,
-        Vec<u8>,
-        Vec<u8>,
-    )> {
+    ) -> Result<(serde_json::Value, serde_json::Value, Vec<u8>, Vec<u8>)> {
         let parts: Vec<&str> = dpop_header.split('.').collect();
         if parts.len() != 3 {
             return Err(AuthError::DpopInvalid("expected 3 segments".into()));
@@ -164,7 +159,8 @@ impl DpopVerifier {
         }
         let mut hasher = Sha256::new();
         hasher.update(access_token.as_bytes());
-        let expected_ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let expected_ath =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
         let claim_ath = claims.get("ath").and_then(|v| v.as_str()).unwrap_or("");
         if claim_ath != expected_ath {
             return Err(AuthError::DpopInvalid("ath mismatch".into()));
@@ -297,17 +293,14 @@ mod tests {
             .encode(serde_json::to_vec(&header).unwrap());
         let now = chrono::Utc::now().timestamp();
         let claims_json = if claims_extras.is_empty() {
-            format!(
-                r#"{{"jti":"{jti}","htm":"POST","htu":"https://example.com/x","iat":{now}}}"#
-            )
+            format!(r#"{{"jti":"{jti}","htm":"POST","htu":"https://example.com/x","iat":{now}}}"#)
         } else {
             format!(
                 r#"{{"jti":"{jti}","htm":"POST","htu":"https://example.com/x","iat":{now},{extra}}}"#,
                 extra = claims_extras
             )
         };
-        let p = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(claims_json.as_bytes());
+        let p = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims_json.as_bytes());
         let signing_input = format!("{}.{}", h, p);
         let sig = signer.sign(signing_input.as_bytes());
         let s = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig.to_bytes());
@@ -392,7 +385,13 @@ mod tests {
         let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
         let v = DpopVerifier::new(tracker);
         let err = v
-            .verify(&dpop, "different-token", "POST", "https://example.com/x", &jkt)
+            .verify(
+                &dpop,
+                "different-token",
+                "POST",
+                "https://example.com/x",
+                &jkt,
+            )
             .unwrap_err();
         assert!(matches!(err, AuthError::DpopInvalid(_)));
     }

@@ -280,7 +280,10 @@ impl DecisionLog {
         }
         let chain = HashChain::resume(
             root_key,
-            entries.last().map(|(_, _, h)| *h).unwrap_or([0u8; HASH_LEN]),
+            entries
+                .last()
+                .map(|(_, _, h)| *h)
+                .unwrap_or([0u8; HASH_LEN]),
             chain_id.unwrap_or_default(),
         );
         chain.verify_chain(&entries)?;
@@ -334,7 +337,9 @@ fn write_chain_id_sidecar(path: &Path, id: ChainId) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
         ".{}.new",
-        path.file_name().and_then(|s| s.to_str()).unwrap_or("chainid"),
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("chainid"),
     ));
     let body = format!("{}\n", id.0);
     {

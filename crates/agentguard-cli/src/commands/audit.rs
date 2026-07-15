@@ -9,9 +9,13 @@ use std::str::FromStr;
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub fn verify(audit_path: impl AsRef<Path>, secret_file: impl AsRef<Path>, output: &str) -> Result<()> {
-    let key = std::fs::read(secret_file.as_ref())
-        .map_err(|e| anyhow!("read secret file: {}", e))?;
+pub fn verify(
+    audit_path: impl AsRef<Path>,
+    secret_file: impl AsRef<Path>,
+    output: &str,
+) -> Result<()> {
+    let key =
+        std::fs::read(secret_file.as_ref()).map_err(|e| anyhow!("read secret file: {}", e))?;
     let key_str = std::str::from_utf8(&key)
         .map_err(|e| anyhow!("secret must be utf-8: {}", e))?
         .trim();
@@ -111,7 +115,10 @@ pub fn erase(
         out.push(cr);
     }
     // Default to in-place rewrite; honor explicit --out if given.
-    let target = out_path.as_ref().map(|p| p.as_ref()).unwrap_or_else(|| audit_path.as_ref());
+    let target = out_path
+        .as_ref()
+        .map(|p| p.as_ref())
+        .unwrap_or_else(|| audit_path.as_ref());
     let file = std::fs::File::create(target)?;
     let mut writer = std::io::BufWriter::new(file);
     for cr in &out {

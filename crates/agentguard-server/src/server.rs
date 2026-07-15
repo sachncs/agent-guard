@@ -38,8 +38,8 @@ use tokio::signal;
 pub async fn run(cfg: ServerConfig) -> Result<()> {
     let chain_secret = match &cfg.chain_secret {
         Some(path) => {
-            let bytes = std::fs::read(path)
-                .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+            let bytes =
+                std::fs::read(path).map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
             if bytes.is_empty() {
                 return Err(anyhow!("chain secret file {:?} is empty", path));
             }

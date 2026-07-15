@@ -193,15 +193,27 @@ mod tests {
     #[test]
     fn contains_returns_true_after_add() {
         let r = KeyRegistry::new();
-        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![0u8; 32]));
+        r.add(
+            "kid1",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![0u8; 32]),
+        );
         assert!(r.contains("kid1"));
     }
 
     #[test]
     fn add_replaces_active_key() {
         let r = KeyRegistry::new();
-        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![1u8; 32]));
-        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![2u8; 32]));
+        r.add(
+            "kid1",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![1u8; 32]),
+        );
+        r.add(
+            "kid1",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![2u8; 32]),
+        );
         // Second add replaces the first; we expect only the new key
         // (no grace window, so the old one is gone).
         let keys = r.get("kid1", Algorithm::EdDSA);

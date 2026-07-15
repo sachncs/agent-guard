@@ -4,9 +4,9 @@
 //! (RFC 7515) using EdDSA. Supports structured constraints, RFC 8693 act
 //! chain, and algorithm agility via [`Algorithm`].
 
+pub use crate::auth_keys::parse_alg;
 use crate::auth_keys::Algorithm;
 use crate::error::{Error, Result};
-pub use crate::auth_keys::parse_alg;
 use base64::Engine as _;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use indexmap::IndexMap;
@@ -186,7 +186,11 @@ pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
     let mut s: Vec<usize> = vec![vi];
     for i in 0..n_stars {
         let seg_start = stars[i] + 1;
-        let seg_end = if i + 1 < n_stars { stars[i + 1] } else { pat_len };
+        let seg_end = if i + 1 < n_stars {
+            stars[i + 1]
+        } else {
+            pat_len
+        };
         let seg_len = seg_end - seg_start;
         if i + 1 == n_stars {
             // Last segment: must be a suffix of value.
@@ -219,9 +223,10 @@ fn slice_eq(a: &[u8], a_start: usize, a_end: usize, b: &[u8], b_start: usize) ->
     if b_start + len > b.len() {
         return false;
     }
-    &a[a_start..a_end] == &b[b_start..b_start + len]
+    a[a_start..a_end] == b[b_start..b_start + len]
 }
 
+#[allow(dead_code)]
 fn glob_recurse(_parts: &[&str], _pi: usize, _value: &str, _vi: usize) -> bool {
     // Deprecated: replaced by the iterative two-pointer walk in
     // [`glob_match`]. Kept as a no-op for backward compatibility with

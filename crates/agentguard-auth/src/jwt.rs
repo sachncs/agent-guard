@@ -93,6 +93,7 @@ impl JwtValidator {
 
     /// Parse a compact JWS into its constituent parts. Returns the decoded
     /// header, claims, signing input bytes, and signature bytes.
+    #[allow(clippy::type_complexity)]
     fn parse_token(
         token: &str,
     ) -> Result<(
@@ -175,13 +176,12 @@ impl JwtValidator {
     /// `exp` (required, not expired), `nbf` (not in future).
     fn check_claims(&self, claims: &serde_json::Value) -> Result<()> {
         // iss (RFC 8725 §3.1: required).
-        let iss = claims
-            .get("iss")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AuthError::JwtIssuerMismatch {
+        let iss = claims.get("iss").and_then(|v| v.as_str()).ok_or_else(|| {
+            AuthError::JwtIssuerMismatch {
                 expected: self.config.issuer.clone(),
                 actual: "<missing>".into(),
-            })?;
+            }
+        })?;
         if iss != self.config.issuer {
             return Err(AuthError::JwtIssuerMismatch {
                 expected: self.config.issuer.clone(),
@@ -264,9 +264,7 @@ impl JwtValidator {
             .await
             .map_err(|e| AuthError::JwksFetch(e.to_string()))?;
         if body.len() > 1_048_576 {
-            return Err(AuthError::JwksFetch(
-                "JWKS document exceeds 1 MiB".into(),
-            ));
+            return Err(AuthError::JwksFetch("JWKS document exceeds 1 MiB".into()));
         }
         let jwks: JwksDoc = serde_json::from_str(&body)
             .map_err(|e| AuthError::JwksFetch(format!("parse: {}", e)))?;
@@ -305,7 +303,8 @@ impl JwtValidator {
                     tracing::warn!("JWKS key without kid; auto-generating");
                     format!("jwks-{}", k.alg)
                 });
-                self.keys.add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw));
+                self.keys
+                    .add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw));
             } else {
                 // RSA/ECDSA/HS256 would be supported here in v2.1.
                 tracing::debug!(alg = ?alg, "skipping non-Ed25519 JWKS key");

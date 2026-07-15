@@ -143,7 +143,13 @@ impl PolicyStore {
         // replaced with '_'. This blocks '..' and '/'.
         let safe: String = name
             .chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         // Reject any name that, after sanitization, is empty or starts
         // with '.' (a hidden file or '.' / '..').

@@ -177,11 +177,13 @@ async fn readyz(State(state): State<AppState>) -> Response {
         // "we have a DecisionLog" as "writable", and rely on the
         // write path below to surface real failures.
         if audit.chain_id().is_none() {
-            return (StatusCode::SERVICE_UNAVAILABLE, "audit log not opened\n")
-                .into_response();
+            return (StatusCode::SERVICE_UNAVAILABLE, "audit log not opened\n").into_response();
         }
     } else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "audit log not configured\n")
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "audit log not configured\n",
+        )
             .into_response();
     }
     (StatusCode::OK, "ok\n").into_response()
@@ -227,8 +229,7 @@ fn evaluation_request_to_agent(req: AuthZenEvaluationRequest) -> Result<AgentReq
 /// entities relevant to its call); a future enhancement can layer
 /// shared/static entities on top.
 fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
-    build_entities(items.to_vec())
-        .map_err(|e| format!("entities: {}", e))
+    build_entities(items.to_vec()).map_err(|e| format!("entities: {}", e))
 }
 
 async fn evaluation(

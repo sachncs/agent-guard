@@ -428,8 +428,12 @@ mod tests {
             h.join().unwrap();
         }
         // The test cares about non-deadlock under concurrent traffic, not
-        // about the cache state. We just confirm the lock was released and
-        // the readers made progress (otherwise the test would hang on join).
-        assert!(cache.stats().hits > 0, "no reads completed");
+        // about the cache state. `h.join().unwrap()` returning proves the
+        // readers made progress (otherwise we'd hang on join). A
+        // separate hit-vs-miss check would be flaky because set_policy_version
+        // races with get() — a get that arrives after a set is counted
+        // as a miss even though it "would have been" a hit.
+        let s = cache.stats();
+        assert!(s.hits + s.misses > 0, "no reads completed");
     }
 }

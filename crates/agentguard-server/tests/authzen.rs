@@ -23,10 +23,13 @@ async fn make_app() -> axum::Router {
     // Open a per-test audit log so /readyz sees a configured log.
     let audit_path = dir.path().join("audit.jsonl");
     let audit = agentguard_core::decision::DecisionLog::open(&audit_path).unwrap();
-    let state: AppState =
-        build_state(dir.path().to_path_buf(), Some(audit_path), Some(b"test-key".to_vec()))
-            .await
-            .unwrap();
+    let state: AppState = build_state(
+        dir.path().to_path_buf(),
+        Some(audit_path),
+        Some(b"test-key".to_vec()),
+    )
+    .await
+    .unwrap();
     drop(audit); // state owns its own copy via Arc
     router(state)
 }
@@ -218,10 +221,17 @@ async fn readyz_returns_503_when_no_audit() {
         .write_policy("allow_alice", r#"permit (principal, action, resource);"#)
         .unwrap();
     // No audit path passed → audit is None → /readyz must 503.
-    let state = build_state(dir.path().to_path_buf(), None, None).await.unwrap();
+    let state = build_state(dir.path().to_path_buf(), None, None)
+        .await
+        .unwrap();
     let app = router(state);
     let resp = app
-        .oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/readyz")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -271,5 +281,10 @@ async fn evaluation_records_audit_entry() {
     }
     // Read the audit log directly.
     let records = agentguard_core::decision::DecisionLog::read_all(&audit_path).unwrap();
-    assert_eq!(records.len(), 3, "expected 3 audit records, got {}", records.len());
+    assert_eq!(
+        records.len(),
+        3,
+        "expected 3 audit records, got {}",
+        records.len()
+    );
 }

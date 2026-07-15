@@ -60,7 +60,9 @@ impl PolicyBundle {
 #[derive(Debug, Default)]
 pub struct BundleRegistry {
     /// tenant_id -> version -> bundle
-    by_tenant: std::sync::RwLock<std::collections::HashMap<String, std::collections::BTreeMap<u64, PolicyBundle>>>,
+    by_tenant: std::sync::RwLock<
+        std::collections::HashMap<String, std::collections::BTreeMap<u64, PolicyBundle>>,
+    >,
 }
 
 impl BundleRegistry {
@@ -80,7 +82,8 @@ impl BundleRegistry {
     /// Get the latest bundle for a tenant, if any.
     pub fn latest(&self, tenant_id: &str) -> Option<PolicyBundle> {
         let all = self.by_tenant.read().unwrap();
-        all.get(tenant_id).and_then(|m| m.values().next_back().cloned())
+        all.get(tenant_id)
+            .and_then(|m| m.values().next_back().cloned())
     }
 
     /// Get a specific version of a tenant's bundle.
@@ -122,26 +125,19 @@ pub fn now_unix() -> i64 {
 }
 
 /// Helper: write a bundle to disk as JSON.
-pub fn write_bundle_to_path(
-    bundle: &PolicyBundle,
-    path: impl AsRef<Path>,
-) -> std::io::Result<()> {
+pub fn write_bundle_to_path(bundle: &PolicyBundle, path: impl AsRef<Path>) -> std::io::Result<()> {
     if let Some(parent) = path.as_ref().parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = serde_json::to_string_pretty(bundle)
-        .map_err(std::io::Error::other)?;
+    let text = serde_json::to_string_pretty(bundle).map_err(std::io::Error::other)?;
     std::fs::write(path, text)?;
     Ok(())
 }
 
 /// Helper: read a bundle from disk.
-pub fn read_bundle_from_path(
-    path: impl AsRef<Path>,
-) -> std::io::Result<PolicyBundle> {
+pub fn read_bundle_from_path(path: impl AsRef<Path>) -> std::io::Result<PolicyBundle> {
     let text = std::fs::read_to_string(path)?;
-    serde_json::from_str(&text)
-        .map_err(std::io::Error::other)
+    serde_json::from_str(&text).map_err(std::io::Error::other)
 }
 
 #[cfg(test)]
