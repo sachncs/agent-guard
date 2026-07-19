@@ -721,9 +721,7 @@ mod tests {
         // unambiguously bound to a key. Reject.
         let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
-        let header_json = format!(
-            r#"{{"alg":"EdDSA","typ":"JWT"}}"#
-        );
+        let header_json = r#"{"alg":"EdDSA","typ":"JWT"}"#.to_string();
         let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(header_json.as_bytes());
         let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD

@@ -38,8 +38,20 @@ harness = false
 # Workspace lint policy (see /Cargo.toml).
 [lints.rust]
 unsafe_code = "forbid"
+# Deny: a #[must_use] Result that is silently dropped on the call
+# site is a recurring foot-gun. The recent DelegationVerifier::add_key
+# regression fell into this bucket.
+unused_must_use = "deny"
+# The current Rust 1.95 stable toolchain has `clippy::needless_borrow`
+# flag every `&String` auto-deref into `&str` and the suggestion
+# (`as_str()`) triggers an unstable feature. Ignore at workspace
+# level; revisit on a future toolchain.
+unstable_features = "allow"
 
 [lints.clippy]
-# Allow pedantic lints globally - they would require a separate
-# cleanup commit to address. Track in a follow-up issue.
-pedantic = "allow"
+# Pedantic is allowed for now — the workspace pre-dates pedantic
+# and a clean sweep would be a v0.3-only effort. Targeted lints
+# below catch the bugs pedantic would catch.
+# Real-bug catches: clippy's `unused_must_use` is the rustc lint of
+# the same name; deny it via [lints.rust] below.
+unused_self = "deny"

@@ -31,8 +31,6 @@ watch = ["dep:notify", "dep:tokio"]
 # Workspace lint policy (see /Cargo.toml).
 [lints.rust]
 unsafe_code = "forbid"
+unused_must_use = "deny"
 
 [lints.clippy]
-# Allow pedantic lints globally - they would require a separate
-# cleanup commit to address. Track in a follow-up issue.
-pedantic = "allow"

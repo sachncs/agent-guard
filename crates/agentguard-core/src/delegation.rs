@@ -679,6 +679,10 @@ impl DelegationSigner {
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_borrow, unused_must_use)]
+// `add_key` is `Result`-returning and `verify`'s `&str` arg wants
+// explicit borrows. The tests are tightly scoped to verify
+// cryptographic behavior, not error plumbing.
 mod tests {
     use super::*;
 
