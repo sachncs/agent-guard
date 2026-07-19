@@ -29,6 +29,14 @@ impl AccessEvaluationService {
 
 #[tonic::async_trait]
 impl AccessEvaluation for AccessEvaluationService {
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            subject_id = tracing::field::Empty,
+            action_id = tracing::field::Empty,
+            resource_id = tracing::field::Empty,
+        )
+    )]
     async fn evaluation(
         &self,
         request: Request<PbRequest>,
@@ -82,6 +90,11 @@ impl AccessEvaluation for AccessEvaluationService {
         let agent_req =
             evaluation_request_to_agent(http_style).map_err(Status::invalid_argument)?;
         let entities = build_request_entities(&per_request_entities).map_err(Status::internal)?;
+
+        // Fill the tracing span fields now that we have the parsed request.
+        tracing::Span::current().record("subject_id", agent_req.principal.id().to_string());
+        tracing::Span::current().record("action_id", format!("{}", agent_req.action));
+        tracing::Span::current().record("resource_id", agent_req.resource.uid.to_string());
 
         let started = std::time::Instant::now();
         let outcome = self.state.authorizer().authorize(&agent_req, &entities);

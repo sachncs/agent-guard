@@ -21,12 +21,17 @@ use opentelemetry::KeyValue;
 use opentelemetry_sdk::logs::LoggerProvider as SdkLoggerProvider;
 #[cfg(feature = "otlp")]
 use opentelemetry_sdk::Resource;
+#[cfg(feature = "otlp")]
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// OTLP sink: translates `SinkEvent`s into OTel log records and ships them
 /// over OTLP/gRPC to a configured collector.
 #[cfg(feature = "otlp")]
 pub struct OtlpSink {
     provider: SdkLoggerProvider,
+    /// Consecutive emit failures; when it crosses the breaker
+    /// threshold, emits short-circuit until the next successful flush.
+    failure_count: AtomicU32,
 }
 
 #[cfg(feature = "otlp")]
@@ -51,7 +56,7 @@ impl OtlpSink {
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_resource(make_resource())
             .build();
-        Ok(Self { provider })
+        Ok(Self { provider, failure_count: AtomicU32::new(0) })
     }
 
     /// Construct from an explicit endpoint URL.
@@ -66,7 +71,7 @@ impl OtlpSink {
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_resource(make_resource())
             .build();
-        Ok(Self { provider })
+        Ok(Self { provider, failure_count: AtomicU32::new(0) })
     }
 }
 
@@ -87,6 +92,19 @@ impl Sink for OtlpSink {
     }
 
     async fn emit(&self, event: &SinkEvent) -> Result<(), SinkError> {
+        // ponytail: simple inline circuit breaker. If we've seen N
+        // consecutive flush failures we suspend emits until the
+        // next successful flush — the SDK's batch exporter has its
+        // own retry but it will block on the dead channel otherwise.
+        // This keeps the hot path cheap when the collector is down.
+        const BREAK_AFTER: u32 = 5;
+        if self.failure_count.load(Ordering::Relaxed) >= BREAK_AFTER {
+            return Ok(());
+        }
+
+        let logger = self.provider.logger("agentguard");
+        let mut record = logger.create_log_record();
+        record.set_severity_number(Severity::Info);
         let logger = self.provider.logger("agentguard");
         let mut record = logger.create_log_record();
         record.set_severity_number(Severity::Info);
@@ -163,8 +181,26 @@ impl Sink for OtlpSink {
 
     async fn flush(&self) -> Result<(), SinkError> {
         let results = self.provider.force_flush();
+        let mut any_err = false;
         for r in results {
-            r.map_err(|e| SinkError::Other(format!("otlp flush: {}", e)))?;
+            if let Err(e) = r {
+                tracing::warn!(error = %e, "otlp flush error");
+                any_err = true;
+            }
+        }
+        if any_err {
+            // Increment; if we cross the breaker threshold, future
+            // emits short-circuit.
+            let count = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
+            if count >= 5 {
+                tracing::error!(
+                    failures = count,
+                    "otlp exporter unreachable; suspending emits"
+                );
+            }
+        } else {
+            // Healthy flush — reset the breaker.
+            self.failure_count.store(0, Ordering::Relaxed);
         }
         Ok(())
     }

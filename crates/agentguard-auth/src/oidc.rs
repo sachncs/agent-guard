@@ -59,14 +59,34 @@ impl OidcConfig {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| AuthError::OidcDiscovery(format!("client build: {}", e)))?;
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| AuthError::OidcDiscovery(e.to_string()))?;
-        if !resp.status().is_success() {
-            return Err(AuthError::OidcDiscovery(format!("HTTP {}", resp.status())));
-        }
+        // Retry up to 3 times on transient errors (5xx, connect/timeout)
+        // with exponential backoff. OIDC discovery failures at boot
+        // time should not brick the service.
+        let mut attempt = 0u32;
+        let resp = loop {
+            attempt += 1;
+            match client.get(&url).send().await {
+                Ok(r) if r.status().is_success() => break r,
+                Ok(r) if r.status().is_server_error() && attempt < 3 => {
+                    let backoff_ms = 250u64 * (1u64 << (attempt - 1));
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+                Ok(r) => {
+                    return Err(AuthError::OidcDiscovery(format!(
+                        "HTTP {} after {} attempt(s)",
+                        r.status(),
+                        attempt
+                    )));
+                }
+                Err(e) if (e.is_timeout() || e.is_connect()) && attempt < 3 => {
+                    let backoff_ms = 250u64 * (1u64 << (attempt - 1));
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                    continue;
+                }
+                Err(e) => return Err(AuthError::OidcDiscovery(e.to_string())),
+            }
+        };
         let body = resp
             .text()
             .await

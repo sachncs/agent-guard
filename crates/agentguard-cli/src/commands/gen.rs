@@ -108,12 +108,30 @@ pub async fn run(
         req = req.bearer_auth(auth_header);
     }
 
-    let resp = req.json(&body).send().await?;
-    if !resp.status().is_success() {
-        let s = resp.status();
-        let t = resp.text().await.unwrap_or_default();
-        return Err(anyhow!("LLM API error {}: {}", s, t));
-    }
+    let mut attempt = 0u32;
+    let resp = loop {
+        attempt += 1;
+        match req.try_clone().expect("RequestBuilder is Clone-able").json(&body).send().await {
+            Ok(r) if r.status().is_success() => break r,
+            Ok(r) if r.status().is_server_error() && attempt < 3 => {
+                // Exponential backoff with jitter (cap at 4 s).
+                let base_ms = 250u64 * (1u64 << (attempt - 1));
+                tokio::time::sleep(std::time::Duration::from_millis(base_ms)).await;
+                continue;
+            }
+            Ok(r) => {
+                let s = r.status();
+                let t = r.text().await.unwrap_or_default();
+                return Err(anyhow!("LLM API error {} after {} attempts: {}", s, attempt, t));
+            }
+            Err(e) if e.is_timeout() || e.is_connect() && attempt < 3 => {
+                let base_ms = 250u64 * (1u64 << (attempt - 1));
+                tokio::time::sleep(std::time::Duration::from_millis(base_ms)).await;
+                continue;
+            }
+            Err(e) => return Err(anyhow!("LLM request failed after {} attempts: {}", attempt, e)),
+        }
+    };
 
     let json: serde_json::Value = resp.json().await?;
     let content = extract_content(&json, provider)

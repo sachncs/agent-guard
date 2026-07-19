@@ -302,11 +302,19 @@ impl Metrics {
     }
 
     /// Render a snapshot of all counters in Prometheus text format.
+    ///
+    /// Uses `std::fmt::Write` to write directly into the output
+    /// `String`, avoiding the dozens of `format!` temporaries the
+    /// previous implementation allocated.
     pub fn render_prometheus(&self) -> String {
-        let mut out = String::new();
+        use std::fmt::Write as _;
 
-        out.push_str("# HELP agentguard_decision_total Total authorization decisions\n");
-        out.push_str("# TYPE agentguard_decision_total counter\n");
+        // 4 KiB is enough for ~200 metrics with labels; the String
+        // grows as needed.
+        let mut out = String::with_capacity(4096);
+
+        writeln!(out, "# HELP agentguard_decision_total Total authorization decisions").unwrap();
+        writeln!(out, "# TYPE agentguard_decision_total counter").unwrap();
         let totals = self.decision_total.read();
         for (key, c) in totals.iter() {
             let parts: Vec<&str> = key.split('\x1f').collect();
@@ -314,19 +322,29 @@ impl Metrics {
             let policy_id = parts.get(1).copied().unwrap_or("");
             let action = parts.get(2).copied().unwrap_or("");
             let tenant_id = parts.get(3).copied().unwrap_or("");
-            out.push_str(&format!(
-                "agentguard_decision_total{{effect=\"{}\",policy_id=\"{}\",action=\"{}\",tenant_id=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "agentguard_decision_total{{effect=\"{}\",policy_id=\"{}\",action=\"{}\",tenant_id=\"{}\"}} {}",
                 escape_label(effect),
                 escape_label(policy_id),
                 escape_label(action),
                 escape_label(tenant_id),
                 c.get(),
-            ));
+            )
+            .unwrap();
         }
         drop(totals);
 
-        out.push_str("# HELP agentguard_decision_duration_seconds Decision evaluation time\n");
-        out.push_str("# TYPE agentguard_decision_duration_seconds histogram\n");
+        writeln!(
+            out,
+            "# HELP agentguard_decision_duration_seconds Decision evaluation time"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "# TYPE agentguard_decision_duration_seconds histogram"
+        )
+        .unwrap();
         let durations = self.decision_duration.read();
         for (key, h) in durations.iter() {
             let parts: Vec<&str> = key.split('\x1f').collect();
@@ -338,71 +356,112 @@ impl Metrics {
                 } else {
                     b.to_string()
                 };
-                out.push_str(&format!(
-                    "agentguard_decision_duration_seconds_bucket{{action=\"{}\",tenant_id=\"{}\",le=\"{}\"}} {}\n",
+                writeln!(
+                    out,
+                    "agentguard_decision_duration_seconds_bucket{{action=\"{}\",tenant_id=\"{}\",le=\"{}\"}} {}",
                     escape_label(action),
                     escape_label(tenant_id),
                     le,
                     count,
-                ));
+                )
+                .unwrap();
             }
-            out.push_str(&format!(
-                "agentguard_decision_duration_seconds_count{{action=\"{}\",tenant_id=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "agentguard_decision_duration_seconds_count{{action=\"{}\",tenant_id=\"{}\"}} {}",
                 escape_label(action),
                 escape_label(tenant_id),
                 h.count(),
-            ));
-            out.push_str(&format!(
-                "agentguard_decision_duration_seconds_sum{{action=\"{}\",tenant_id=\"{}\"}} {}\n",
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "agentguard_decision_duration_seconds_sum{{action=\"{}\",tenant_id=\"{}\"}} {}",
                 escape_label(action),
                 escape_label(tenant_id),
                 h.sum_seconds(),
-            ));
+            )
+            .unwrap();
         }
         drop(durations);
 
-        out.push_str("# HELP agentguard_delegation_mint_total Total delegation tokens minted\n");
-        out.push_str("# TYPE agentguard_delegation_mint_total counter\n");
-        out.push_str(&format!(
-            "agentguard_delegation_mint_total {}\n",
+        writeln!(
+            out,
+            "# HELP agentguard_delegation_mint_total Total delegation tokens minted"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "# TYPE agentguard_delegation_mint_total counter"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "agentguard_delegation_mint_total {}",
             self.delegation_mint_total.get(),
-        ));
+        )
+        .unwrap();
 
-        out.push_str("# HELP agentguard_delegation_verify_total Total delegation verifications\n");
-        out.push_str("# TYPE agentguard_delegation_verify_total counter\n");
+        writeln!(
+            out,
+            "# HELP agentguard_delegation_verify_total Total delegation verifications"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "# TYPE agentguard_delegation_verify_total counter"
+        )
+        .unwrap();
         let verify = self.delegation_verify_total.read();
         for (outcome, c) in verify.iter() {
-            out.push_str(&format!(
-                "agentguard_delegation_verify_total{{outcome=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "agentguard_delegation_verify_total{{outcome=\"{}\"}} {}",
                 escape_label(outcome),
                 c.get(),
-            ));
+            )
+            .unwrap();
         }
         drop(verify);
 
-        out.push_str("# HELP agentguard_cache_hit_total Decision cache hits\n");
-        out.push_str("# TYPE agentguard_cache_hit_total counter\n");
-        out.push_str(&format!(
-            "agentguard_cache_hit_total {}\n",
+        writeln!(
+            out,
+            "# HELP agentguard_cache_hit_total Decision cache hits"
+        )
+        .unwrap();
+        writeln!(out, "# TYPE agentguard_cache_hit_total counter").unwrap();
+        writeln!(
+            out,
+            "agentguard_cache_hit_total {}",
             self.cache_hit_total.get()
-        ));
-        out.push_str(&format!(
-            "agentguard_cache_miss_total {}\n",
+        )
+        .unwrap();
+        writeln!(out, "# TYPE agentguard_cache_miss_total counter").unwrap();
+        writeln!(
+            out,
+            "agentguard_cache_miss_total {}",
             self.cache_miss_total.get()
-        ));
+        )
+        .unwrap();
 
-        out.push_str(&format!(
-            "agentguard_policy_reload_total {}\n",
+        writeln!(out, "# TYPE agentguard_policy_reload_total counter").unwrap();
+        writeln!(
+            out,
+            "agentguard_policy_reload_total {}",
             self.policy_reload_total.get()
-        ));
+        )
+        .unwrap();
 
+        writeln!(out, "# TYPE agentguard_pdp_error_total counter").unwrap();
         let pdp = self.pdp_error_total.read();
         for (fallback, c) in pdp.iter() {
-            out.push_str(&format!(
-                "agentguard_pdp_error_total{{fallback=\"{}\"}} {}\n",
+            writeln!(
+                out,
+                "agentguard_pdp_error_total{{fallback=\"{}\"}} {}",
                 escape_label(fallback),
                 c.get(),
-            ));
+            )
+            .unwrap();
         }
 
         out
@@ -449,6 +508,7 @@ fn escape_label(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 /// Snapshot of all metrics, suitable for JSON serialization.
