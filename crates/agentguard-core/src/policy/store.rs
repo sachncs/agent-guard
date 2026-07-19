@@ -43,11 +43,43 @@ impl PolicyStore {
             return Ok((set, sources));
         }
 
-        for entry in WalkDir::new(&dir).sort_by_file_name() {
+        // ponytail: cap file count + per-file size so a hostile /
+        // misconfigured directory can't OOM the process. Both
+        // bounds are documented in the agentguard docs.
+        const MAX_FILES: usize = 1024;
+        const MAX_FILE_BYTES: u64 = 1_048_576; // 1 MiB
+
+        for (i, entry) in WalkDir::new(&dir)
+            .sort_by_file_name()
+            .into_iter()
+            .enumerate()
+        {
+            if i >= MAX_FILES {
+                tracing::warn!(
+                    max = MAX_FILES,
+                    "policies directory has more than the cap; \
+                     truncating and ignoring the rest"
+                );
+                break;
+            }
             let entry = entry.map_err(|e| crate::error::Error::Walk(e.to_string()))?;
             if entry.file_type().is_file()
                 && entry.path().extension().and_then(|s| s.to_str()) == Some("cedar")
             {
+                let metadata = entry
+                    .metadata()
+                    .map_err(|e| crate::error::Error::Io(e.to_string()))?;
+                if metadata.len() > MAX_FILE_BYTES {
+                    return Err(crate::error::Error::PolicyParse {
+                        message: format!(
+                            "{} exceeds the per-file size cap ({} > {})",
+                            entry.path().display(),
+                            metadata.len(),
+                            MAX_FILE_BYTES
+                        ),
+                        file: String::new(),
+                    });
+                }
                 let src = std::fs::read_to_string(entry.path())?;
                 let file_set =
                     PolicySet::from_str(&src).map_err(|e| crate::error::Error::PolicyParse {

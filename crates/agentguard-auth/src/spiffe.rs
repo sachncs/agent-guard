@@ -57,22 +57,45 @@ impl SpiffeValidator {
     /// pointing the user at the feature flag.
     #[cfg(feature = "spiffe")]
     pub async fn fetch_svid(&self) -> Result<SpiffeId> {
-        // Minimal real implementation: connect to the Workload API via
-        // rust-spiffe when the feature is enabled. The full SVID fetch
-        // involves fetching the X.509-SVID over the Workload API
-        // (typically a Unix domain socket at /run/spire/sockets/agent.sock).
-        //
-        // The `spiffe` crate exposes `WorkloadApiClient::connect` for this.
-        // We construct the client, fetch the default SVID, validate its
-        // SPIFFE ID against our allowlist, and return the ID.
         use spiffe::WorkloadApiClient;
-        let client = WorkloadApiClient::connect_to(&self.workload_endpoint)
+        // ponytail: bound the connect so a misconfigured endpoint
+        // can't park the auth middleware indefinitely. 5 s is generous
+        // for a local Unix socket; for HTTPS work, raise in
+        // deployment-specific config.
+        let connect_fut = WorkloadApiClient::connect_to(&self.workload_endpoint);
+        let client = tokio::time::timeout(Duration::from_secs(5), connect_fut)
             .await
+            .map_err(|_| {
+                AuthError::SpiffeFetch(format!(
+                    "timed out connecting to SPIFFE Workload API at {}",
+                    self.workload_endpoint
+                ))
+            })?
             .map_err(|e| AuthError::SpiffeFetch(format!("workload api connect: {}", e)))?;
         let x509_svid = client
             .fetch_x509_svid()
             .await
             .map_err(|e| AuthError::SpiffeFetch(format!("fetch x509-svid: {}", e)))?;
+        // ponytail: validate the SVID's expiry window. The previous
+        // code skipped this entirely — an expired SVID would have
+        // been accepted as long as its SPIFFE ID was in the
+        // allowlist.
+        let now = chrono::Utc::now();
+        let skew = chrono::Duration::from_std(self.clock_skew).unwrap_or(chrono::Duration::seconds(0));
+        let not_after = *x509_svid.expires_at();
+        if not_after + skew < now {
+            return Err(AuthError::SpiffeFetch(format!(
+                "SVID expired at {}",
+                not_after.to_rfc3339()
+            )));
+        }
+        let not_before = *x509_svid.not_before();
+        if not_before > now + skew {
+            return Err(AuthError::SpiffeFetch(format!(
+                "SVID not valid until {}",
+                not_before.to_rfc3339()
+            )));
+        }
         let spiffe_id = x509_svid.spiffe_id().to_string();
         self.validate_spiffe_id(&spiffe_id)?;
         Ok(SpiffeId { id: spiffe_id })

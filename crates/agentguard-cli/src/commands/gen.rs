@@ -75,7 +75,13 @@ pub async fn run(
         temperature: 0.0,
     };
 
-    let client = reqwest::Client::new();
+    // ponytail: bound the LLM HTTP call. Without timeouts, a stuck
+    // OpenAI/Anthropic endpoint hangs the CLI indefinitely. Same
+    // shape as the OIDC client in agentguard-auth.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()?;
     let (url, auth_header) = match provider {
         "openai" => (
             "https://api.openai.com/v1/chat/completions",

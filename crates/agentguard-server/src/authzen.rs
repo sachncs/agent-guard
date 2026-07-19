@@ -291,6 +291,10 @@ pub(crate) fn build_request_entities(items: &[serde_json::Value]) -> Result<Enti
     build_entities(items.to_vec()).map_err(|e| format!("entities: {}", e))
 }
 
+#[tracing::instrument(
+    skip_all,
+    fields(subject = %req.subject.id, action = %req.action.id)
+)]
 async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationRequest>) -> Response {
     let per_request_entities = req.entities.clone();
     let agent_req = match evaluation_request_to_agent(req) {

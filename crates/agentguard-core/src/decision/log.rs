@@ -155,6 +155,7 @@ impl DecisionLog {
     /// # Errors
     /// Returns `Error::Json` if `rec` cannot be serialized, or
     /// `Error::Io` if the write/fsync fails.
+    #[tracing::instrument(skip_all, fields(path = %self.path.display()))]
     pub fn append(&self, rec: &DecisionRecord) -> Result<()> {
         let canonical = canonical_json(rec)?;
         match &self.mode {

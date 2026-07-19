@@ -243,7 +243,12 @@ pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
     #[cfg(not(unix))]
     let sighup = std::future::pending::<()>();
     let ctrl_c = async {
-        let _ = signal::ctrl_c().await;
+        // ponytail: ctrl_c returns Err when the handler can't be
+        // installed (sandbox). Park forever so shutdown stays
+        // well-defined rather than exiting early.
+        if signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
     };
     #[cfg(unix)]
     let terminate = async {
@@ -272,7 +277,12 @@ pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
 #[allow(dead_code)]
 async fn shutdown_signal() {
     let ctrl_c = async {
-        let _ = signal::ctrl_c().await;
+        // ponytail: ctrl_c returns Err when the handler can't be
+        // installed (sandbox). Park forever so shutdown stays
+        // well-defined rather than exiting early.
+        if signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
     };
     #[cfg(unix)]
     let terminate = async {

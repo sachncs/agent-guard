@@ -133,6 +133,14 @@ impl Authorizer {
         }
     }
 
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            principal = %req.principal,
+            action = %req.action,
+            resource = %req.resource,
+        )
+    )]
     pub fn authorize(&self, req: &AgentRequest, entities: &Entities) -> Result<Decision> {
         // Cache lookup (if enabled). On hit, rebuild a Decision with
         // from_cache=true; the request payload is stored verbatim so
@@ -150,6 +158,7 @@ impl Authorizer {
                         )));
                     }
                 };
+                tracing::debug!("cache hit");
                 return Ok(Decision {
                     effect,
                     policies: cached.policies,
