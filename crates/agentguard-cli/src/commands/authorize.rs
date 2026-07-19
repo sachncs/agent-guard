@@ -70,9 +70,8 @@ pub async fn run(
         // surface (no silent plain-mode downgrade).
         let log = match secret_file {
             Some(path) => {
-                let key = std::fs::read(path).map_err(|e| {
-                    anyhow!("read chain secret {:?}: {}", path, e)
-                })?;
+                let key = std::fs::read(path)
+                    .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
                 if key.is_empty() {
                     anyhow::bail!("chain secret file {:?} is empty", path);
                 }

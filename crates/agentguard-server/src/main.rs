@@ -62,15 +62,14 @@ async fn main() -> Result<()> {
         ));
     };
 
-    let grpc_listener = if cli.grpc_listen.is_empty() {
-        None
-    } else {
-        Some(
-            cli.grpc_listen
-                .parse()
-                .map_err(|e| anyhow::anyhow!("invalid --grpc-listen '{}': {}", cli.grpc_listen, e))?,
-        )
-    };
+    let grpc_listener =
+        if cli.grpc_listen.is_empty() {
+            None
+        } else {
+            Some(cli.grpc_listen.parse().map_err(|e| {
+                anyhow::anyhow!("invalid --grpc-listen '{}': {}", cli.grpc_listen, e)
+            })?)
+        };
 
     let cfg = ServerConfig {
         listener,

@@ -347,10 +347,7 @@ async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationReq
                 if let Err(e) = audit.append_decision(&decision) {
                     state.metrics().record_pdp_error("audit_append");
                     tracing::error!(error = %e, "audit append failed; refusing decision");
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "audit log unavailable",
-                    )
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
                         .into_response();
                 }
             }

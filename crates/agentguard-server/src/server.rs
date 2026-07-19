@@ -219,10 +219,7 @@ pub fn spawn_policy_watcher(
             // the cedar PolicySet, which is a bigger lift.
             state.authorizer().invalidate_cache();
             state.metrics().record_policy_reload();
-            tracing::info!(
-                events = events.len(),
-                "policy reload triggered by watcher"
-            );
+            tracing::info!(events = events.len(), "policy reload triggered by watcher");
         }
     })
 }

@@ -141,9 +141,13 @@ impl ServerConfig {
             .ok()
             .map(PathBuf::from);
         let auth = AuthConfig::from_env()?;
-        let grpc_listener = std::env::var("AGENTGUARD_GRPC_LISTEN")
-            .ok()
-            .and_then(|s| if s.is_empty() { None } else { s.parse().ok() });
+        let grpc_listener = std::env::var("AGENTGUARD_GRPC_LISTEN").ok().and_then(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                s.parse().ok()
+            }
+        });
         Ok(Self {
             listener,
             store_root,

@@ -123,7 +123,9 @@ impl Sink for OtlpSink {
                     record.add_attribute("agentguard.tenant_id", t.clone());
                 }
             }
-            SinkEventKind::DelegationMint { issuer, subject, .. } => {
+            SinkEventKind::DelegationMint {
+                issuer, subject, ..
+            } => {
                 record.add_attribute("agentguard.event", "delegation_mint");
                 record.add_attribute("agentguard.issuer", issuer.clone());
                 record.add_attribute("agentguard.subject", subject.clone());
@@ -132,12 +134,18 @@ impl Sink for OtlpSink {
                 record.add_attribute("agentguard.event", "delegation_verify");
                 record.add_attribute("agentguard.success", *success);
             }
-            SinkEventKind::PolicyReload { version, source, .. } => {
+            SinkEventKind::PolicyReload {
+                version, source, ..
+            } => {
                 record.add_attribute("agentguard.event", "policy_reload");
                 record.add_attribute("agentguard.policy_version", version.clone());
                 record.add_attribute("agentguard.source", source.clone());
             }
-            SinkEventKind::CacheLookup { hit, principal, action } => {
+            SinkEventKind::CacheLookup {
+                hit,
+                principal,
+                action,
+            } => {
                 record.add_attribute("agentguard.event", "cache_lookup");
                 record.add_attribute("agentguard.cache_hit", *hit);
                 record.add_attribute("agentguard.principal", principal.clone());

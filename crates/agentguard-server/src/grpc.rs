@@ -34,8 +34,12 @@ impl AccessEvaluation for AccessEvaluationService {
         request: Request<PbRequest>,
     ) -> Result<Response<PbResponse>, Status> {
         let req = request.into_inner();
-        let subject = req.subject.ok_or_else(|| Status::invalid_argument("missing subject"))?;
-        let action = req.action.ok_or_else(|| Status::invalid_argument("missing action"))?;
+        let subject = req
+            .subject
+            .ok_or_else(|| Status::invalid_argument("missing subject"))?;
+        let action = req
+            .action
+            .ok_or_else(|| Status::invalid_argument("missing action"))?;
         let resource = req
             .resource
             .ok_or_else(|| Status::invalid_argument("missing resource"))?;
@@ -68,16 +72,15 @@ impl AccessEvaluation for AccessEvaluationService {
             },
         };
 
-        let agent_req = evaluation_request_to_agent(http_style)
-            .map_err(Status::invalid_argument)?;
+        let agent_req =
+            evaluation_request_to_agent(http_style).map_err(Status::invalid_argument)?;
         let per_request_entities: Vec<serde_json::Value> = if req.entities_json.is_empty() {
             vec![]
         } else {
             serde_json::from_str(&req.entities_json)
                 .map_err(|e| Status::invalid_argument(format!("entities_json: {e}")))?
         };
-        let entities = build_request_entities(&per_request_entities)
-            .map_err(Status::internal)?;
+        let entities = build_request_entities(&per_request_entities).map_err(Status::internal)?;
 
         let started = std::time::Instant::now();
         let outcome = self.state.authorizer().authorize(&agent_req, &entities);
@@ -97,13 +100,9 @@ impl AccessEvaluation for AccessEvaluationService {
             .first()
             .cloned()
             .unwrap_or_else(|| "none".into());
-        self.state.metrics().record_decision(
-            effect_label,
-            &policy_id,
-            &action_label,
-            "",
-            elapsed,
-        );
+        self.state
+            .metrics()
+            .record_decision(effect_label, &policy_id, &action_label, "", elapsed);
         if decision.from_cache {
             self.state.metrics().record_cache_hit();
         } else {

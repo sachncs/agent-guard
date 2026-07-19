@@ -392,11 +392,7 @@ struct JwksKey {
 /// deterministic kid when the IdP doesn't supply one.
 fn jwk_thumbprint_ed25519(x_b64: &str, crv: &str) -> String {
     use sha2::{Digest, Sha256};
-    let canonical = format!(
-        r#"{{"crv":"{}","kty":"OKP","x":"{}"}}"#,
-        crv,
-        x_b64
-    );
+    let canonical = format!(r#"{{"crv":"{}","kty":"OKP","x":"{}"}}"#, crv, x_b64);
     let hash = Sha256::digest(canonical.as_bytes());
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
 }
@@ -673,10 +669,8 @@ mod tests {
     fn jwk_thumbprint_is_deterministic() {
         // The thumbprint must depend on the public key bytes — two
         // keys with different x produce different thumbprints.
-        let x1 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode([1u8; 32]);
-        let x2 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode([2u8; 32]);
+        let x1 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([1u8; 32]);
+        let x2 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]);
         let t1 = jwk_thumbprint_ed25519(&x1, "Ed25519");
         let t2 = jwk_thumbprint_ed25519(&x2, "Ed25519");
         assert_ne!(t1, t2);
@@ -701,11 +695,10 @@ mod tests {
         // and a zero signature.
         let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(br#"{"alg":"none","typ":"JWT"}"#);
-        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(format!(
-                r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
-                chrono::Utc::now().timestamp() + 3600
-            ));
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
+            chrono::Utc::now().timestamp() + 3600
+        ));
         let token = format!("{}.{}.", header, claims);
         let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
         let err = v.validate(&token).unwrap_err();
@@ -722,17 +715,15 @@ mod tests {
         let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
         let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
         let header_json = r#"{"alg":"EdDSA","typ":"JWT"}"#.to_string();
-        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(header_json.as_bytes());
-        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(format!(
-                r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
-                chrono::Utc::now().timestamp() + 3600
-            ));
+        let header =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(header_json.as_bytes());
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(
+            r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
+            chrono::Utc::now().timestamp() + 3600
+        ));
         let signing_input = format!("{header}.{claims}");
         let sig = signing_key.sign(signing_input.as_bytes());
-        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(sig.to_bytes());
+        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig.to_bytes());
         let token = format!("{signing_input}.{sig_b64}");
         let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
         v.add_key("anykid", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
@@ -758,7 +749,10 @@ mod tests {
             "exp": chrono::Utc::now().timestamp() + 3600,
         });
         let token = sign_token(&signing_key, "wrong-kid", claims);
-        assert!(matches!(v.validate(&token), Err(AuthError::JwtUnknownKid(_))));
+        assert!(matches!(
+            v.validate(&token),
+            Err(AuthError::JwtUnknownKid(_))
+        ));
         drop(cfg);
     }
 }

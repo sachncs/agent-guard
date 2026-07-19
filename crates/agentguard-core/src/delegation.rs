@@ -527,9 +527,8 @@ impl DelegationVerifier {
                     )));
                 }
                 let bytes: [u8; 32] = raw.try_into().expect("length checked above");
-                VerifyingKey::from_bytes(&bytes).map_err(|e| {
-                    crate::error::Error::Other(format!("ed25519 key parse: {}", e))
-                })?
+                VerifyingKey::from_bytes(&bytes)
+                    .map_err(|e| crate::error::Error::Other(format!("ed25519 key parse: {}", e)))?
             }
             _ => {
                 return Err(crate::error::Error::Other(format!(
@@ -727,9 +726,7 @@ mod tests {
         // is rejected.
         let signer = DelegationSigner::generate();
         let cfg = DelegationConfig::default();
-        let token = signer
-            .mint("a", "b", "aud", vec![], vec![], cfg)
-            .unwrap();
+        let token = signer.mint("a", "b", "aud", vec![], vec![], cfg).unwrap();
         let verifier = DelegationVerifier::new();
         verifier
             .add_key(
@@ -740,8 +737,8 @@ mod tests {
             .unwrap();
         let now = chrono::Utc::now().timestamp();
         let drifted_now = now + 30; // verifier clock is 30 s ahead
-        // Token's exp = now + 900. Verifier now is now + 30; with
-        // skew=60, 30 + 60 = 90 < 900 → verify OK.
+                                    // Token's exp = now + 900. Verifier now is now + 30; with
+                                    // skew=60, 30 + 60 = 90 < 900 → verify OK.
         verifier.set_clock_skew_seconds(60);
         assert!(verifier.verify(&token.to_jws(), "aud", drifted_now).is_ok());
         // With skew=0, 30 < 900 still verifies — sanity check.

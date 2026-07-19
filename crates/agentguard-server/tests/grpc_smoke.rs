@@ -12,7 +12,10 @@ async fn grpc_evaluation_returns_decision() {
     let dir = tempfile::tempdir().unwrap();
     let store = PolicyStore::open(dir.path()).unwrap();
     store
-        .write_policy("allow_alice", r#"permit (principal == User::"alice", action, resource);"#)
+        .write_policy(
+            "allow_alice",
+            r#"permit (principal == User::"alice", action, resource);"#,
+        )
         .unwrap();
     let audit_path = dir.path().join("audit.jsonl");
     let state = build_state(

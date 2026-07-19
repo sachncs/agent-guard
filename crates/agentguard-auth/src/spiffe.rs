@@ -81,7 +81,8 @@ impl SpiffeValidator {
         // been accepted as long as its SPIFFE ID was in the
         // allowlist.
         let now = chrono::Utc::now();
-        let skew = chrono::Duration::from_std(self.clock_skew).unwrap_or(chrono::Duration::seconds(0));
+        let skew =
+            chrono::Duration::from_std(self.clock_skew).unwrap_or(chrono::Duration::seconds(0));
         let not_after = *x509_svid.expires_at();
         if not_after + skew < now {
             return Err(AuthError::SpiffeFetch(format!(

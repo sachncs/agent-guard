@@ -334,7 +334,8 @@ mod tests {
 
     #[test]
     fn cache_hit_on_second_identical_request() {
-        let authorizer = make_authorizer().with_cache(crate::decision::cache::CacheConfig::default());
+        let authorizer =
+            make_authorizer().with_cache(crate::decision::cache::CacheConfig::default());
         let req = make_request();
         // First call: cache miss, populates.
         let d1 = authorizer
