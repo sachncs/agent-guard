@@ -12,6 +12,25 @@ agentguard doctor
 Returns exit code 0 if all checks pass; 1 on `✗` (failure); 2 on `⚠`
 (warning). `--output json` for machine-readable output.
 
+## Configuration
+
+All settings have sensible defaults; overrides come from CLI flags
+or environment variables. The full table:
+
+| Env var | CLI flag | Default | Description |
+|---------|----------|---------|-------------|
+| `AGENTGUARD_LISTEN` | `--listen` | `tcp://127.0.0.1:8443` | Server listen address |
+| `AGENTGUARD_STORE` | `--store` | `.agentguard` | Policy directory |
+| `AGENTGUARD_AUDIT` | `--audit` | `.audit/decisions.jsonl` | Audit log path |
+| `AGENTGUARD_CHAIN_SECRET` / `--secret-file` | — | (unset → plain JSONL) | HMAC chain secret (hex / base64 / raw) |
+| `AGENTGUARD_AUTH` | `--auth` | `disabled` | `disabled` or `apikey:<path>` |
+| `AGENTGUARD_AUTH_KEY_FILE` | `--auth-key-file` | (required if `--auth apikey`) | API-key store |
+| `AGENTGUARD_GRPC_LISTEN` | `--grpc-listen` | (empty → disabled) | gRPC listen address |
+| `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | — | `0` | Allow auth-disabled on public listener |
+| `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache TTL (humantime) |
+| `AGENTGUARD_CACHE_CAPACITY` | — | `10000` | Decision cache size |
+| `AGENTGUARD_JWKS_REFRESH` | — | `30s` | JWKS refresh interval (humantime) |
+
 ## Deployment
 
 ### Single-binary deploy

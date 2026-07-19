@@ -13,10 +13,10 @@ without forking an upstream crate, and the operator-facing risk
 | `bit-set`, `bit-vec`, `getrandom`, `rand`, `rand_chacha`, `rand_core`, `hashbrown`, `indexmap`, `either`, `digest`, `crypto-common`, `memchr`, `log`, `regex`, `regex-automata`, `smallvec`, `lalrpop-util`, `unicode-width` | (2 versions) | Conflicting transitive requirements from cedar-policy + reqwest + serde stack | Document; cannot unify without forking. |
 
 **Why we don't `multiple-versions = "deny"`:**
-deny.toml currently allows multiple versions (warn, not fail). Forcing
+`deny.toml` allows multiple versions (warn, not fail). Forcing
 uniqueness would require either forking cedar-policy or pinning every
-graph dependency to the version cedar-policy expects — both moves are
-out of scope for the v0.2.0 hardening pass.
+graph dependency to the version cedar-policy expects — both moves
+are out of scope for the v0.2.0 hardening pass.
 
 **Audit surface:**
 Duplicate crates inflate the dependency graph and the
@@ -24,3 +24,15 @@ cargo-audit/RustSec scan time, but do not by themselves widen the
 attack surface (each crate is audited independently). When
 cedar-policy bumps its cedar-policy-core dependency, the duplicates
 will collapse naturally.
+
+**Dep cleanup after v0.2.1 hardening:**
+Unnecessary workspace deps removed via `cargo-machete`:
+`agentguard-policy` no longer pulls `anyhow`, `async-trait`,
+`thiserror`, `hex`, `tokio`, or `tracing`. `agentguard-server` no
+longer pulls `chrono`, `hyper`, `parking_lot`, `async-trait`,
+`thiserror`, or `uuid`. `agentguard-auth` no longer pulls
+`anyhow`/`async-trait`/`rust-spiffe` (the spiffe feature is
+off by default). `agentguard-cli` no longer pulls `serde_yaml`
+(YAML output format was removed). `prost-types` removed (unused);
+`prost-build` added as a build-dep (was missing). `subtle` added
+(DPoP constant-time comparison).
