@@ -88,7 +88,15 @@ impl DecisionLog {
                 let chain = HashChain::new(&key);
                 // Resume the chain from the file's last record, so each
                 // subprocess invocation picks up where the last left off.
-                let _ = chain.load_head_from_file(&path);
+                // Corruption is reported (not silently ignored) so the
+                // operator is alerted to tampering or partial writes.
+                if let Err(e) = chain.load_head_from_file(&path) {
+                    tracing::warn!(
+                        error = %e,
+                        path = %path.display(),
+                        "failed to resume audit chain from disk; starting a fresh chain"
+                    );
+                }
                 // Adopt the chain_id from the sidecar file (if present)
                 // BEFORE any append, so that the very first record's
                 // chain_id matches the persisted one and verify_chain
@@ -128,24 +136,25 @@ impl DecisionLog {
     /// Append a record. When the log is chained, the record is signed.
     ///
     /// # Crash safety (chained mode)
-    /// 1. Compute the chained payload (prev + new hash) and advance the
-    ///    in-memory head.
-    /// 2. Serialize to a sibling temp file (`<log>.new-<pid>-<seq>`).
-    /// 3. `flush()` + `sync_all()` the temp file (forces kernel page cache
-    ///    to disk).
-    /// 4. Atomically rename the temp file into place, replacing the audit
-    ///    log.
-    /// 5. `sync_all()` the (now-replaced) audit log file so the rename
-    ///    and its contents hit disk before we return success.
+    /// The file lock is held for the entire critical section:
+    /// 1. Compute the chained payload (prev + new hash).
+    /// 2. `write_all` + `flush` + `sync_all` the JSON line to the log
+    ///    file. A single `write_all` of a small JSON line is atomic on
+    ///    POSIX (PIPE_BUF-guaranteed for records <= 4 KiB); a torn
+    ///    write is impossible because we never split across multiple
+    ///    `write()` calls.
+    /// 3. The chain head advances only after step 2 succeeds. On
+    ///    failure, the chain stays at the previous head and the next
+    ///    caller retries from the same state.
     ///
     /// On restart, `load_head_from_file` reads the on-disk head and
-    /// adopts it — even if we crashed before step 5, the record is
-    /// either fully present (and the chain matches) or fully absent.
-    /// There is no half-state.
+    /// adopts it — even if we crashed between the `sync_all` and the
+    /// head advance, the record is fully on disk and the chain
+    /// matches.
     ///
     /// # Errors
     /// Returns `Error::Json` if `rec` cannot be serialized, or
-    /// `Error::Io` if the write/rename/fsync fails.
+    /// `Error::Io` if the write/fsync fails.
     pub fn append(&self, rec: &DecisionRecord) -> Result<()> {
         let canonical = canonical_json(rec)?;
         match &self.mode {
@@ -155,49 +164,44 @@ impl DecisionLog {
                 if let Some(f) = guard.as_mut() {
                     writeln!(f, "{}", line)?;
                     f.flush()?;
+                    // ponytail: parity with the Chained arm. A power
+                    // loss between flush and the kernel flushing the
+                    // page cache would silently lose records.
+                    f.sync_all()?;
                 }
             }
             LogMode::Chained { file, chain } => {
-                // Step 1: compute chain metadata. Head advances here;
-                // if a later step fails, the in-memory head is one
-                // step ahead of the on-disk file. On next process
-                // start, `load_head_from_file` will adopt the on-disk
-                // head (which is one record behind) and converge —
-                // the in-flight record is simply lost.
-                let (prev, hash) = chain.append(&canonical);
+                // Lock the file first (the chain head lock is acquired
+                // inside `try_append_with_io`); ordering is
+                // file -> chain so the call graph cannot deadlock.
                 let chain_id = chain.id();
                 // Persist the chain_id to the sidecar file on first
                 // use so subsequent restarts adopt the same id.
                 let _ = write_chain_id_sidecar(&self.chain_id_path, chain_id);
-                let chained = ChainedRecord {
-                    prev_hash: hex::encode(prev),
-                    record_hash: hex::encode(hash),
-                    chain_id,
-                    record: rec.clone(),
-                };
-                let line = serde_json::to_string(&chained)?;
-                let line_with_newline = format!("{}\n", line);
-                // Step 2: open the log in APPEND mode so the new
-                // record is appended to existing content (preserving
-                // prior records). Single `write_all` of a small JSON
-                // line is atomic on POSIX (PIPE_BUF-guaranteed for
-                // records <= 4 KiB), and a torn write is impossible
-                // because we never split across multiple write() calls.
-                // Use a BufWriter to amortize the per-record write()
-                // syscall; for high-throughput appenders this is a
-                // measurable win.
                 let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(f) = guard.as_mut() {
-                    let mut bw = BufWriter::new(f);
-                    bw.write_all(line_with_newline.as_bytes())?;
-                    bw.flush()?;
-                    // Step 3: fsync to push the kernel page cache to
-                    // disk before we report success. Without this, a
-                    // crash between write() and the OS flushing can
-                    // lose the record. The fsync is on the underlying
-                    // file (the BufWriter::flush() above writes to it
-                    // but does not call sync_all).
-                    bw.get_ref().sync_all()?;
+                    // Atomic: chain head advances only on a successful
+                    // write_all + sync_all. On failure, the chain
+                    // stays at the previous head and the next caller
+                    // retries from the same state.
+                    chain.try_append_with_io(
+                        &canonical,
+                        |prev, new_hash| -> std::io::Result<()> {
+                            let chained = ChainedRecord {
+                                prev_hash: hex::encode(prev),
+                                record_hash: hex::encode(new_hash),
+                                chain_id,
+                                record: rec.clone(),
+                            };
+                            let line_with_newline =
+                                format!("{}\n", serde_json::to_string(&chained)?);
+                            let mut bw = BufWriter::new(f);
+                            bw.write_all(line_with_newline.as_bytes())?;
+                            bw.flush()?;
+                            bw.get_ref().sync_all()?;
+                            Ok(())
+                        },
+                    )?;
                 }
             }
         }

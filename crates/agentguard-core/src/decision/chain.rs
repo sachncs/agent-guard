@@ -94,25 +94,36 @@ impl HashChain {
     /// audit log and use them as the current state. This lets a fresh
     /// process pick up where the last left off without breaking the
     /// chain's identity (both head and id are restored). Tolerates:
-    /// missing file, empty file, malformed last line.
-    pub fn load_head_from_file(&self, path: &std::path::Path) -> std::io::Result<()> {
-        let Ok(text) = std::fs::read_to_string(path) else {
+    /// missing file, empty file, all-blank file. Corrupt JSON or a
+    /// wrong-length hash in the last line is reported as `Err` so the
+    /// caller can refuse to start (a silent reset would let the chain
+    /// appear to verify while being disconnected from prior records).
+    pub fn load_head_from_file(
+        &self,
+        path: &std::path::Path,
+    ) -> std::result::Result<(), ChainLoadError> {
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(ChainLoadError::Io(e)),
+        };
+        let Some(line) = text.lines().rfind(|l| !l.trim().is_empty()) else {
             return Ok(());
         };
-        let last_line = text.lines().rfind(|l| !l.trim().is_empty());
-        let Some(line) = last_line else { return Ok(()) };
-        let val: serde_json::Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(_) => return Ok(()),
-        };
-        let Some(hash_str) = val.get("record_hash").and_then(|v| v.as_str()) else {
-            return Ok(());
-        };
-        let Ok(bytes) = hex::decode(hash_str) else {
-            return Ok(());
-        };
+        let val: serde_json::Value = serde_json::from_str(line)
+            .map_err(|e| ChainLoadError::Corrupt(format!("last line not valid JSON: {e}")))?;
+        let hash_str = val
+            .get("record_hash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ChainLoadError::Corrupt("missing record_hash".into()))?;
+        let bytes = hex::decode(hash_str)
+            .map_err(|e| ChainLoadError::Corrupt(format!("record_hash not valid hex: {e}")))?;
         if bytes.len() != HASH_LEN {
-            return Ok(());
+            return Err(ChainLoadError::Corrupt(format!(
+                "record_hash wrong length: {} != {}",
+                bytes.len(),
+                HASH_LEN
+            )));
         }
         let mut arr = [0u8; HASH_LEN];
         arr.copy_from_slice(&bytes);
@@ -122,9 +133,12 @@ impl HashChain {
         // drifts across processes — verify_chain then sees records
         // tagged with multiple ids and rejects them.
         if let Some(id_str) = val.get("chain_id").and_then(|v| v.as_str()) {
-            if let Ok(uuid) = uuid::Uuid::parse_str(id_str) {
-                *self.inner.id.lock() = Some(ChainId(uuid));
-            }
+            uuid::Uuid::parse_str(id_str)
+                .map(ChainId)
+                .map_err(|e| ChainLoadError::Corrupt(format!("chain_id not a UUID: {e}")))?;
+            *self.inner.id.lock() = Some(ChainId(
+                uuid::Uuid::parse_str(id_str).expect("validated above"),
+            ));
         }
         Ok(())
     }
@@ -171,16 +185,56 @@ impl HashChain {
     ///
     /// Thread-safe: the head read, HMAC computation, and head write happen
     /// inside a single critical section. Concurrent appenders serialize.
+    ///
+    /// Note: this advances the in-memory head **before** the caller has
+    /// persisted anything. If the caller's persistence step fails, the
+    /// chain is left one step ahead of the on-disk file. Callers that
+    /// need an atomic "compute hash + persist" should use
+    /// [`Self::try_append_with_io`] instead.
     pub fn append(&self, canonical_record: &[u8]) -> ([u8; HASH_LEN], [u8; HASH_LEN]) {
         let mut guard = self.inner.head.lock();
         let prev = *guard;
-        let mut mac =
-            HmacSha256::new_from_slice(&self.inner.root).expect("HMAC accepts any key length");
-        mac.update(&prev);
-        mac.update(canonical_record);
-        let new_hash: [u8; HASH_LEN] = mac.finalize().into_bytes().into();
+        let new_hash = self.compute(&prev, canonical_record);
         *guard = new_hash;
         (prev, new_hash)
+    }
+
+    /// Atomic "compute hash + persist" for callers that hold an
+    /// external lock (typically a file lock). The chain head is only
+    /// advanced if the closure succeeds — so a failed write leaves
+    /// the chain unchanged and a retry will produce the same hash.
+    ///
+    /// Lock order: caller must hold the outer (file) lock before
+    /// entering this method; we then take the chain head lock. The
+    /// file lock is released by the caller, the chain head lock by
+    /// this method's return.
+    pub fn try_append_with_io<F, T>(
+        &self,
+        canonical_record: &[u8],
+        persist: F,
+    ) -> std::io::Result<T>
+    where
+        F: FnOnce([u8; HASH_LEN], [u8; HASH_LEN]) -> std::io::Result<T>,
+    {
+        let mut guard = self.inner.head.lock();
+        let prev = *guard;
+        let new_hash = self.compute(&prev, canonical_record);
+        let result = persist(prev, new_hash);
+        // ponytail: only commit the head on a successful persist.
+        // If persist fails, the closure dropped and the chain stays
+        // at `prev` — the next caller retries from the same state.
+        if result.is_ok() {
+            *guard = new_hash;
+        }
+        result
+    }
+
+    fn compute(&self, prev: &[u8; HASH_LEN], canonical_record: &[u8]) -> [u8; HASH_LEN] {
+        let mut mac =
+            HmacSha256::new_from_slice(&self.inner.root).expect("HMAC accepts any key length");
+        mac.update(prev);
+        mac.update(canonical_record);
+        mac.finalize().into_bytes().into()
     }
 
     /// Verify a single record's hash matches what the chain would produce.
@@ -383,6 +437,63 @@ mod tests {
     }
 
     #[test]
+    fn load_head_from_file_returns_corrupt_on_garbage_tail() {
+        // A tail that parses as JSON but is missing the required fields
+        // must be reported as corruption, not silently treated as a
+        // fresh chain. (Previously this was swallowed, leaving the
+        // chain at [0;32] while on-disk records chained from a
+        // different head.)
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        std::fs::write(&path, "{\"not\":\"a chained record\"}\n").unwrap();
+        let chain = HashChain::new(b"root");
+        let err = chain
+            .load_head_from_file(&path)
+            .expect_err("corrupt tail must error");
+        assert!(matches!(err, ChainLoadError::Corrupt(_)));
+    }
+
+    #[test]
+    fn load_head_from_file_returns_corrupt_on_wrong_length_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        // record_hash present but wrong length (16 bytes instead of 32).
+        std::fs::write(
+            &path,
+            "{\"record_hash\":\"00112233445566778899aabbccddeeff\"}\n",
+        )
+        .unwrap();
+        let chain = HashChain::new(b"root");
+        assert!(matches!(
+            chain.load_head_from_file(&path),
+            Err(ChainLoadError::Corrupt(_))
+        ));
+    }
+
+    #[test]
+    fn load_head_from_file_ok_on_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("does-not-exist.jsonl");
+        let chain = HashChain::new(b"root");
+        chain
+            .load_head_from_file(&path)
+            .expect("missing file is not corruption");
+        assert_eq!(chain.head(), [0u8; 32]);
+    }
+
+    #[test]
+    fn load_head_from_file_ok_on_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.jsonl");
+        std::fs::write(&path, "").unwrap();
+        let chain = HashChain::new(b"root");
+        chain
+            .load_head_from_file(&path)
+            .expect("empty file is not corruption");
+        assert_eq!(chain.head(), [0u8; 32]);
+    }
+
+    #[test]
     fn new_chain_has_random_id() {
         let a = HashChain::new(b"x");
         let b = HashChain::new(b"x");
@@ -426,4 +537,20 @@ mod tests {
             }
         }
     }
+}
+
+/// Errors returned by [`HashChain::load_head_from_file`].
+#[derive(Debug, thiserror::Error)]
+pub enum ChainLoadError {
+    /// The audit log could not be read from disk.
+    #[error("read audit log: {0}")]
+    Io(#[from] std::io::Error),
+    /// The last line of the audit log was present but could not be
+    /// parsed as a chained record (malformed JSON, wrong-length hash,
+    /// etc.). Refusing to start is the safe response — a silent reset
+    /// would let new records chain from `[0; 32]` while prior records
+    /// chain from a different head, breaking `verify_chain` for the
+    /// entire audit history.
+    #[error("audit log tail corrupt: {0}")]
+    Corrupt(String),
 }
