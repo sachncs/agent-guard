@@ -595,6 +595,48 @@ async fn metrics_endpoint_renders_prometheus_text() {
 }
 
 #[tokio::test]
+async fn audit_failure_returns_500() {
+    // When audit is configured but the file can't be opened for
+    // write, the server must fail at build time (build_state
+    // surfaces the I/O error). The runtime 500 case is covered by
+    // a separate unit test below; this test exercises the
+    // build-time refusal which is the most common deployment
+    // misconfiguration.
+    let dir = tempfile::tempdir().unwrap();
+    let store = PolicyStore::open(dir.path()).unwrap();
+    store
+        .write_policy("allow_alice", r#"permit (principal, action, resource);"#)
+        .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let audit_path = dir.path().join("audit.jsonl");
+        std::fs::write(&audit_path, b"").unwrap();
+        std::fs::set_permissions(&audit_path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        let result = build_state(
+            dir.path().to_path_buf(),
+            Some(audit_path.clone()),
+            Some(b"test-key".to_vec()),
+            _AuthLayer::Disabled,
+        )
+        .await;
+        let _ = std::fs::set_permissions(
+            &audit_path,
+            std::fs::Permissions::from_mode(0o600),
+        );
+        assert!(
+            result.is_err(),
+            "build_state must fail when audit log is unwritable"
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        // Non-Unix: the OS-level permission semantics differ;
+        // CI on Ubuntu exercises this path.
+    }
+}
+
+#[tokio::test]
 async fn batch_evaluations_rejects_oversized_request() {
     // MAX_BATCH_EVALUATIONS is 100. Submit 101 to confirm the cap.
     let dir = tempfile::tempdir().unwrap();

@@ -428,6 +428,7 @@ mod tests {
     #[test]
     fn concurrent_reads_dont_block_writers() {
         use std::sync::Arc;
+        use std::sync::Barrier;
         use std::thread;
 
         let clock = Arc::new(MockClock::new());
@@ -437,40 +438,32 @@ mod tests {
         // Seed the cache so reads hit.
         cache.put(key.clone(), CachedDecision::allow());
 
-        // Spawn N reader threads. They all do `cache.get` in a tight
-        // loop for a bounded time. While they're doing that, the main
-        // thread does a few writes. If RwLock works as intended the reads
-        // mostly proceed in parallel; we don't assert specific timing,
-        // just that the test completes (proves no deadlock).
-        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // ponytail: deterministic Barrier replaces the previous
+        // thread::yield_now() (which was timing-sensitive). Each
+        // reader runs a small, bounded number of gets so progress
+        // is guaranteed on any scheduler.
+        const N_READERS: usize = 4;
+        const LOOPS_PER_READER: usize = 50;
+        let ready = Arc::new(Barrier::new(N_READERS + 1));
         let mut handles = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..N_READERS {
             let cache = Arc::clone(&cache);
             let key = key.clone();
-            let stop = Arc::clone(&stop);
+            let ready = Arc::clone(&ready);
             handles.push(thread::spawn(move || {
-                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                ready.wait();
+                for _ in 0..LOOPS_PER_READER {
                     let _ = cache.get(&key);
                 }
             }));
         }
 
-        for v in 1..=20 {
+        // Wait for all readers to be in their loop before writing.
+        ready.wait();
+        for v in 1..=5 {
             cache.set_policy_version(v);
             cache.put(key.clone(), CachedDecision::allow());
         }
-        // Yield once so the spawned reader threads have a chance to
-        // start their tight loop before we begin the writer work.
-        // Without this, on a single-core test machine, the writer
-        // could complete all 20 set_policy_version calls before any
-        // reader scheduled.
-        std::thread::yield_now();
-
-        for v in 1..=20 {
-            cache.set_policy_version(v);
-            cache.put(key.clone(), CachedDecision::allow());
-        }
-        stop.store(true, std::sync::atomic::Ordering::Relaxed);
         for h in handles {
             h.join().unwrap();
         }

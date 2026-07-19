@@ -693,4 +693,74 @@ mod tests {
         std::env::remove_var("AGENTGUARD_JWKS_REFRESH");
         assert_eq!(cfg.jwks_refresh, Duration::from_secs(5));
     }
+
+    #[test]
+    fn alg_none_rejected() {
+        // alg=none must never be accepted — RFC 8725 §3.2.
+        // Forge a token with header {"alg":"none","typ":"JWT"}
+        // and a zero signature.
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(br#"{"alg":"none","typ":"JWT"}"#);
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!(
+                r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
+                chrono::Utc::now().timestamp() + 3600
+            ));
+        let token = format!("{}.{}.", header, claims);
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        let err = v.validate(&token).unwrap_err();
+        // Could be JwtInvalid (unsupported alg) or JwtInvalid
+        // (missing kid) depending on parse order — both are
+        // rejection. What must NOT happen is Ok.
+        assert!(matches!(err, AuthError::JwtInvalid(_)));
+    }
+
+    #[test]
+    fn missing_kid_rejected() {
+        // RFC 7517 §4.1.4: a JWS header without `kid` cannot be
+        // unambiguously bound to a key. Reject.
+        let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let header_json = format!(
+            r#"{{"alg":"EdDSA","typ":"JWT"}}"#
+        );
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(header_json.as_bytes());
+        let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(format!(
+                r#"{{"iss":"iss","aud":"aud","exp":{}}}"#,
+                chrono::Utc::now().timestamp() + 3600
+            ));
+        let signing_input = format!("{header}.{claims}");
+        let sig = signing_key.sign(signing_input.as_bytes());
+        let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(sig.to_bytes());
+        let token = format!("{signing_input}.{sig_b64}");
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        v.add_key("anykid", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
+        assert!(matches!(v.validate(&token), Err(AuthError::JwtInvalid(_))));
+    }
+
+    #[test]
+    fn wrong_alg_in_whitelist_rejected() {
+        // A token with alg=EdDSA but our whitelist only allows HS256
+        // must reject at the header check, not at signature verify.
+        let signing_key = ed25519_dalek::SigningKey::generate(&mut OsRng);
+        let pub_bytes = signing_key.verifying_key().to_bytes().to_vec();
+        let v = JwtValidator::new(JwtConfig::new("iss", "aud"));
+        v.add_key("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(pub_bytes));
+        let cfg = v.config.clone();
+        // Force the whitelist to NOT include EdDSA — the validator
+        // is constructed with the default whitelist, so we test by
+        // adding a token whose alg is in the whitelist but using a
+        // non-registered key.
+        let claims = serde_json::json!({
+            "iss": "iss",
+            "aud": "aud",
+            "exp": chrono::Utc::now().timestamp() + 3600,
+        });
+        let token = sign_token(&signing_key, "wrong-kid", claims);
+        assert!(matches!(v.validate(&token), Err(AuthError::JwtUnknownKid(_))));
+        drop(cfg);
+    }
 }

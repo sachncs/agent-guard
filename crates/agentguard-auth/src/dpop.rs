@@ -514,4 +514,82 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AuthError::DpopReplay(_)));
     }
+
+    #[test]
+    fn jwk_kty_ec_rejected() {
+        // A DPoP proof whose jwk is kty=EC (not OKP) must reject —
+        // we only support Ed25519. RFC 9449 §4.2 allows kty=EC but
+        // the verifier restricts to OKP/Ed25519.
+        let mut csprng = OsRng;
+        let signer = SigningKey::generate(&mut csprng);
+        let pub_bytes = signer.verifying_key().to_bytes();
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pub_bytes);
+        let header = serde_json::json!({
+            "alg": "EdDSA",
+            "typ": "dpop+jwt",
+            "jwk": {
+                "kty": "EC",
+                "crv": "Ed25519", // intentionally wrong combination
+                "x": x,
+            }
+        });
+        let h = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header).unwrap());
+        let claims = serde_json::json!({
+            "jti": "some-jti",
+            "htm": "POST",
+            "htu": "https://example.com/x",
+            "iat": chrono::Utc::now().timestamp(),
+            "ath": "x",
+        });
+        let p = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&claims).unwrap());
+        let signing_input = format!("{h}.{p}");
+        let sig = signer.sign(signing_input.as_bytes());
+        let s = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig.to_bytes());
+        let token = format!("{signing_input}.{s}");
+        let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let v = DpopVerifier::new(tracker);
+        let err = v
+            .verify(&token, "x", "POST", "https://example.com/x", "jkt")
+            .unwrap_err();
+        assert!(matches!(err, AuthError::DpopInvalid(_)));
+    }
+
+    #[test]
+    fn alg_hs256_dpop_rejected() {
+        // Algorithm-confusion: a DPoP proof claiming alg=HS256 must
+        // reject (we only support EdDSA). Craft a token where the
+        // header alg is HS256 but the signature is computed as if it
+        // were EdDSA — both must reject.
+        let mut csprng = OsRng;
+        let signer = SigningKey::generate(&mut csprng);
+        let pub_bytes = signer.verifying_key().to_bytes();
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pub_bytes);
+        let header = serde_json::json!({
+            "alg": "HS256",
+            "typ": "dpop+jwt",
+            "jwk": {"kty": "OKP", "crv": "Ed25519", "x": x},
+        });
+        let h = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header).unwrap());
+        let claims = serde_json::json!({
+            "jti": "j",
+            "htm": "POST",
+            "htu": "https://example.com/x",
+            "iat": chrono::Utc::now().timestamp(),
+            "ath": "x",
+        });
+        let p = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&claims).unwrap());
+        let signing_input = format!("{h}.{p}");
+        let sig = signer.sign(signing_input.as_bytes());
+        let s = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig.to_bytes());
+        let token = format!("{signing_input}.{s}");
+        let tracker = Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let v = DpopVerifier::new(tracker);
+        assert!(v
+            .verify(&token, "x", "POST", "https://example.com/x", "jkt")
+            .is_err());
+    }
 }
