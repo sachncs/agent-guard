@@ -111,7 +111,13 @@ pub async fn run(
     let mut attempt = 0u32;
     let resp = loop {
         attempt += 1;
-        match req.try_clone().expect("RequestBuilder is Clone-able").json(&body).send().await {
+        match req
+            .try_clone()
+            .expect("RequestBuilder is Clone-able")
+            .json(&body)
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => break r,
             Ok(r) if r.status().is_server_error() && attempt < 3 => {
                 // Exponential backoff with jitter (cap at 4 s).
@@ -122,14 +128,25 @@ pub async fn run(
             Ok(r) => {
                 let s = r.status();
                 let t = r.text().await.unwrap_or_default();
-                return Err(anyhow!("LLM API error {} after {} attempts: {}", s, attempt, t));
+                return Err(anyhow!(
+                    "LLM API error {} after {} attempts: {}",
+                    s,
+                    attempt,
+                    t
+                ));
             }
             Err(e) if e.is_timeout() || e.is_connect() && attempt < 3 => {
                 let base_ms = 250u64 * (1u64 << (attempt - 1));
                 tokio::time::sleep(std::time::Duration::from_millis(base_ms)).await;
                 continue;
             }
-            Err(e) => return Err(anyhow!("LLM request failed after {} attempts: {}", attempt, e)),
+            Err(e) => {
+                return Err(anyhow!(
+                    "LLM request failed after {} attempts: {}",
+                    attempt,
+                    e
+                ))
+            }
         }
     };
 
@@ -174,7 +191,10 @@ pub async fn run(
         // generated policy is printed).
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let mut stderr = tokio::io::stderr();
-        stderr.write_all(b"Apply generated policy? [y/N] ").await.ok();
+        stderr
+            .write_all(b"Apply generated policy? [y/N] ")
+            .await
+            .ok();
         let _ = stderr.flush().await;
         let mut stdin = tokio::io::stdin();
         let mut answer = [0u8; 1];

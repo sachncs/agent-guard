@@ -45,14 +45,15 @@ pub async fn run(
     let secret_path_buf = secret_file.map(|p| p.to_path_buf());
     let req_for_blocking = req.clone();
     let entities_for_blocking = entities.clone();
-    let decision = tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
-        let store = PolicyStore::open(&store_path)?;
-        let engine = Authorizer::new(store)?;
-        let decision = engine.authorize(&req_for_blocking, &entities_for_blocking)?;
-        Ok(decision)
-    })
-    .await
-    .map_err(|e| anyhow!("blocking task: {e}"))??;
+    let decision =
+        tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
+            let store = PolicyStore::open(&store_path)?;
+            let engine = Authorizer::new(store)?;
+            let decision = engine.authorize(&req_for_blocking, &entities_for_blocking)?;
+            Ok(decision)
+        })
+        .await
+        .map_err(|e| anyhow!("blocking task: {e}"))??;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(&decision)?);
@@ -88,11 +89,11 @@ pub async fn run(
         tokio::task::spawn_blocking(move || -> Result<()> {
             let log = match &secret_path_for_blocking {
                 Some(path) => {
-                let key = std::fs::read(path)
-                    .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
-                let key = decode_chain_secret(&key)
-                    .ok_or_else(|| anyhow!("chain secret file {:?} is empty", path))?;
-                DecisionLog::open_with_chain(&audit_path_for_blocking, &key)?
+                    let key = std::fs::read(path)
+                        .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+                    let key = decode_chain_secret(&key)
+                        .ok_or_else(|| anyhow!("chain secret file {:?} is empty", path))?;
+                    DecisionLog::open_with_chain(&audit_path_for_blocking, &key)?
                 }
                 None => DecisionLog::open(&audit_path_for_blocking)?,
             };

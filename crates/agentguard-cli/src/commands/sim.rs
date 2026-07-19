@@ -35,13 +35,14 @@ pub async fn run(
     let store_path = store.as_ref().to_path_buf();
     let req_for_blocking = req.clone();
     let entities_for_blocking = entities.clone();
-    let decision = tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
-        let store = PolicyStore::open(&store_path)?;
-        let engine = Authorizer::new(store)?;
-        Ok(engine.authorize(&req_for_blocking, &entities_for_blocking)?)
-    })
-    .await
-    .map_err(|e| anyhow::anyhow!("blocking task: {e}"))??;
+    let decision =
+        tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
+            let store = PolicyStore::open(&store_path)?;
+            let engine = Authorizer::new(store)?;
+            Ok(engine.authorize(&req_for_blocking, &entities_for_blocking)?)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("blocking task: {e}"))??;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(&decision)?);

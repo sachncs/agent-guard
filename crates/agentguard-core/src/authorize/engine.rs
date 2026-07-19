@@ -34,6 +34,15 @@ pub enum Effect {
     Deny,
 }
 
+impl std::fmt::Display for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Effect::Allow => "allow",
+            Effect::Deny => "deny",
+        })
+    }
+}
+
 impl From<CedarDecision> for Effect {
     fn from(d: CedarDecision) -> Self {
         match d {
@@ -119,6 +128,26 @@ impl Authorizer {
 
     /// Enable the decision cache with the supplied config. Call multiple
     /// times to replace the cache (the previous `Arc` is dropped).
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::{Authorizer, PolicyStore};
+    /// use agentguard_core::decision::cache::CacheConfig;
+    /// use std::time::Duration;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let store = PolicyStore::open(dir.path()).unwrap();
+    /// let authorizer = Authorizer::new(store)
+    ///     .unwrap()
+    ///     .with_cache(CacheConfig {
+    ///         capacity: 1000,
+    ///         allow_ttl: Duration::from_secs(60),
+    ///         deny_ttl: Duration::from_secs(5),
+    ///         cache_denies: true,
+    ///     });
+    /// // Subsequent identical requests served within 60 s hit the
+    //  cache with `from_cache: true`.
+    /// ```
     pub fn with_cache(mut self, config: crate::decision::cache::CacheConfig) -> Self {
         let clock: Arc<dyn crate::ttl::Clock> = Arc::new(SystemClock);
         self.cache = Some(Arc::new(DecisionCache::new(config, clock)));
@@ -156,6 +185,33 @@ impl Authorizer {
     /// # Errors
     /// Returns `Error::Json` if the request cannot be serialized
     /// into the Cedar request shape (should be unreachable today).
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::{Authorizer, AgentRequest, AgentRequestBuilder,
+    ///     Principal, AgentAction, Resource, AgentContext};
+    /// use cedar_policy::Entities;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let store = agentguard_core::PolicyStore::open(dir.path()).unwrap();
+    /// store
+    ///     .write_policy(
+    ///         "p",
+    ///         r#"permit (principal in User::"alice", action, resource);"#,
+    ///     )
+    ///     .unwrap();
+    /// let authorizer = Authorizer::new(store).unwrap();
+    /// let req = AgentRequestBuilder::new(Principal::user("alice"))
+    ///     .action(AgentAction::tool("send"))
+    ///     .resource(Resource::new("Mailbox", "alice@acme"))
+    ///     .context(AgentContext::new())
+    ///     .build()
+    ///     .unwrap();
+    /// let decision = authorizer
+    ///     .authorize(&req, &Entities::empty())
+    ///     .unwrap();
+    /// assert_eq!(decision.effect, agentguard_core::authorize::Effect::Allow);
+    /// ```
     pub fn authorize(&self, req: &AgentRequest, entities: &Entities) -> Result<Decision> {
         // Cache lookup (if enabled). On hit, rebuild a Decision with
         // from_cache=true; the request payload is stored verbatim so

@@ -15,9 +15,10 @@ pub fn verify(
     secret_file: impl AsRef<Path>,
     output: &str,
 ) -> Result<()> {
-    let key = std::fs::read(secret_file.as_ref()).map_err(|e| anyhow!("read secret file: {}", e))?;
-    let key_bytes = decode_chain_secret(&key)
-        .ok_or_else(|| anyhow!("chain secret file is empty"))?;
+    let key =
+        std::fs::read(secret_file.as_ref()).map_err(|e| anyhow!("read secret file: {}", e))?;
+    let key_bytes =
+        decode_chain_secret(&key).ok_or_else(|| anyhow!("chain secret file is empty"))?;
     let chain_id = DecisionLog::verify_chain(audit_path.as_ref(), &key_bytes)?;
     if output == "json" {
         println!(

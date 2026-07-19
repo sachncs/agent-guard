@@ -119,12 +119,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             // pod's terminationGracePeriodSeconds.
             let shutdown_fut = shutdown_signal_with_sighup(state.clone());
             let drain_fut = async {
-                tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    shutdown_fut,
-                )
-                .await
-                .map_err(|_| anyhow!("drain timeout exceeded"))
+                tokio::time::timeout(std::time::Duration::from_secs(30), shutdown_fut)
+                    .await
+                    .map_err(|_| anyhow!("drain timeout exceeded"))
             };
             serve(listener, app.into_make_service())
                 .with_graceful_shutdown(async move {
@@ -251,10 +248,7 @@ pub fn spawn_policy_watcher(
                 continue;
             }
             sink.reload();
-            tracing::info!(
-                events = events.len(),
-                "policy reload triggered by watcher"
-            );
+            tracing::info!(events = events.len(), "policy reload triggered by watcher");
         }
     })
 }

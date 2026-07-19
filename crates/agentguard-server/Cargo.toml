@@ -17,19 +17,13 @@ agentguard-telemetry = { path = "../agentguard-telemetry", version = "0.2.0" }
 
 serde.workspace = true
 serde_json.workspace = true
-async-trait.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-chrono.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 axum = "0.7"
 tower = "0.5"
-hyper = { version = "1", features = ["server", "http1"] }
-uuid.workspace = true
-parking_lot.workspace = true
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 cedar-policy.workspace = true
 
@@ -37,10 +31,10 @@ cedar-policy.workspace = true
 # script regenerates the Rust types from proto/agentguard.proto.
 tonic = { version = "0.12", default-features = false, features = ["transport", "server", "tls", "codegen", "prost"] }
 prost = "0.13"
-prost-types = "0.13"
 
 [build-dependencies]
 tonic-build = "0.12"
+prost-build = "0.13"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

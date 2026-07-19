@@ -556,6 +556,33 @@ impl DelegationVerifier {
     ///
     /// This is the secure entry point — unlike [`DelegationToken::parse`],
     /// it actually verifies the EdDSA signature.
+    ///
+    /// # Errors
+    /// Returns `Error::TokenSignature` if the signature is invalid
+    /// or the kid is unknown. Returns `Error::TokenExpired` if `now_unix`
+    /// is past `exp + clock_skew_seconds`. Returns `Error::TokenNotYetValid`
+    /// if `nbf` is in the future. Returns `Error::InvalidToken` for any
+    /// JWS parse / base64 / signature-format error or audience mismatch.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::{DelegationConfig, DelegationSigner, DelegationVerifier,
+    ///     auth_keys::Algorithm};
+    /// use base64::Engine as _;
+    ///
+    /// let signer = DelegationSigner::generate();
+    /// let verifier = DelegationVerifier::new();
+    /// let pub_bytes = base64::engine::general_purpose::STANDARD
+    ///     .decode(signer.public_key_b64()).unwrap();
+    /// verifier.add_key(signer.key_id(), Algorithm::EdDSA, &pub_bytes).unwrap();
+    /// let token = signer.mint("alice", "summarizer", "aud",
+    ///     vec!["ToolCall::send".into()],
+    ///     vec!["Mailbox::*".into()],
+    ///     DelegationConfig::default()).unwrap();
+    /// let verified = verifier.verify(&token.jws, "aud", 0).unwrap();
+    /// assert_eq!(verified.claims.iss, "alice");
+    /// assert_eq!(verified.claims.aud, "aud");
+    /// ```
     pub fn verify(
         &self,
         token: &str,

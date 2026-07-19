@@ -313,7 +313,11 @@ impl Metrics {
         // grows as needed.
         let mut out = String::with_capacity(4096);
 
-        writeln!(out, "# HELP agentguard_decision_total Total authorization decisions").unwrap();
+        writeln!(
+            out,
+            "# HELP agentguard_decision_total Total authorization decisions"
+        )
+        .unwrap();
         writeln!(out, "# TYPE agentguard_decision_total counter").unwrap();
         let totals = self.decision_total.read();
         for (key, c) in totals.iter() {
@@ -340,11 +344,7 @@ impl Metrics {
             "# HELP agentguard_decision_duration_seconds Decision evaluation time"
         )
         .unwrap();
-        writeln!(
-            out,
-            "# TYPE agentguard_decision_duration_seconds histogram"
-        )
-        .unwrap();
+        writeln!(out, "# TYPE agentguard_decision_duration_seconds histogram").unwrap();
         let durations = self.decision_duration.read();
         for (key, h) in durations.iter() {
             let parts: Vec<&str> = key.split('\x1f').collect();
@@ -390,11 +390,7 @@ impl Metrics {
             "# HELP agentguard_delegation_mint_total Total delegation tokens minted"
         )
         .unwrap();
-        writeln!(
-            out,
-            "# TYPE agentguard_delegation_mint_total counter"
-        )
-        .unwrap();
+        writeln!(out, "# TYPE agentguard_delegation_mint_total counter").unwrap();
         writeln!(
             out,
             "agentguard_delegation_mint_total {}",
@@ -407,11 +403,7 @@ impl Metrics {
             "# HELP agentguard_delegation_verify_total Total delegation verifications"
         )
         .unwrap();
-        writeln!(
-            out,
-            "# TYPE agentguard_delegation_verify_total counter"
-        )
-        .unwrap();
+        writeln!(out, "# TYPE agentguard_delegation_verify_total counter").unwrap();
         let verify = self.delegation_verify_total.read();
         for (outcome, c) in verify.iter() {
             writeln!(
@@ -424,11 +416,7 @@ impl Metrics {
         }
         drop(verify);
 
-        writeln!(
-            out,
-            "# HELP agentguard_cache_hit_total Decision cache hits"
-        )
-        .unwrap();
+        writeln!(out, "# HELP agentguard_cache_hit_total Decision cache hits").unwrap();
         writeln!(out, "# TYPE agentguard_cache_hit_total counter").unwrap();
         writeln!(
             out,

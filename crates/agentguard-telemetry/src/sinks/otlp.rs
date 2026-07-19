@@ -56,7 +56,10 @@ impl OtlpSink {
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_resource(make_resource())
             .build();
-        Ok(Self { provider, failure_count: AtomicU32::new(0) })
+        Ok(Self {
+            provider,
+            failure_count: AtomicU32::new(0),
+        })
     }
 
     /// Construct from an explicit endpoint URL.
@@ -71,7 +74,10 @@ impl OtlpSink {
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_resource(make_resource())
             .build();
-        Ok(Self { provider, failure_count: AtomicU32::new(0) })
+        Ok(Self {
+            provider,
+            failure_count: AtomicU32::new(0),
+        })
     }
 }
 

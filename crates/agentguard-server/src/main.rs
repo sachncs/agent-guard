@@ -45,11 +45,7 @@ struct Cli {
     auth: AuthModeArg,
 
     /// Path to the API-key store (when `--auth apikey`).
-    #[arg(
-        long,
-        env = "AGENTGUARD_AUTH_KEY_FILE",
-        requires = "auth_apikey"
-    )]
+    #[arg(long, env = "AGENTGUARD_AUTH_KEY_FILE", requires = "auth_apikey")]
     auth_key_file: Option<PathBuf>,
 
     /// Optional gRPC listen address (e.g. `0.0.0.0:9443`). When set,
@@ -91,13 +87,14 @@ async fn main() -> Result<()> {
 
     let auth: agentguard_server::AuthConfig = cli.auth.into_config(cli.auth_key_file)?;
 
-    let grpc_listener = if cli.grpc_listen.is_empty() {
-        None
-    } else {
-        Some(cli.grpc_listen.parse().map_err(|e| {
-            anyhow::anyhow!("invalid --grpc-listen '{}': {}", cli.grpc_listen, e)
-        })?)
-    };
+    let grpc_listener =
+        if cli.grpc_listen.is_empty() {
+            None
+        } else {
+            Some(cli.grpc_listen.parse().map_err(|e| {
+                anyhow::anyhow!("invalid --grpc-listen '{}': {}", cli.grpc_listen, e)
+            })?)
+        };
 
     let cfg = ServerConfig {
         listener,

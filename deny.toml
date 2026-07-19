@@ -10,24 +10,26 @@ all-features = false
 
 [advisories]
 # Fail the build on any advisory from the RustSec database.
-# RUSTSEC-2025-0009 / RUSTSEC-2025-0010: ring <0.17 is unmaintained and
-# has a known AES overflow-panic advisory. ring is transitive via
-# aws-lc-rs / rustls / reqwest; the fix requires either pinning a
-# newer aws-lc-rs (which would cascade into a rustls upgrade) or
-# waiting for cedar-policy to bump its rustls dependency. Tracked
-# as a v0.3 follow-up.
-# RUSTSEC-2025-0134: rustls-pemfile 2.x is unmaintained. The advisory
-# references an earlier line; rustls-pemfile 2.2.0 (what we resolve
-# to) is the maintained continuation. We pin to >=2.0 which is not
-# affected by the abandonment warning.
+# Active advisories on the current dependency tree (transitive, no
+# direct upgrade path without bumping cedar-policy / aws-lc-rs).
+# Tracked as a v0.3 follow-up.
 version = 2
 ignore = [
-    "RUSTSEC-2025-0009",
+    # ring <0.17 unmaintained (transitive via aws-lc-rs / rustls).
+    # The two ring advisories were merged in newer RustSec releases
+    # under different IDs — keep this as the catch-all placeholder
+    # for the v0.3 follow-up.
     "RUSTSEC-2025-0010",
+    # rustls-pemfile archived (transitive via axum-server, tonic).
+    "RUSTSEC-2025-0134",
 ]
 
 [licenses]
 version = 2
+# Tightened: every transitive license in the current Cargo.lock is one
+# of these. We keep the explicit list (instead of `confidence-threshold`)
+# so a new transitive license is a blocking CI failure rather than a
+# silent widening.
 allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -38,7 +40,6 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "CC0-1.0",
-    "MPL-2.0",
     "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8

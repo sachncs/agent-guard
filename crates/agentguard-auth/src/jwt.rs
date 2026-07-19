@@ -387,7 +387,6 @@ struct JwksKey {
     crv: Option<String>,
 }
 
-
 fn verify_signature(
     alg: Algorithm,
     key: &KeyMaterial,

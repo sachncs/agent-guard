@@ -74,7 +74,10 @@ mod tests {
     #[test]
     fn trims_whitespace() {
         let raw = [7u8; 32];
-        let b64 = format!("  {}  ", base64::engine::general_purpose::STANDARD.encode(raw));
+        let b64 = format!(
+            "  {}  ",
+            base64::engine::general_purpose::STANDARD.encode(raw)
+        );
         let out = decode(b64.as_bytes()).unwrap();
         assert_eq!(out, raw);
     }

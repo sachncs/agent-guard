@@ -3,8 +3,8 @@
 //! Checks schema loads, policies parse, schema validation passes, audit log
 //! writable, hash chain (if configured) verifies, telemetry configured.
 
-use agentguard_core::decode_chain_secret;
 use agentguard_core::decision::DecisionLog;
+use agentguard_core::decode_chain_secret;
 use agentguard_core::policy::PolicyStore;
 use anyhow::Result;
 use std::path::Path;

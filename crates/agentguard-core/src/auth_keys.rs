@@ -28,6 +28,29 @@ pub enum Algorithm {
     EdDSA,
 }
 
+impl std::str::FromStr for Algorithm {
+    type Err = ParseAlgorithmError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        parse_alg(s).ok_or_else(|| ParseAlgorithmError(s.to_string()))
+    }
+}
+
+impl std::fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Algorithm::HS256 => "HS256",
+            Algorithm::RS256 => "RS256",
+            Algorithm::ES256 => "ES256",
+            Algorithm::EdDSA => "EdDSA",
+        })
+    }
+}
+
+/// Error from parsing a [`Algorithm`] string.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown JOSE algorithm: {0}")]
+pub struct ParseAlgorithmError(pub String);
+
 /// Key material — abstracted so the registry can hold heterogeneous keys.
 #[derive(Debug, Clone)]
 pub enum KeyMaterial {

@@ -63,8 +63,8 @@ impl JtiTracker {
             // any stale ones since last rotation.
             let steps = (elapsed.as_nanos() / bucket_width.as_nanos().max(1)) as usize;
             let drop_count = steps.min(N_BUCKETS);
-            let cur_idx = ((now.duration_since(*last).as_nanos()
-                / bucket_width.as_nanos().max(1)) as usize)
+            let cur_idx = ((now.duration_since(*last).as_nanos() / bucket_width.as_nanos().max(1))
+                as usize)
                 % N_BUCKETS;
             for i in 0..drop_count {
                 let idx = (cur_idx + N_BUCKETS - i) % N_BUCKETS;
@@ -74,8 +74,7 @@ impl JtiTracker {
             }
             *last = now;
         }
-        let step = (now.duration_since(*last).as_nanos()
-            / bucket_width.as_nanos().max(1)) as usize;
+        let step = (now.duration_since(*last).as_nanos() / bucket_width.as_nanos().max(1)) as usize;
         step % N_BUCKETS
     }
 

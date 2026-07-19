@@ -106,8 +106,7 @@ fn load_signer(
         if Path::new(p).exists() {
             return Ok(Arc::new(load_signer_from_file(Path::new(p), Some(p))?));
         }
-        let bytes = decode_chain_secret(p.as_bytes())
-            .ok_or_else(|| anyhow!("key_id is empty"))?;
+        let bytes = decode_chain_secret(p.as_bytes()).ok_or_else(|| anyhow!("key_id is empty"))?;
         let mut s = DelegationSigner::from_bytes(&bytes)?;
         if !p.is_empty() {
             s.set_key_id(p);

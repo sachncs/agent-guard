@@ -35,8 +35,14 @@ mod tests {
     fn deterministic() {
         let x1 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([1u8; 32]);
         let x2 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([2u8; 32]);
-        assert_ne!(thumbprint_ed25519(&x1, "Ed25519"), thumbprint_ed25519(&x2, "Ed25519"));
-        assert_eq!(thumbprint_ed25519(&x1, "Ed25519"), thumbprint_ed25519(&x1, "Ed25519"));
+        assert_ne!(
+            thumbprint_ed25519(&x1, "Ed25519"),
+            thumbprint_ed25519(&x2, "Ed25519")
+        );
+        assert_eq!(
+            thumbprint_ed25519(&x1, "Ed25519"),
+            thumbprint_ed25519(&x1, "Ed25519")
+        );
     }
 
     #[test]
