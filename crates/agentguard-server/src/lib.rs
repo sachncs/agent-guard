@@ -4,7 +4,9 @@
 
 pub mod auth_layer;
 pub mod authzen;
+pub mod grpc;
 pub mod listener;
+pub mod proto;
 pub mod server;
 
 pub use auth_layer::AuthLayer;

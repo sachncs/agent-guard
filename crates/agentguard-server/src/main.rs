@@ -30,6 +30,12 @@ struct Cli {
     /// Authentication mode: `disabled` or `apikey:<path>`.
     #[arg(long, env = "AGENTGUARD_AUTH", default_value = "disabled")]
     auth: String,
+
+    /// Optional gRPC listen address (e.g. `0.0.0.0:9443`). When set,
+    /// the server also serves the AuthZEN-compatible `AccessEvaluation`
+    /// gRPC service on this port. Empty disables gRPC.
+    #[arg(long, env = "AGENTGUARD_GRPC_LISTEN", default_value = "")]
+    grpc_listen: String,
 }
 
 #[tokio::main]
@@ -56,6 +62,16 @@ async fn main() -> Result<()> {
         ));
     };
 
+    let grpc_listener = if cli.grpc_listen.is_empty() {
+        None
+    } else {
+        Some(
+            cli.grpc_listen
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid --grpc-listen '{}': {}", cli.grpc_listen, e))?,
+        )
+    };
+
     let cfg = ServerConfig {
         listener,
         store_root: cli.store.into(),
@@ -64,6 +80,7 @@ async fn main() -> Result<()> {
             .ok()
             .map(Into::into),
         auth,
+        grpc_listener,
     };
 
     agentguard_server::run(cfg).await

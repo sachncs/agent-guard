@@ -88,6 +88,26 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     let watcher_handle = spawn_policy_watcher(cfg.store_root.clone(), state.clone());
     let app = router((*state).clone());
 
+    // Optional gRPC sidecar: when AGENTGUARD_GRPC_LISTEN is set,
+    // spawn a tonic server on the given address alongside the HTTP
+    // server. Same AppState, same authorizer — only the transport
+    // differs.
+    let grpc_handle = if let Some(addr) = cfg.grpc_listener {
+        let svc = crate::grpc::service(state.clone());
+        tracing::info!("agentguard gRPC listening on tcp://{}", addr);
+        Some(tokio::spawn(async move {
+            let res = tonic::transport::Server::builder()
+                .add_service(svc)
+                .serve(addr)
+                .await;
+            if let Err(e) = res {
+                tracing::error!(error = %e, "gRPC server exited with error");
+            }
+        }))
+    } else {
+        None
+    };
+
     match cfg.listener.clone() {
         Listener::Tcp(addr) => {
             let listener = TcpListener::bind(addr).await?;
@@ -125,6 +145,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     }
 
     watcher_handle.abort();
+    if let Some(h) = grpc_handle {
+        h.abort();
+    }
     tracing::info!("agentguard stopped cleanly");
     Ok(())
 }

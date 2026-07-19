@@ -33,10 +33,20 @@ parking_lot.workspace = true
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 cedar-policy.workspace = true
 
+# gRPC: tonic + prost for the AccessEvaluation service. The build
+# script regenerates the Rust types from proto/agentguard.proto.
+tonic = { version = "0.12", default-features = false, features = ["transport", "server", "tls", "codegen", "prost"] }
+prost = "0.13"
+prost-types = "0.13"
+
+[build-dependencies]
+tonic-build = "0.12"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+tokio-stream = { version = "0.1", features = ["net"] }
 
 # Workspace lint policy (see /Cargo.toml).
 [lints.rust]

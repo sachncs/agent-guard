@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package agentguard.v1;
+
+// AuthZEN-compatible gRPC PDP endpoint. Mirrors the HTTP
+// /access/v1/evaluation surface so a PEP can pick its transport.
+service AccessEvaluation {
+  // Evaluate a single authorization request.
+  rpc Evaluation (EvaluationRequest) returns (EvaluationResponse);
+}
+
+message EntityRef {
+  string type = 1;
+  string id = 2;
+}
+
+message EvaluationRequest {
+  EntityRef subject = 1;
+  EntityRef action = 2;
+  EntityRef resource = 3;
+  // JSON object; serialized into the Cedar context.
+  string context_json = 4;
+  // Per-request entities, serialized as a JSON array.
+  string entities_json = 5;
+}
+
+message EvaluationResponse {
+  bool decision = 1;
+  // Optional reason (first cedar diagnostic message).
+  string reason = 2;
+  // Context echoed back to the PEP (e.g. step-up requirements).
+  string context_json = 3;
+}

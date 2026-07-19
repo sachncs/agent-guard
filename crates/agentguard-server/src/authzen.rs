@@ -239,7 +239,7 @@ fn readyz_unavailable(reason: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, format!("{reason}\n")).into_response()
 }
 
-fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
+pub fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
     let principal = match req.subject.entity_type.as_str() {
         "User" => agentguard_core::Principal::user(req.subject.id.clone()),
         "Agent" => agentguard_core::Principal::agent(req.subject.id.clone()),
@@ -287,7 +287,7 @@ fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, S
 /// Per-request entities are typical for AuthZEN (each PEP sends the
 /// entities relevant to its call); a future enhancement can layer
 /// shared/static entities on top.
-fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
+pub(crate) fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
     build_entities(items.to_vec()).map_err(|e| format!("entities: {}", e))
 }
 

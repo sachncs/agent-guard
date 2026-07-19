@@ -119,6 +119,9 @@ pub struct ServerConfig {
     pub chain_secret: Option<PathBuf>,
     /// Authentication mode for `/access/v1/*` endpoints.
     pub auth: AuthConfig,
+    /// Optional gRPC listener. When `Some`, the server also serves
+    /// the `AccessEvaluation` gRPC service on this address.
+    pub grpc_listener: Option<std::net::SocketAddr>,
 }
 
 impl ServerConfig {
@@ -137,12 +140,16 @@ impl ServerConfig {
             .ok()
             .map(PathBuf::from);
         let auth = AuthConfig::from_env()?;
+        let grpc_listener = std::env::var("AGENTGUARD_GRPC_LISTEN")
+            .ok()
+            .and_then(|s| if s.is_empty() { None } else { s.parse().ok() });
         Ok(Self {
             listener,
             store_root,
             audit_log,
             chain_secret,
             auth,
+            grpc_listener,
         })
     }
 }
