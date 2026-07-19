@@ -43,6 +43,7 @@ pub enum KeyMaterial {
 
 #[derive(Debug, Clone)]
 struct KeyEntry {
+    #[allow(dead_code)]
     kid: String,
     alg: Algorithm,
     key: KeyMaterial,
@@ -55,9 +56,29 @@ struct KeyEntry {
 /// key is added under the same `kid`, the old key is preserved for the
 /// grace period so tokens signed by the old key continue to verify
 /// during the cutover.
-#[derive(Debug, Default)]
+///
+/// Bounded by [`DEFAULT_KEY_KID_CAP`] distinct kids. When the cap is
+/// reached, `add` evicts the oldest kid before inserting the new one.
+/// This prevents a misbehaving JWKS endpoint from growing the registry
+/// without bound.
+#[derive(Debug)]
 pub struct KeyRegistry {
     inner: parking_lot::RwLock<HashMap<String, Vec<KeyEntry>>>,
+    /// Insertion order for LRU eviction. New kids are pushed to the
+    /// back; `add` evicts the front when over the cap.
+    order: parking_lot::Mutex<Vec<String>>,
+    cap: usize,
+}
+
+/// Default cap on the number of distinct `kid`s a [`KeyRegistry`]
+/// will hold. Mirrors the cap enforced inside
+/// `JwtValidator::refresh_jwks` so the two cannot drift.
+pub const DEFAULT_KEY_KID_CAP: usize = 64;
+
+impl Default for KeyRegistry {
+    fn default() -> Self {
+        Self::with_cap(DEFAULT_KEY_KID_CAP)
+    }
 }
 
 impl KeyRegistry {
@@ -66,23 +87,54 @@ impl KeyRegistry {
         Self::default()
     }
 
+    /// Construct a registry with a custom kid cap (used in tests).
+    pub fn with_cap(cap: usize) -> Self {
+        Self {
+            inner: parking_lot::RwLock::new(HashMap::new()),
+            order: parking_lot::Mutex::new(Vec::new()),
+            cap: cap.max(1),
+        }
+    }
+
+    pub fn cap(&self) -> usize {
+        self.cap
+    }
+
     /// Register a key. Replaces any existing active key with the same
     /// `kid` and `alg` (grace-window keys from a rotation are preserved).
+    /// If the registry is at its cap, the oldest kid is evicted first.
     pub fn add(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) {
+        let kid = kid.into();
         let mut guard = self.inner.write();
-        let entry = KeyEntry {
-            kid: kid.into(),
+        // Drop a stale entry (if any) so a re-add counts as an update,
+        // not a new insertion, when computing capacity.
+        if guard.contains_key(&kid) {
+            let entries = guard.get_mut(&kid).unwrap();
+            entries.retain(|e| !(e.alg == alg && e.grace_expires_at.is_none()));
+        } else {
+            // Cap check + evict before inserting a new kid.
+            let mut order = self.order.lock();
+            while order.len() >= self.cap {
+                if let Some(oldest) = order.first().cloned() {
+                    order.remove(0);
+                    guard.remove(&oldest);
+                    tracing::warn!(
+                        kid = %oldest,
+                        cap = self.cap,
+                        "key registry at cap; evicted oldest kid"
+                    );
+                } else {
+                    break;
+                }
+            }
+            order.push(kid.clone());
+        }
+        guard.entry(kid.clone()).or_default().push(KeyEntry {
+            kid,
             alg,
             key,
             grace_expires_at: None,
-        };
-        // Replace existing entries with the same kid+alg rather than
-        // appending. Without this, every JWKS refresh (which calls add
-        // for every JWKS doc key) grows the registry without bound and
-        // a long-running process eventually OOMs.
-        let entries = guard.entry(entry.kid.clone()).or_default();
-        entries.retain(|e| !(e.alg == entry.alg && e.grace_expires_at.is_none()));
-        entries.push(entry);
+        });
     }
 
     /// Register a new key under the same `kid`, marking the previous key as
@@ -218,5 +270,33 @@ mod tests {
         // (no grace window, so the old one is gone).
         let keys = r.get("kid1", Algorithm::EdDSA);
         assert_eq!(keys.len(), 1);
+    }
+
+    #[test]
+    fn cap_evicts_oldest_kid() {
+        let r = KeyRegistry::with_cap(3);
+        for i in 0..5 {
+            r.add(
+                format!("kid{i}"),
+                Algorithm::EdDSA,
+                KeyMaterial::Ed25519(vec![i as u8; 32]),
+            );
+        }
+        // Only the last 3 kids are retained.
+        assert_eq!(r.kid_count(), 3);
+        assert!(!r.contains("kid0"));
+        assert!(!r.contains("kid1"));
+        assert!(r.contains("kid2"));
+        assert!(r.contains("kid3"));
+        assert!(r.contains("kid4"));
+    }
+
+    #[test]
+    fn rotate_under_cap_does_not_evict() {
+        let r = KeyRegistry::with_cap(4);
+        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![1; 32]));
+        // Re-adding the same kid updates in place; no eviction.
+        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![2; 32]));
+        assert_eq!(r.kid_count(), 1);
     }
 }

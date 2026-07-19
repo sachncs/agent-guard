@@ -5,9 +5,22 @@
 
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Default cap on the number of distinct label-tuples retained for
+/// any one label-keyed metric. Prevents a misconfigured caller (or
+/// an attacker-controlled `tenant_id`) from growing the map without
+/// bound. When the cap is reached, new label-tuples are dropped and
+/// a warning is logged ONCE per metric.
+pub const DEFAULT_LABEL_CARDINALITY_CAP: usize = 4096;
+
+fn warn_once(flag: &AtomicBool, msg: String) {
+    if !flag.swap(true, Ordering::Relaxed) {
+        tracing::warn!("{}", msg);
+    }
+}
 
 /// Atomic-backed counter for cheap `inc()` from hot paths.
 #[derive(Debug, Default)]
@@ -139,10 +152,30 @@ pub struct Metrics {
     policy_reload_total: Counter,
     /// `agentguard.pdp.error.total{fallback}`
     pdp_error_total: RwLock<HashMap<String, Arc<Counter>>>,
+    /// Cardinality cap per label-keyed metric. New label-tuples beyond
+    /// the cap are dropped to bound memory under untrusted label input.
+    cardinality_cap: usize,
+    /// One-shot warn flags so we don't flood the log when a metric
+    /// saturates its cardinality cap.
+    warn_decision_cap: AtomicBool,
+    warn_duration_cap: AtomicBool,
+    warn_pdp_error_cap: AtomicBool,
 }
 
 impl Default for Metrics {
     fn default() -> Self {
+        Self::with_cap(DEFAULT_LABEL_CARDINALITY_CAP)
+    }
+}
+
+impl Metrics {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Construct a registry with a custom cardinality cap. Used in tests
+    /// that want to verify the cap is enforced.
+    pub fn with_cap(cardinality_cap: usize) -> Self {
         Self {
             decision_total: RwLock::new(HashMap::new()),
             decision_duration: RwLock::new(HashMap::new()),
@@ -152,13 +185,15 @@ impl Default for Metrics {
             cache_miss_total: Counter::new(),
             policy_reload_total: Counter::new(),
             pdp_error_total: RwLock::new(HashMap::new()),
+            cardinality_cap,
+            warn_decision_cap: AtomicBool::new(false),
+            warn_duration_cap: AtomicBool::new(false),
+            warn_pdp_error_cap: AtomicBool::new(false),
         }
     }
-}
 
-impl Metrics {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
+    pub fn cardinality_cap(&self) -> usize {
+        self.cardinality_cap
     }
 
     fn label_key(parts: &[&str]) -> String {
@@ -174,22 +209,47 @@ impl Metrics {
         duration: Duration,
     ) {
         let key = Self::label_key(&[effect, policy_id, action, tenant_id]);
-        self.decision_total
-            .write()
-            .entry(key)
-            .or_insert_with(|| Arc::new(Counter::new()))
-            .inc();
+        {
+            let mut totals = self.decision_total.write();
+            if let Some(c) = totals.get(&key) {
+                c.inc();
+            } else if totals.len() < self.cardinality_cap {
+                let c = Arc::new(Counter::new());
+                c.inc();
+                totals.insert(key.clone(), c);
+            } else {
+                warn_once(
+                    &self.warn_decision_cap,
+                    format!(
+                        "agentguard.decision.total reached cardinality cap {}; \
+                         dropping new label-tuples",
+                        self.cardinality_cap
+                    ),
+                );
+                return;
+            }
+        }
         let dur_key = Self::label_key(&[action, tenant_id]);
         let mut durations = self.decision_duration.write();
-        durations
-            .entry(dur_key)
-            .or_insert_with(|| {
-                Arc::new(Histogram::new(
-                    "agentguard.decision.duration_seconds",
-                    &[0.001, 0.01, 0.1, 1.0, 10.0],
-                ))
-            })
-            .observe(duration);
+        if let Some(h) = durations.get(&dur_key) {
+            h.observe(duration);
+        } else if durations.len() < self.cardinality_cap {
+            let h = Arc::new(Histogram::new(
+                "agentguard.decision.duration_seconds",
+                &[0.001, 0.01, 0.1, 1.0, 10.0],
+            ));
+            h.observe(duration);
+            durations.insert(dur_key, h);
+        } else {
+            warn_once(
+                &self.warn_duration_cap,
+                format!(
+                    "agentguard.decision.duration_seconds reached cardinality cap {}; \
+                     dropping new label-tuples",
+                    self.cardinality_cap
+                ),
+            );
+        }
     }
 
     pub fn record_delegation_mint(&self) {
@@ -218,11 +278,24 @@ impl Metrics {
     }
 
     pub fn record_pdp_error(&self, fallback: &str) {
-        self.pdp_error_total
-            .write()
-            .entry(fallback.to_string())
-            .or_insert_with(|| Arc::new(Counter::new()))
-            .inc();
+        let key = fallback.to_string();
+        let mut pdp_errors = self.pdp_error_total.write();
+        if let Some(c) = pdp_errors.get(&key) {
+            c.inc();
+        } else if pdp_errors.len() < self.cardinality_cap {
+            let c = Arc::new(Counter::new());
+            c.inc();
+            pdp_errors.insert(key, c);
+        } else {
+            warn_once(
+                &self.warn_pdp_error_cap,
+                format!(
+                    "agentguard.pdp.error.total reached cardinality cap {}; \
+                     dropping new label-tuples",
+                    self.cardinality_cap
+                ),
+            );
+        }
     }
 
     /// Render a snapshot of all counters in Prometheus text format.
