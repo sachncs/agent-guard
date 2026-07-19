@@ -21,11 +21,12 @@
 //! agentguard_server::run(cfg).await?;
 //! ```
 
+use crate::auth_layer::AuthLayer;
 use crate::authzen::{build_state, router};
-use crate::listener::Listener;
-use crate::listener::ServerConfig;
+use crate::listener::{Listener, ServerConfig};
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -36,6 +37,24 @@ use tokio::signal;
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
+    let allow_loopback_bypass = std::env::var("AGENTGUARD_ALLOW_LOOPBACK_BYPASS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if matches!(cfg.auth, crate::listener::AuthConfig::Disabled) && cfg.listener.is_public() {
+        if allow_loopback_bypass {
+            tracing::warn!(
+                "AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1: serving unauthenticated decisions on a public listener; \
+                 this should only happen behind a trusted reverse proxy"
+            );
+        } else {
+            return Err(anyhow!(
+                "auth is disabled but the listener is not loopback-bound; \
+                 set AGENTGUARD_AUTH=apikey:<path> or AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1"
+            ));
+        }
+    }
+    let auth = AuthLayer::from_config(&cfg.auth, allow_loopback_bypass)
+        .map_err(|e| anyhow!("auth layer: {}", e))?;
     let chain_secret = match &cfg.chain_secret {
         Some(path) => {
             let bytes =
@@ -45,14 +64,26 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             }
             Some(bytes)
         }
-        None => None,
+        None => {
+            if cfg.audit_log.is_some() {
+                tracing::warn!(
+                    "AGENTGUARD_CHAIN_SECRET is not set; audit log will be plain JSONL (no tamper evidence)"
+                );
+            }
+            None
+        }
     };
-    let state = build_state(cfg.store_root.clone(), cfg.audit_log.clone(), chain_secret)
-        .await
-        .map_err(|e| anyhow!("build state: {}", e))?;
+    let state = build_state(
+        cfg.store_root.clone(),
+        cfg.audit_log.clone(),
+        chain_secret,
+        auth,
+    )
+    .await
+    .map_err(|e| anyhow!("build state: {}", e))?;
     let app = router(state);
 
-    match cfg.listener {
+    match cfg.listener.clone() {
         Listener::Tcp(addr) => {
             let listener = TcpListener::bind(addr).await?;
             tracing::info!("agentguard listening on tcp://{}", addr);
@@ -89,6 +120,35 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
 
     tracing::info!("agentguard stopped cleanly");
     Ok(())
+}
+
+/// Build a ready-to-serve `Router` from the config. Exposed for tests
+/// and embedders that want to run the AuthZEN app inside their own
+/// hyper server.
+pub async fn build_router(
+    cfg: ServerConfig,
+) -> Result<(axum::Router, Arc<crate::authzen::AppState>)> {
+    let allow_loopback_bypass = true;
+    let auth = AuthLayer::from_config(&cfg.auth, allow_loopback_bypass)
+        .map_err(|e| anyhow!("auth layer: {}", e))?;
+    let chain_secret = match &cfg.chain_secret {
+        Some(path) => {
+            let bytes =
+                std::fs::read(path).map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+            Some(bytes)
+        }
+        None => None,
+    };
+    let state = build_state(
+        cfg.store_root.clone(),
+        cfg.audit_log.clone(),
+        chain_secret,
+        auth,
+    )
+    .await
+    .map_err(|e| anyhow!("build state: {}", e))?;
+    let app = router(state.clone());
+    Ok((app, Arc::new(state)))
 }
 
 /// Resolve when SIGINT or SIGTERM is received. Used as the trigger for

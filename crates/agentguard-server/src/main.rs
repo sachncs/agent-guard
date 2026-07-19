@@ -26,6 +26,10 @@ struct Cli {
         default_value = ".audit/decisions.jsonl"
     )]
     audit: String,
+
+    /// Authentication mode: `disabled` or `apikey:<path>`.
+    #[arg(long, env = "AGENTGUARD_AUTH", default_value = "disabled")]
+    auth: String,
 }
 
 #[tokio::main]
@@ -41,6 +45,17 @@ async fn main() -> Result<()> {
     let listener = agentguard_server::listener::Listener::parse(&cli.listen)
         .map_err(|e| anyhow::anyhow!("invalid listen '{}': {}", cli.listen, e))?;
 
+    let auth = if cli.auth == "disabled" || cli.auth.is_empty() {
+        agentguard_server::AuthConfig::Disabled
+    } else if let Some(rest) = cli.auth.strip_prefix("apikey:") {
+        agentguard_server::AuthConfig::ApiKey { path: rest.into() }
+    } else {
+        return Err(anyhow::anyhow!(
+            "invalid --auth {:?}: expected 'disabled' or 'apikey:<path>'",
+            cli.auth
+        ));
+    };
+
     let cfg = ServerConfig {
         listener,
         store_root: cli.store.into(),
@@ -48,6 +63,7 @@ async fn main() -> Result<()> {
         chain_secret: std::env::var("AGENTGUARD_CHAIN_SECRET")
             .ok()
             .map(Into::into),
+        auth,
     };
 
     agentguard_server::run(cfg).await

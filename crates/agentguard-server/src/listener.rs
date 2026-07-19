@@ -19,6 +19,18 @@ pub enum Listener {
 }
 
 impl Listener {
+    /// True if the listener binds to a non-loopback address. Used to
+    /// log a warning when auth is disabled on a public-facing socket.
+    pub fn is_public(&self) -> bool {
+        match self {
+            Listener::Tcp(addr) => !addr.ip().is_loopback(),
+            Listener::Tls { addr, .. } => !addr.ip().is_loopback(),
+            Listener::Unix(_) => false,
+        }
+    }
+}
+
+impl Listener {
     pub fn parse(s: &str) -> Result<Self, String> {
         if let Some(rest) = s.strip_prefix("tcp://") {
             rest.parse::<SocketAddr>()
@@ -26,13 +38,17 @@ impl Listener {
                 .map_err(|e| format!("bad tcp addr: {}", e))
         } else if let Some(rest) = s.strip_prefix("tls://") {
             // tls://addr?cert=PATH&key=PATH
-            let (addr, _) = rest.split_once('?').unwrap_or((rest, ""));
+            let (addr, qs) = match rest.split_once('?') {
+                Some((a, q)) => (a, q),
+                None => (rest, ""),
+            };
             let mut parts = std::collections::HashMap::new();
-            if let Some(qs) = rest.split_once('?').map(|(_, q)| q) {
-                for kv in qs.split('&') {
-                    if let Some((k, v)) = kv.split_once('=') {
-                        parts.insert(k.to_string(), v.to_string());
-                    }
+            for kv in qs.split('&').filter(|s| !s.is_empty()) {
+                let (k, v) = kv
+                    .split_once('=')
+                    .ok_or_else(|| format!("malformed tls query: {}", kv))?;
+                if parts.insert(k.to_string(), v.to_string()).is_some() {
+                    return Err(format!("duplicate tls query key: {}", k));
                 }
             }
             let cert = parts
@@ -57,6 +73,41 @@ impl Listener {
 }
 
 /// Top-level server configuration.
+#[derive(Debug, Clone, Default)]
+pub enum AuthConfig {
+    /// No authentication (development / loopback only).
+    #[default]
+    Disabled,
+    /// Bearer-token authentication against a JSON API-key store.
+    ApiKey {
+        /// Path to the JSON file holding the keys.
+        path: PathBuf,
+    },
+}
+
+impl AuthConfig {
+    /// Read `AGENTGUARD_AUTH` from the environment. Format:
+    /// `disabled` (default) or `apikey:<path>`.
+    pub fn from_env() -> Result<Self, String> {
+        match std::env::var("AGENTGUARD_AUTH").ok().as_deref() {
+            None | Some("") | Some("disabled") => Ok(AuthConfig::Disabled),
+            Some(s) => {
+                if let Some(rest) = s.strip_prefix("apikey:") {
+                    Ok(AuthConfig::ApiKey {
+                        path: PathBuf::from(rest),
+                    })
+                } else {
+                    Err(format!(
+                        "AGENTGUARD_AUTH must be 'disabled' or 'apikey:<path>', got {:?}",
+                        s
+                    ))
+                }
+            }
+        }
+    }
+}
+
+/// Top-level server configuration.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub listener: Listener,
@@ -66,6 +117,8 @@ pub struct ServerConfig {
     pub audit_log: Option<PathBuf>,
     /// Optional secret file for hash-chained audit log.
     pub chain_secret: Option<PathBuf>,
+    /// Authentication mode for `/access/v1/*` endpoints.
+    pub auth: AuthConfig,
 }
 
 impl ServerConfig {
@@ -83,11 +136,13 @@ impl ServerConfig {
         let chain_secret = std::env::var("AGENTGUARD_CHAIN_SECRET")
             .ok()
             .map(PathBuf::from);
+        let auth = AuthConfig::from_env()?;
         Ok(Self {
             listener,
             store_root,
             audit_log,
             chain_secret,
+            auth,
         })
     }
 }

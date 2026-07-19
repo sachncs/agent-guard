@@ -8,7 +8,7 @@ use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use axum::middleware::{from_fn, Next};
+use axum::middleware::{from_fn, from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
@@ -104,6 +104,9 @@ pub struct AppState {
     /// here. `None` only when the operator explicitly opts out (the
     /// CLI `--skip-audit` flag).
     audit: Arc<Option<DecisionLog>>,
+    /// Authentication layer. `Disabled` allows any caller; `ApiKey`
+    /// validates `Authorization: Bearer <raw>`.
+    pub auth: crate::auth_layer::AuthLayer,
 }
 
 impl AppState {
@@ -138,6 +141,13 @@ pub fn router(state: AppState) -> Router {
         .route("/access/v1/evaluations", post(evaluations))
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
+        // Auth runs after trace context (so unauthorized requests still
+        // get a span id echoed back), and after the body limit (so we
+        // don't buffer megabytes before 401-ing).
+        .layer(from_fn_with_state(
+            state.clone(),
+            crate::auth_layer::auth_layer_fn,
+        ))
         // Cap request bodies at 64 KB. AuthZEN requests are small JSON; anything
         // larger is either misconfigured or an attack.
         .layer(axum::extract::DefaultBodyLimit::max(64 * 1024))
@@ -200,7 +210,16 @@ fn readyz_unavailable(reason: &str) -> Response {
 }
 
 fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
-    let principal = agentguard_core::Principal::user(req.subject.id.clone());
+    let principal = match req.subject.entity_type.as_str() {
+        "User" => agentguard_core::Principal::user(req.subject.id.clone()),
+        "Agent" => agentguard_core::Principal::agent(req.subject.id.clone()),
+        other => {
+            return Err(format!(
+                "unsupported subject type {:?}: expected User or Agent",
+                other
+            ));
+        }
+    };
     // AuthZEN action.id is the full action UID like "ToolCall::send_email".
     // Strip the leading "ToolCall::" to fit agentguard's AgentAction shape.
     let action_id = req
@@ -355,6 +374,7 @@ pub async fn build_state(
     store_root: std::path::PathBuf,
     audit_log: Option<std::path::PathBuf>,
     chain_secret: Option<Vec<u8>>,
+    auth: crate::auth_layer::AuthLayer,
 ) -> Result<AppState, String> {
     let store = PolicyStore::open(&store_root).map_err(|e| format!("open store: {}", e))?;
     let authorizer = Arc::new(Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?);
@@ -372,5 +392,6 @@ pub async fn build_state(
     Ok(AppState {
         authorizer,
         audit: Arc::new(audit),
+        auth,
     })
 }
