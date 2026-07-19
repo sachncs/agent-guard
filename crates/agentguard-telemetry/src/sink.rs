@@ -154,6 +154,14 @@ impl SinkEvent {
 ///
 /// Implementations should be cheap to clone (typically `Arc<Sink>`) and
 /// must be safe to call from multiple threads concurrently.
+///
+/// # Why `async_trait`
+/// Rust's native `async fn` in traits doesn't support `dyn Sink`
+/// without `BoxFuture` wrappers, and adding the bound requires
+/// lifetime gymnastics at every call site. The `async_trait` macro
+/// gives object safety for the cost of one `Box<dyn Future>` per
+/// call. The Sink trait is consumed in only a handful of hot paths;
+/// if/when those migrate to generics we can drop `async_trait`.
 #[async_trait]
 pub trait Sink: Send + Sync {
     /// Stable identifier for this sink (e.g. `"jsonl"`, `"stdout"`, `"otlp"`).

@@ -1,8 +1,8 @@
 use agentguard_core::{
-    authorize::build_entities, AgentRequest, Authorizer, DecisionLog, PolicyStore,
+    authorize::build_entities, decode_chain_secret, AgentRequest, Authorizer, DecisionLog,
+    PolicyStore,
 };
 use anyhow::{anyhow, Result};
-use base64::Engine as _;
 use std::path::Path;
 use tokio::io::AsyncReadExt;
 
@@ -88,12 +88,11 @@ pub async fn run(
         tokio::task::spawn_blocking(move || -> Result<()> {
             let log = match &secret_path_for_blocking {
                 Some(path) => {
-                    let key = std::fs::read(path)
-                        .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
-                    if key.is_empty() {
-                        anyhow::bail!("chain secret file {:?} is empty", path);
-                    }
-                    DecisionLog::open_with_chain(&audit_path_for_blocking, &trim_key(&key))?
+                let key = std::fs::read(path)
+                    .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+                let key = decode_chain_secret(&key)
+                    .ok_or_else(|| anyhow!("chain secret file {:?} is empty", path))?;
+                DecisionLog::open_with_chain(&audit_path_for_blocking, &key)?
                 }
                 None => DecisionLog::open(&audit_path_for_blocking)?,
             };
@@ -129,21 +128,4 @@ async fn load_entities(path: Option<&Path>) -> Result<cedar_policy::Entities> {
     })
     .await
     .map_err(|e| anyhow!("blocking task: {e}"))?
-}
-
-/// Parse a chain secret: hex (64 chars) or base64. Falls back to raw bytes
-/// on decode error.
-fn trim_key(bytes: &[u8]) -> Vec<u8> {
-    if let Ok(s) = std::str::from_utf8(bytes) {
-        let s = s.trim();
-        if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-            if let Ok(b) = hex::decode(s) {
-                return b;
-            }
-        }
-        if let Ok(b) = base64::engine::general_purpose::STANDARD.decode(s) {
-            return b;
-        }
-    }
-    bytes.to_vec()
 }

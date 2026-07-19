@@ -239,16 +239,13 @@ fn parse_ed25519_jwk(jwk: &serde_json::Value) -> Result<[u8; 32]> {
 
 /// Compute the JWK thumbprint per RFC 7638 for an Ed25519 public key.
 ///
-/// Required members (in lex order): `crv`, `kty`, `x`. The thumbprint is
-/// `base64url-no-pad(SHA-256(canonical_jwk_json))`.
+/// Required members (in lex order): `crv`, `kty`, `x`. Delegates to
+/// [`agentguard_core::jwk::thumbprint_ed25519`] so the JWT and DPoP
+/// paths share a single implementation.
 fn jwk_thumbprint_ed25519(jwk: &serde_json::Value) -> Result<String> {
     let obj = jwk
         .as_object()
         .ok_or_else(|| AuthError::DpopInvalid("jwk not object".into()))?;
-    let kty = obj
-        .get("kty")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| AuthError::DpopInvalid("jwk missing kty".into()))?;
     let crv = obj
         .get("crv")
         .and_then(|v| v.as_str())
@@ -257,11 +254,7 @@ fn jwk_thumbprint_ed25519(jwk: &serde_json::Value) -> Result<String> {
         .get("x")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AuthError::DpopInvalid("jwk missing x".into()))?;
-    // Required members only, lex-sorted, no whitespace.
-    let canonical = format!(r#"{{"crv":"{}","kty":"{}","x":"{}"}}"#, crv, kty, x);
-    let mut hasher = Sha256::new();
-    hasher.update(canonical.as_bytes());
-    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize()))
+    Ok(agentguard_core::jwk::thumbprint_ed25519(x, crv))
 }
 
 /// Constant-time byte slice equality. Used for jkt comparison to avoid

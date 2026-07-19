@@ -1,49 +1,121 @@
 //! jti tracker for replay protection.
 //!
-//! Backed by a `HashMap` keyed on the SHA-256(jti) prefix with TTL eviction.
-//! Entries whose `insert_time + ttl` is in the past are pruned on the next
-//! `check_and_record` call (opportunistic). For deployments with very high
-//! `jti` cardinality, replace the inner `HashMap` with a probabilistic
-//! structure (e.g. cuckoo filter or rolling Bloom filter).
+//! Bucket-based: jtis are partitioned into time buckets of width
+//! `ttl / N_BUCKETS`. On each `check_and_record` call the bucket
+//! index for `now` is computed and the previous bucket is dropped
+//! wholesale — a single `HashMap::clear()` replaces the previous
+//! O(N) `HashMap::retain`. Memory is bounded by the number of
+//! distinct jtis arriving within the TTL window; lookup is O(1)
+//! per request.
+//!
+//! For deployments with very high `jti` cardinality, replace the
+//! inner `HashMap` with a probabilistic structure (e.g. cuckoo
+//! filter).
 
 use crate::error::Result;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+/// Number of time buckets per TTL window. Each bucket covers
+/// `ttl / N_BUCKETS`; on rotation we drop the oldest bucket.
+const N_BUCKETS: usize = 4;
+
 /// In-memory tracker of seen `jti` values.
 pub struct JtiTracker {
-    inner: Mutex<HashMap<[u8; 16], Instant>>,
+    /// One `HashMap` per bucket. Old buckets are cleared in O(1).
+    buckets: [Mutex<HashMap<[u8; 16], ()>>; N_BUCKETS],
+    /// TTL per jti entry.
     ttl: Duration,
+    /// Last rotation timestamp (used to compute bucket index).
+    last_rotation: Mutex<Instant>,
+    /// Tracked jti count across all buckets (cached).
+    count: Mutex<usize>,
+    /// Maximum entries per bucket before forced rotation.
+    per_bucket_cap: usize,
 }
 
 impl JtiTracker {
     pub fn new(ttl: Duration) -> Self {
+        // Cap per bucket: ttl is the upper bound on lifetime; bound the
+        // high-cardinality attack surface by capping bucket size.
+        // 65k entries × 16 bytes = ~1 MiB per bucket; well under any
+        // reasonable memory budget.
+        const DEFAULT_PER_BUCKET_CAP: usize = 65_536;
         Self {
-            inner: Mutex::new(HashMap::new()),
+            buckets: std::array::from_fn(|_| Mutex::new(HashMap::new())),
             ttl,
+            last_rotation: Mutex::new(Instant::now()),
+            count: Mutex::new(0),
+            per_bucket_cap: DEFAULT_PER_BUCKET_CAP,
         }
+    }
+
+    /// Compute the bucket index for `now`. Updates the rotation
+    /// timestamp and drops the oldest bucket when `now` crosses
+    /// into a new bucket window.
+    fn current_bucket(&self, now: Instant) -> usize {
+        let mut last = self.last_rotation.lock();
+        let elapsed = now.duration_since(*last);
+        let bucket_width = self.ttl / N_BUCKETS as u32;
+        if elapsed >= bucket_width {
+            // Rotate: drop the bucket we're about to overwrite, plus
+            // any stale ones since last rotation.
+            let steps = (elapsed.as_nanos() / bucket_width.as_nanos().max(1)) as usize;
+            let drop_count = steps.min(N_BUCKETS);
+            let cur_idx = ((now.duration_since(*last).as_nanos()
+                / bucket_width.as_nanos().max(1)) as usize)
+                % N_BUCKETS;
+            for i in 0..drop_count {
+                let idx = (cur_idx + N_BUCKETS - i) % N_BUCKETS;
+                let mut g = self.buckets[idx].lock();
+                *self.count.lock() -= g.len();
+                g.clear();
+            }
+            *last = now;
+        }
+        let step = (now.duration_since(*last).as_nanos()
+            / bucket_width.as_nanos().max(1)) as usize;
+        step % N_BUCKETS
     }
 
     /// Record `jti`. Returns Ok if not seen before, Err if it's a replay.
     pub fn check_and_record(&self, jti: &[u8; 16]) -> Result<()> {
         let now = Instant::now();
-        let mut guard = self.inner.lock();
-        // Evict expired entries opportunistically.
-        guard.retain(|_, exp| now.duration_since(*exp) < self.ttl);
+        let idx = self.current_bucket(now);
+        let mut guard = self.buckets[idx].lock();
+        // Forced rotation when a bucket fills up.
+        if guard.len() >= self.per_bucket_cap {
+            drop(guard);
+            // Force a full rotation: clear all buckets.
+            self.force_rotate(now);
+            let idx = self.current_bucket(now);
+            guard = self.buckets[idx].lock();
+        }
         if guard.contains_key(jti) {
             return Err(crate::error::AuthError::DpopReplay(hex::encode(jti)));
         }
-        guard.insert(*jti, now);
+        guard.insert(*jti, ());
+        *self.count.lock() += 1;
         Ok(())
     }
 
+    fn force_rotate(&self, now: Instant) {
+        let mut last = self.last_rotation.lock();
+        for b in &self.buckets {
+            let mut g = b.lock();
+            *self.count.lock() -= g.len();
+            g.clear();
+        }
+        *last = now;
+    }
+
     pub fn len(&self) -> usize {
-        self.inner.lock().len()
+        *self.count.lock()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.lock().is_empty()
+        self.len() == 0
     }
 }
 

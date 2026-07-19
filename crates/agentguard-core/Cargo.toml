@@ -47,6 +47,9 @@ unused_must_use = "deny"
 # (`as_str()`) triggers an unstable feature. Ignore at workspace
 # level; revisit on a future toolchain.
 unstable_features = "allow"
+# Documented as an ongoing effort in the CHANGELOG. Public items
+# that aren't yet documented are tracked in the hardening roadmap.
+missing_docs = "allow"
 
 [lints.clippy]
 # Pedantic is allowed for now — the workspace pre-dates pedantic

@@ -24,6 +24,7 @@
 use crate::auth_layer::AuthLayer;
 use crate::authzen::{build_state, router};
 use crate::listener::{Listener, ServerConfig};
+use agentguard_core::decode_chain_secret;
 use agentguard_policy::watcher::{watch as policy_watch, WatchEvent};
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
@@ -61,9 +62,8 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         Some(path) => {
             let bytes =
                 std::fs::read(path).map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
-            if bytes.is_empty() {
-                return Err(anyhow!("chain secret file {:?} is empty", path));
-            }
+            let bytes = decode_chain_secret(&bytes)
+                .ok_or_else(|| anyhow!("chain secret file {:?} is empty", path))?;
             Some(bytes)
         }
         None => {
@@ -163,7 +163,7 @@ pub async fn build_router(
         Some(path) => {
             let bytes =
                 std::fs::read(path).map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
-            Some(bytes)
+            decode_chain_secret(&bytes)
         }
         None => None,
     };

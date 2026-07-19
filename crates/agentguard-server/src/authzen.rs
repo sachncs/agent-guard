@@ -493,6 +493,6 @@ pub async fn build_state_with_cache(
         authorizer,
         audit: Arc::new(audit),
         auth,
-        metrics: Metrics::new(),
+        metrics: Arc::new(Metrics::new()),
     })
 }

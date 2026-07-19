@@ -99,6 +99,12 @@ pub struct Authorizer {
 }
 
 impl Authorizer {
+    /// Build a new authorizer from a `PolicyStore`.
+    ///
+    /// # Errors
+    /// Returns `Error::Io` / `Error::Json` / `Error::PolicyParse` from
+    /// `PolicyStore::load_policies` or `load_schema` (e.g. malformed
+    /// Cedar, missing schema).
     pub fn new(store: PolicyStore) -> Result<Self> {
         let (policies, _sources) = store.load_policies()?;
         let schema = store.load_schema()?.map(|s| s.schema);
@@ -141,6 +147,15 @@ impl Authorizer {
             resource = %req.resource,
         )
     )]
+    /// Evaluate an `AgentRequest` against the loaded policy set.
+    ///
+    /// When a decision cache is configured (`with_cache`), identical
+    /// requests served within the configured TTL are returned from
+    /// memory with `from_cache: true`.
+    ///
+    /// # Errors
+    /// Returns `Error::Json` if the request cannot be serialized
+    /// into the Cedar request shape (should be unreachable today).
     pub fn authorize(&self, req: &AgentRequest, entities: &Entities) -> Result<Decision> {
         // Cache lookup (if enabled). On hit, rebuild a Decision with
         // from_cache=true; the request payload is stored verbatim so

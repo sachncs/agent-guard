@@ -11,11 +11,21 @@ use crate::ids::PrincipalId;
 
 /// A principal is either a `User` (human) or an `Agent` (AI). Both become
 /// Cedar entities of type `User` or `Agent`.
+///
+/// # Construction
+/// Use [`Principal::user`], [`Principal::agent`], [`Principal::subagent`],
+/// or [`Principal::with_attr`] — never construct the enum variants
+/// directly. The variant fields are public only because `serde`
+/// deserializes into them; treating them as a stable public API is
+/// unsupported. `#[non_exhaustive]` keeps external matches safe.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Principal {
     /// A human user.
+    ///
+    /// Invariant: `parent_uid` is meaningless here; Cedar policies
+    /// should not branch on a `User`'s parent.
     User {
         uid: PrincipalId,
         #[serde(default)]

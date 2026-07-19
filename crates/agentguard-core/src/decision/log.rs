@@ -209,15 +209,36 @@ impl DecisionLog {
         Ok(())
     }
 
+    /// Convenience wrapper around [`Self::append`] that constructs the
+    /// `DecisionRecord` from a `Decision` with empty session/chain
+    /// metadata. Use [`Self::append`] directly to attach session
+    /// ID or delegation chain.
+    ///
+    /// # Errors
+    /// Same as [`Self::append`].
     pub fn append_decision(&self, d: &Decision) -> Result<()> {
         let rec = DecisionRecord::from_decision(d, None, None);
         self.append(&rec)
     }
 
+    /// Read every record from the audit log, accepting either plain
+    /// or chained records (mixed log files are supported; older
+    /// records may pre-date chain metadata).
+    ///
+    /// # Errors
+    /// Returns `Error::Io` if the file cannot be read, `Error::Json`
+    /// if a record cannot be parsed.
     pub fn read_all(path: impl AsRef<Path>) -> Result<Vec<DecisionRecord>> {
         Self::read_all_mixed(path)
     }
 
+    /// Read every record from the audit log, requiring all records to
+    /// carry chain metadata. A plain (non-chained) record in the log
+    /// surfaces as `Error::Json` with the row number.
+    ///
+    /// # Errors
+    /// Returns `Error::Io` if the file cannot be read, `Error::Json`
+    /// if a record cannot be parsed or is missing chain metadata.
     pub fn read_all_chained(path: impl AsRef<Path>) -> Result<Vec<ChainedRecord>> {
         let f = File::open(path.as_ref())?;
         let r = BufReader::new(f);

@@ -3,6 +3,7 @@
 //! Checks schema loads, policies parse, schema validation passes, audit log
 //! writable, hash chain (if configured) verifies, telemetry configured.
 
+use agentguard_core::decode_chain_secret;
 use agentguard_core::decision::DecisionLog;
 use agentguard_core::policy::PolicyStore;
 use anyhow::Result;
@@ -130,9 +131,8 @@ pub fn run(
     // 4. Hash chain
     if let Some(secret_path) = chain_secret {
         if let Ok(key) = std::fs::read(secret_path) {
-            if !key.is_empty() {
-                let key_owned = trim_key_owned(&key);
-                match DecisionLog::verify_chain(audit_log, &key_owned) {
+            if let Some(key_bytes) = decode_chain_secret(&key) {
+                match DecisionLog::verify_chain(audit_log, &key_bytes) {
                     Ok(_) => report.checks.push(("hash chain", CheckStatus::Ok)),
                     Err(e) => report
                         .checks
@@ -166,16 +166,4 @@ pub fn run(
     }
 
     Ok(report)
-}
-
-fn trim_key_owned(bytes: &[u8]) -> Vec<u8> {
-    let s = std::str::from_utf8(bytes)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        if let Ok(b) = hex::decode(&s) {
-            return b;
-        }
-    }
-    bytes.to_vec()
 }

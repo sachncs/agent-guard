@@ -1,5 +1,5 @@
 use agentguard_core::auth_keys::Algorithm;
-use agentguard_core::{DelegationConfig, DelegationSigner, DelegationToken};
+use agentguard_core::{decode_chain_secret, DelegationConfig, DelegationSigner, DelegationToken};
 use anyhow::{anyhow, Result};
 use base64::Engine as _;
 use std::path::Path;
@@ -63,7 +63,9 @@ pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Res
         let (id, key) = line
             .split_once('=')
             .ok_or_else(|| anyhow!("expected `kid=base64pubkey` in keys file"))?;
-        let bytes = base64_decode(key.trim())?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(key.trim())
+            .map_err(|e| anyhow!("base64: {}", e))?;
         verifier
             .add_key(id.trim(), Algorithm::EdDSA, &bytes)
             .map_err(|e| anyhow!("add key {:?}: {}", id.trim(), e))?;
@@ -104,7 +106,8 @@ fn load_signer(
         if Path::new(p).exists() {
             return Ok(Arc::new(load_signer_from_file(Path::new(p), Some(p))?));
         }
-        let bytes = decode_payload(p)?;
+        let bytes = decode_chain_secret(p.as_bytes())
+            .ok_or_else(|| anyhow!("key_id is empty"))?;
         let mut s = DelegationSigner::from_bytes(&bytes)?;
         if !p.is_empty() {
             s.set_key_id(p);
@@ -129,7 +132,8 @@ fn load_signer_from_file(path: &Path, kid_hint: Option<&str>) -> Result<Delegati
     } else {
         text.trim().to_string()
     };
-    let bytes = decode_payload(&payload)?;
+    let bytes = decode_chain_secret(payload.as_bytes())
+        .ok_or_else(|| anyhow!("signer payload is empty"))?;
     let mut s = DelegationSigner::from_bytes(&bytes)?;
     if let Some(k) = kid_hint {
         if !k.is_empty() && k != payload {
@@ -139,18 +143,8 @@ fn load_signer_from_file(path: &Path, kid_hint: Option<&str>) -> Result<Delegati
     Ok(s)
 }
 
-fn decode_payload(s: &str) -> Result<Vec<u8>> {
-    let s = s.trim();
-    if s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return hex::decode(s).map_err(|e| anyhow!("hex: {}", e));
-    }
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .map_err(|e| anyhow!("invalid key payload (need 64-char hex or base64): {}", e))
-}
-
+#[allow(dead_code)]
 fn base64_decode(s: &str) -> Result<Vec<u8>> {
-    use base64::Engine as _;
     base64::engine::general_purpose::STANDARD
         .decode(s)
         .map_err(|e| anyhow!("base64: {}", e))

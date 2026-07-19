@@ -1,6 +1,7 @@
 //! Audit log commands: verify, export, sar, erase.
 
 use agentguard_core::decision::{AuditFormat, DecisionLog};
+use agentguard_core::decode_chain_secret;
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -14,16 +15,9 @@ pub fn verify(
     secret_file: impl AsRef<Path>,
     output: &str,
 ) -> Result<()> {
-    let key =
-        std::fs::read(secret_file.as_ref()).map_err(|e| anyhow!("read secret file: {}", e))?;
-    let key_str = std::str::from_utf8(&key)
-        .map_err(|e| anyhow!("secret must be utf-8: {}", e))?
-        .trim();
-    let key_bytes = if key_str.len() == 64 && key_str.chars().all(|c| c.is_ascii_hexdigit()) {
-        hex::decode(key_str).map_err(|e| anyhow!("hex: {}", e))?
-    } else {
-        key.to_vec()
-    };
+    let key = std::fs::read(secret_file.as_ref()).map_err(|e| anyhow!("read secret file: {}", e))?;
+    let key_bytes = decode_chain_secret(&key)
+        .ok_or_else(|| anyhow!("chain secret file is empty"))?;
     let chain_id = DecisionLog::verify_chain(audit_path.as_ref(), &key_bytes)?;
     if output == "json" {
         println!(

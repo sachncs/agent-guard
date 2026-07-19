@@ -3,11 +3,13 @@
 pub mod action;
 pub mod auth_keys;
 pub mod authorize;
+pub mod chain_secret;
 pub mod context;
 pub mod decision;
 pub mod delegation;
 pub mod error;
 pub mod ids;
+pub mod jwk;
 pub mod observability;
 pub mod policy;
 pub mod principal;
@@ -19,6 +21,7 @@ pub mod ttl;
 pub use action::AgentAction;
 pub use auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
 pub use authorize::{Authorizer, Decision, Effect};
+pub use chain_secret::decode as decode_chain_secret;
 pub use context::AgentContext;
 pub use decision::{DecisionCache, DecisionLog, DecisionRecord};
 pub use delegation::{

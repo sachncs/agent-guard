@@ -169,8 +169,11 @@ impl Default for Metrics {
 }
 
 impl Metrics {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
+    /// Build a new metrics registry. Returns `Self`; wrap with
+    /// `Arc::new(Metrics::new())` at the call site if shared
+    /// ownership is needed.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Construct a registry with a custom cardinality cap. Used in tests

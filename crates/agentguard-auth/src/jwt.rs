@@ -5,6 +5,7 @@
 
 use crate::error::{AuthError, Result};
 use agentguard_core::auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
+use agentguard_core::jwk::thumbprint_ed25519 as jwk_thumbprint_ed25519;
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -386,16 +387,6 @@ struct JwksKey {
     crv: Option<String>,
 }
 
-/// RFC 7638 JWK thumbprint for an Ed25519 public key. Returns the
-/// base64url-no-pad SHA-256 of the canonical JSON
-/// `{"crv":"<crv>","kty":"OKP","x":"<base64url-x>"}`. Used as a
-/// deterministic kid when the IdP doesn't supply one.
-fn jwk_thumbprint_ed25519(x_b64: &str, crv: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let canonical = format!(r#"{{"crv":"{}","kty":"OKP","x":"{}"}}"#, crv, x_b64);
-    let hash = Sha256::digest(canonical.as_bytes());
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
-}
 
 fn verify_signature(
     alg: Algorithm,
