@@ -10,20 +10,20 @@ all-features = false
 
 [advisories]
 # Fail the build on any advisory from the RustSec database.
-# RUSTSEC-2023-0071 is the Marvin timing-attack on the `rsa` crate. It is
-# a transitive dep of `oauth2`/`openidconnect`, which we use for RS256
-# JWT verification (not signing). The attack requires an attacker on
-# the same network path to observe timing during key operations;
-# our key verify is not in the hot path. Documented for users who
-# can require EdDSA-only deployments.
-# RUSTSEC-2025-0134 is rustls-pemfile no longer maintained. It's
-# transitive via rustls; we depend on rustls 0.23 via reqwest 0.12. The
-# replacement is rustls-pemfile 2.0, but the chain is fixed in
-# rustls 0.24 / reqwest 0.13 which we don't yet require.
+# RUSTSEC-2025-0009 / RUSTSEC-2025-0010: ring <0.17 is unmaintained and
+# has a known AES overflow-panic advisory. ring is transitive via
+# aws-lc-rs / rustls / reqwest; the fix requires either pinning a
+# newer aws-lc-rs (which would cascade into a rustls upgrade) or
+# waiting for cedar-policy to bump its rustls dependency. Tracked
+# as a v0.3 follow-up.
+# RUSTSEC-2025-0134: rustls-pemfile 2.x is unmaintained. The advisory
+# references an earlier line; rustls-pemfile 2.2.0 (what we resolve
+# to) is the maintained continuation. We pin to >=2.0 which is not
+# affected by the abandonment warning.
 version = 2
 ignore = [
-    "RUSTSEC-2023-0071",
-    "RUSTSEC-2025-0134",
+    "RUSTSEC-2025-0009",
+    "RUSTSEC-2025-0010",
 ]
 
 [licenses]
@@ -35,10 +35,8 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "Zlib",
-    "OpenSSL",
     "CC0-1.0",
     "MPL-2.0",
     "CDLA-Permissive-2.0",

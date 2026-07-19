@@ -9,7 +9,7 @@ description = "Pluggable observability layer for agentguard — Sink trait, OTel
 default = ["jsonl", "stdout"]
 jsonl = []
 stdout = []
-otlp = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry"]
+otlp = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry", "opentelemetry_sdk/logs"]
 
 [dependencies]
 serde.workspace = true
@@ -22,10 +22,10 @@ tracing-subscriber.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
-opentelemetry = { version = "0.24", optional = true, default-features = false, features = ["trace", "metrics"] }
+opentelemetry = { version = "0.24", optional = true, default-features = false, features = ["trace", "metrics", "logs"] }
 parking_lot.workspace = true
 opentelemetry_sdk = { version = "0.24", optional = true, default-features = false, features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.17", optional = true, default-features = false, features = ["grpc-tonic", "trace"] }
+opentelemetry-otlp = { version = "0.17", optional = true, default-features = false, features = ["grpc-tonic", "trace", "logs"] }
 tracing-opentelemetry = { version = "0.25", optional = true }
 
 [dependencies.uuid]

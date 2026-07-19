@@ -267,14 +267,13 @@ fn jwk_thumbprint_ed25519(jwk: &serde_json::Value) -> Result<String> {
 /// Constant-time byte slice equality. Used for jkt comparison to avoid
 /// leaking the expected thumbprint length/content via timing.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    // ponytail: use the upstream-audited subtle crate rather than
+    // a hand-rolled XOR fold. The result is the same algorithm but
+    // every release of `subtle` is reviewed by the RustCrypto
+    // team, and the constant-time guarantees are documented and
+    // unit-tested.
+    use subtle::ConstantTimeEq;
+    a.ct_eq(b).into()
 }
 
 #[cfg(test)]
