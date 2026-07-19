@@ -133,12 +133,10 @@ impl HashChain {
         // drifts across processes — verify_chain then sees records
         // tagged with multiple ids and rejects them.
         if let Some(id_str) = val.get("chain_id").and_then(|v| v.as_str()) {
-            uuid::Uuid::parse_str(id_str)
+            let uuid = uuid::Uuid::parse_str(id_str)
                 .map(ChainId)
                 .map_err(|e| ChainLoadError::Corrupt(format!("chain_id not a UUID: {e}")))?;
-            *self.inner.id.lock() = Some(ChainId(
-                uuid::Uuid::parse_str(id_str).expect("validated above"),
-            ));
+            *self.inner.id.lock() = Some(uuid);
         }
         Ok(())
     }

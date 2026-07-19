@@ -47,6 +47,13 @@ impl CacheKey {
         // Reusing `buf` across fields avoids 3-4 small Vec allocations
         // per cache-miss (the prior implementation allocated a fresh
         // Vec for every field).
+        //
+        // Security: every field is mandatory. If serialization fails
+        // for any reason (today it's infallible for Principal /
+        // Action / Resource / Context, but the serde_json::Value API
+        // is fallible), we PANIC rather than produce a key that omits
+        // the field — a key collision between two distinct requests
+        // would leak Allow decisions across security boundaries.
         let mut hash_value = |h: &mut Sha256, value: &serde_json::Value| {
             buf.clear();
             write_canonical_value(&mut buf, value).expect("canonical write to Vec is infallible");
@@ -55,21 +62,21 @@ impl CacheKey {
             sha2::Digest::update(h, &buf);
         };
 
-        if let Ok(p) = serde_json::to_value(&req.principal) {
-            hash_value(&mut hasher, &p);
-        }
-        if let Ok(a) = serde_json::to_value(&req.action) {
-            hash_value(&mut hasher, &a);
-        }
-        if let Ok(r) = serde_json::to_value(&req.resource) {
-            hash_value(&mut hasher, &r);
-        }
+        let principal = serde_json::to_value(&req.principal)
+            .expect("Principal is always serializable; see principal.rs round-trip tests");
+        hash_value(&mut hasher, &principal);
+        let action = serde_json::to_value(&req.action)
+            .expect("AgentAction is always serializable; see action.rs round-trip tests");
+        hash_value(&mut hasher, &action);
+        let resource = serde_json::to_value(&req.resource)
+            .expect("Resource is always serializable; see resource.rs round-trip tests");
+        hash_value(&mut hasher, &resource);
         // Context is already canonical; hash it directly.
-        if let Ok(bytes) = canonical_json(&req.context) {
-            let len = (bytes.len() as u32).to_be_bytes();
-            sha2::Digest::update(&mut hasher, len);
-            sha2::Digest::update(&mut hasher, &bytes);
-        }
+        let ctx_bytes = canonical_json(&req.context)
+            .expect("AgentContext is always serializable; see context.rs round-trip tests");
+        let ctx_len = (ctx_bytes.len() as u32).to_be_bytes();
+        sha2::Digest::update(&mut hasher, ctx_len);
+        sha2::Digest::update(&mut hasher, &ctx_bytes);
         if let Some(t) = &req.trace {
             buf.clear();
             let s = t.to_string();

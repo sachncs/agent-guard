@@ -10,6 +10,8 @@
 //! A single editor save can produce 3-5 raw events
 //! (modify → close-write → chmod → ...). The watcher coalesces events
 //! that arrive within `debounce` of each other into a single batch.
+//! The kind is collapsed to the dominant kind for the batch (Create
+//! wins, then Write, then Remove, then Other).
 //!
 //! # Errors
 //!
@@ -31,8 +33,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 pub struct WatchEvent {
     /// Paths of files that changed in this debounce window.
     pub paths: Vec<PathBuf>,
-    /// What kind of change occurred. Only `Create`, `Write`,
-    /// `Remove`, and `Modify` are surfaced.
+    /// What kind of change occurred. See [`WatchEventKind`].
     pub kind: WatchEventKind,
 }
 
@@ -69,10 +70,13 @@ impl From<&EventKind> for WatchEventKind {
 /// channel; drain with [`PolicyWatcher::events`].
 pub struct PolicyWatcher {
     _inner: RecommendedWatcher,
-    rx: Receiver<Vec<PathBuf>>,
+    /// Batched (paths, dominant kind) tuples. The notify callback
+    /// collapses an entire batch into one item.
+    rx: Receiver<(Vec<PathBuf>, WatchEventKind)>,
     debounce: Duration,
     last_emit: Option<Instant>,
     pending: Vec<PathBuf>,
+    pending_kind: WatchEventKind,
 }
 
 impl PolicyWatcher {
@@ -81,9 +85,15 @@ impl PolicyWatcher {
     /// debounce window hasn't elapsed).
     pub fn events(&mut self) -> Vec<WatchEvent> {
         // Drain all raw events from notify, accumulating into pending.
-        while let Ok(raw) = self.rx.try_recv() {
-            // raw is Vec<PathBuf> already (we batched in the callback).
-            self.pending.extend(raw);
+        while let Ok((paths, kind)) = self.rx.try_recv() {
+            self.pending.extend(paths);
+            // Promote the kind: Create > Write > Remove > Other.
+            self.pending_kind = match (self.pending_kind, kind) {
+                (WatchEventKind::Create, _) | (_, WatchEventKind::Create) => WatchEventKind::Create,
+                (WatchEventKind::Write, _) | (_, WatchEventKind::Write) => WatchEventKind::Write,
+                (WatchEventKind::Remove, _) | (_, WatchEventKind::Remove) => WatchEventKind::Remove,
+                _ => WatchEventKind::Other,
+            };
         }
         let now = Instant::now();
         let ready = match self.last_emit {
@@ -96,10 +106,8 @@ impl PolicyWatcher {
         // Flush.
         self.last_emit = Some(now);
         let paths = std::mem::take(&mut self.pending);
-        vec![WatchEvent {
-            paths,
-            kind: WatchEventKind::Other,
-        }]
+        let kind = std::mem::replace(&mut self.pending_kind, WatchEventKind::Other);
+        vec![WatchEvent { paths, kind }]
     }
 
     /// Stop watching. Idempotent. Drops the background thread and
@@ -117,13 +125,15 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
     let (tx, rx) = channel();
     let dir = dir.as_ref().to_path_buf();
     let mut inner = notify::recommended_watcher(move |res: notify::Result<Event>| {
-        // Batch all paths from this event into one channel send.
-        // `notify` delivers one Event per raw FS event; we collapse
-        // them to a Vec<PathBuf> here so the consumer just gets
-        // one item per "something happened".
+        // Collapse each notify::Event into (paths, kind). The kind
+        // is the dominant kind for the event — multiple kinds in one
+        // batch are coalesced at the consumer via `pending_kind`.
         if let Ok(ev) = res {
+            let kind = WatchEventKind::from(&ev.kind);
             let paths: Vec<PathBuf> = ev.paths.into_iter().collect();
-            let _ = tx.send(paths);
+            if !paths.is_empty() {
+                let _ = tx.send((paths, kind));
+            }
         }
     })
     .map_err(|e| std::io::Error::other(format!("notify watcher: {e}")))?;
@@ -136,6 +146,7 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
         debounce,
         last_emit: None,
         pending: Vec::new(),
+        pending_kind: WatchEventKind::Other,
     })
 }
 

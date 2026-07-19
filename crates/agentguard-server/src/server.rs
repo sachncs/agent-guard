@@ -224,73 +224,67 @@ pub fn spawn_policy_watcher(
     })
 }
 
-/// Block until SIGINT, SIGTERM, or (on Unix) SIGHUP is received.
-/// SIGHUP triggers an immediate cache invalidation + reload-counter
-/// bump so operators can force a refresh without touching the
-/// filesystem.
+/// Block until SIGINT or SIGTERM is received. SIGHUP is handled
+/// inline: each received SIGHUP triggers an immediate cache
+/// invalidation + reload-counter bump so operators can force a
+/// refresh without touching the filesystem. The loop is iterative
+/// (no recursion) so multiple SIGHUPs don't grow the stack.
 pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
+    use tokio::signal::unix as u;
+
+    // Best-effort installation of signal handlers. If install fails
+    // (e.g. inside a sandbox) we park that branch forever so the
+    // shutdown wait stays well-defined.
     #[cfg(unix)]
-    let sighup = async {
-        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::hangup()) {
-            sig.recv().await;
-        } else {
-            std::future::pending::<()>().await;
-        }
+    let (mut terminate, mut sighup) = {
+        let t = u::signal(u::SignalKind::terminate()).ok();
+        let h = u::signal(u::SignalKind::hangup()).ok();
+        (t, h)
     };
     #[cfg(not(unix))]
-    let sighup = std::future::pending::<()>();
-    let ctrl_c = async {
-        // ponytail: ctrl_c returns Err when the handler can't be
-        // installed (sandbox). Park forever so shutdown stays
-        // well-defined rather than exiting early.
-        if signal::ctrl_c().await.is_err() {
-            std::future::pending::<()>().await;
-        }
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
-            sig.recv().await;
-        }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        _ = ctrl_c => tracing::info!("SIGINT received, draining"),
-        _ = terminate => tracing::info!("SIGTERM received, draining"),
-        _ = sighup => {
-            state.authorizer().invalidate_cache();
-            state.metrics().record_policy_reload();
-            tracing::info!("SIGHUP received; cache invalidated, awaiting actual shutdown");
-            // Don't return; wait for SIGINT/SIGTERM next.
-            Box::pin(shutdown_signal_with_sighup(state.clone())).await;
+    let (mut terminate, mut sighup): (Option<Never>, Option<Never>) = (None, None);
+
+    loop {
+        // Pick the first signal that fires.
+        tokio::select! {
+            // ctrl_c returns Result<(), io::Error>; a sandbox that
+            // can't install the handler reports Err — we park forever
+            // so shutdown stays well-defined.
+            res = signal::ctrl_c() => {
+                if res.is_err() {
+                    std::future::pending::<()>().await;
+                } else {
+                    tracing::info!("SIGINT received, draining");
+                    break;
+                }
+            }
+            _ = async {
+                match terminate.as_mut() {
+                    Some(s) => { let _ = s.recv().await; }
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                tracing::info!("SIGTERM received, draining");
+                break;
+            }
+            _ = async {
+                match sighup.as_mut() {
+                    Some(s) => { let _ = s.recv().await; }
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                state.authorizer().invalidate_cache();
+                state.metrics().record_policy_reload();
+                tracing::info!(
+                    "SIGHUP received; cache invalidated, awaiting actual shutdown"
+                );
+                // Loop again — wait for SIGINT/SIGTERM.
+            }
         }
     }
 }
 
-/// Resolve when SIGINT or SIGTERM is received. Used as the trigger for
-/// `axum::serve(...).with_graceful_shutdown(...)` so in-flight requests
-/// finish before the process exits.
-#[allow(dead_code)]
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        // ponytail: ctrl_c returns Err when the handler can't be
-        // installed (sandbox). Park forever so shutdown stays
-        // well-defined rather than exiting early.
-        if signal::ctrl_c().await.is_err() {
-            std::future::pending::<()>().await;
-        }
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
-            sig.recv().await;
-        }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        _ = ctrl_c => tracing::info!("SIGINT received, draining"),
-        _ = terminate => tracing::info!("SIGTERM received, draining"),
-    }
-}
+/// Helper: phantom type for non-Unix branches where the signal futures
+/// can never resolve (signals don't exist on Windows).
+#[cfg(not(unix))]
+type Never = std::convert::Infallible;

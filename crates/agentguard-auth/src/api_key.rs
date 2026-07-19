@@ -24,9 +24,10 @@ use std::time::Duration;
 /// was at the bottom of OWASP's "acceptable" range and ~10x cheaper
 /// to brute-force; the bump brings verification to ~150ms on server
 /// hardware, which is appropriate for an authentication boundary.
-fn argon2() -> Argon2<'static> {
-    let params = Params::new(64 * 1024, 3, 4, None).expect("argon2 params");
-    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+fn argon2() -> Result<Argon2<'static>> {
+    let params = Params::new(64 * 1024, 3, 4, None)
+        .map_err(|e| AuthError::Other(format!("argon2 params: {e}")))?;
+    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
 /// Global lock that serializes the api_key tests. Argon2 has internal
@@ -122,7 +123,7 @@ impl ApiKeyStore {
         };
         let secret_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes);
         let salt = SaltString::generate(&mut OsRng);
-        let argon = argon2();
+        let argon = argon2()?;
         let secret_hash = argon
             .hash_password(secret_bytes.as_ref(), &salt)
             .map_err(|e| AuthError::Other(format!("argon2: {}", e)))?
@@ -180,7 +181,7 @@ impl ApiKeyStore {
         }
         let parsed = PasswordHash::new(&key.secret_hash)
             .map_err(|e| AuthError::Other(format!("hash parse: {}", e)))?;
-        if argon2().verify_password(&secret, &parsed).is_err() {
+        if argon2()?.verify_password(&secret, &parsed).is_err() {
             return Err(AuthError::ApiKeyInvalid);
         }
         Ok(key)
@@ -245,7 +246,7 @@ mod tests {
         let s = ApiKeyStore::new();
         let id = uuid::Uuid::new_v4().to_string();
         let salt = SaltString::generate(&mut OsRng);
-        let argon = argon2();
+        let argon = argon2().unwrap();
         let hash = argon
             .hash_password(b"some-secret", &salt)
             .unwrap()
