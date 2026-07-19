@@ -14,6 +14,13 @@ pub type Timestamp = i64;
 ///
 /// Used by the authorizer, cache, and delegation verifier so that tests can
 /// use a [`MockClock`] to drive deterministic TTL behavior.
+///
+/// # Future
+/// This trait is currently held as `Arc<dyn Clock>` in the cache and
+/// policy watcher (cheap but not free). Switching the call sites to
+/// `impl Clock` generics would let `SystemClock` (zero-sized) live
+/// on the stack and avoid the `Arc`/`dyn` indirection entirely.
+/// Tracked for v0.3.
 pub trait Clock: Send + Sync {
     /// Monotonic instant (for measuring elapsed time).
     fn now(&self) -> Instant;

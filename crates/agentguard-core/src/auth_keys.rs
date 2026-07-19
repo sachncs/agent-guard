@@ -58,15 +58,16 @@ struct KeyEntry {
 /// during the cutover.
 ///
 /// Bounded by [`DEFAULT_KEY_KID_CAP`] distinct kids. When the cap is
-/// reached, `add` evicts the oldest kid before inserting the new one.
-/// This prevents a misbehaving JWKS endpoint from growing the registry
-/// without bound.
+/// reached, [`Self::add`] evicts the oldest kid before inserting the
+/// new one. This prevents a misbehaving IdP with thousands of distinct
+/// kids from growing the registry without bound.
 #[derive(Debug)]
 pub struct KeyRegistry {
     inner: parking_lot::RwLock<HashMap<String, Vec<KeyEntry>>>,
     /// Insertion order for LRU eviction. New kids are pushed to the
-    /// back; `add` evicts the front when over the cap.
-    order: parking_lot::Mutex<Vec<String>>,
+    /// back; `add` evicts the front when over the cap. `VecDeque` so
+    /// the eviction is O(1) (the previous `Vec::remove(0)` was O(n)).
+    order: parking_lot::Mutex<std::collections::VecDeque<String>>,
     cap: usize,
 }
 
@@ -91,7 +92,7 @@ impl KeyRegistry {
     pub fn with_cap(cap: usize) -> Self {
         Self {
             inner: parking_lot::RwLock::new(HashMap::new()),
-            order: parking_lot::Mutex::new(Vec::new()),
+            order: parking_lot::Mutex::new(std::collections::VecDeque::new()),
             cap: cap.max(1),
         }
     }
@@ -115,8 +116,7 @@ impl KeyRegistry {
             // Cap check + evict before inserting a new kid.
             let mut order = self.order.lock();
             while order.len() >= self.cap {
-                if let Some(oldest) = order.first().cloned() {
-                    order.remove(0);
+                if let Some(oldest) = order.pop_front() {
                     guard.remove(&oldest);
                     tracing::warn!(
                         kid = %oldest,
@@ -127,7 +127,7 @@ impl KeyRegistry {
                     break;
                 }
             }
-            order.push(kid.clone());
+            order.push_back(kid.clone());
         }
         guard.entry(kid.clone()).or_default().push(KeyEntry {
             kid,
