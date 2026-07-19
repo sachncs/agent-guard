@@ -27,6 +27,12 @@ struct Cli {
     #[arg(long, global = true, default_value = "pretty")]
     output: String,
 
+    /// Path to the HMAC chain secret file. Subcommands that write to
+    /// the audit log (`authorize`, `audit verify`) consult this when
+    /// `AGENTGUARD_CHAIN_SECRET` is unset. Ignored otherwise.
+    #[arg(long, global = true, env = "AGENTGUARD_CHAIN_SECRET")]
+    secret_file: Option<String>,
+
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -226,6 +232,7 @@ async fn run() -> i32 {
                 entities.as_deref(),
                 skip_audit,
                 out,
+                cli.secret_file.as_deref().map(std::path::Path::new),
             )
             .await
             {
@@ -324,13 +331,14 @@ async fn run() -> i32 {
             }
         },
         Cmd::Doctor => {
-            let chain_secret = std::env::var("AGENTGUARD_CHAIN_SECRET")
-                .ok()
-                .map(std::path::PathBuf::from);
+            // Honor --secret-file / AGENTGUARD_CHAIN_SECRET. clap
+            // already wires the env via the global flag, so the path
+            // surfaces here uniformly.
+            let chain_secret = cli.secret_file.as_deref().map(std::path::Path::new);
             let report = match commands::doctor::run(
                 std::path::Path::new(&cli.store),
                 std::path::Path::new(&cli.audit),
-                chain_secret.as_deref(),
+                chain_secret,
             ) {
                 Ok(r) => r,
                 Err(e) => {

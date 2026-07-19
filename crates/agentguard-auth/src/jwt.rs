@@ -19,9 +19,15 @@ pub struct JwtConfig {
     /// Expected `aud` claim.
     pub audience: String,
     /// Whitelist of accepted signing algorithms (RFC 8725 §3.1).
+    /// Default = `[EdDSA]` because `verify_signature` only implements
+    /// Ed25519 today; RS256/ES256 are reserved for v2.1. Operators
+    /// can opt in via `with_algorithms` once they're implemented.
     pub algorithms: Vec<Algorithm>,
     /// JWKS URI (optional). If set, keys are fetched from this URL.
     pub jwks_uri: Option<String>,
+    /// JWKS refresh interval. Default = 30 s. Read from the
+    /// `AGENTGUARD_JWKS_REFRESH` env var (humantime format).
+    pub jwks_refresh: Duration,
     /// Clock skew tolerance for `exp`/`nbf`.
     pub clock_skew: Duration,
 }
@@ -31,8 +37,9 @@ impl JwtConfig {
         Self {
             issuer: issuer.into(),
             audience: audience.into(),
-            algorithms: vec![Algorithm::EdDSA, Algorithm::RS256, Algorithm::ES256],
+            algorithms: vec![Algorithm::EdDSA],
             jwks_uri: None,
+            jwks_refresh: Duration::from_secs(30),
             clock_skew: Duration::from_secs(60),
         }
     }
@@ -44,6 +51,27 @@ impl JwtConfig {
 
     pub fn with_jwks_uri(mut self, uri: impl Into<String>) -> Self {
         self.jwks_uri = Some(uri.into());
+        self
+    }
+
+    pub fn with_jwks_refresh(mut self, d: Duration) -> Self {
+        self.jwks_refresh = d;
+        self
+    }
+
+    /// Read the JWKS refresh interval from `AGENTGUARD_JWKS_REFRESH`
+    /// (humantime). Falls back to the default when unset or unparseable.
+    pub fn with_jwks_refresh_from_env(mut self) -> Self {
+        if let Ok(s) = std::env::var("AGENTGUARD_JWKS_REFRESH") {
+            match humantime::parse_duration(&s) {
+                Ok(d) => self.jwks_refresh = d,
+                Err(e) => tracing::warn!(
+                    env = %s,
+                    error = %e,
+                    "AGENTGUARD_JWKS_REFRESH is not a valid duration; using default"
+                ),
+            }
+        }
         self
     }
 }
@@ -299,10 +327,14 @@ impl JwtValidator {
                     tracing::warn!("skipping Ed25519 JWKS key: x is not 32 bytes");
                     continue;
                 }
-                let kid = k.kid.clone().unwrap_or_else(|| {
-                    tracing::warn!("JWKS key without kid; auto-generating");
-                    format!("jwks-{}", k.alg)
-                });
+                // ponytail: derive kid from the JWK itself when the
+                // IdP didn't supply one. The previous `jwks-{alg}`
+                // scheme collided when an IdP returned multiple
+                // kid-less keys, silently dropping all but the last.
+                let kid = match k.kid {
+                    Some(s) if !s.is_empty() => s,
+                    _ => jwk_thumbprint_ed25519(x, k.crv.as_deref().unwrap_or("Ed25519")),
+                };
                 self.keys
                     .add(&kid, Algorithm::EdDSA, KeyMaterial::Ed25519(raw));
             } else {
@@ -352,6 +384,21 @@ struct JwksKey {
     y: Option<String>,
     #[serde(default)]
     crv: Option<String>,
+}
+
+/// RFC 7638 JWK thumbprint for an Ed25519 public key. Returns the
+/// base64url-no-pad SHA-256 of the canonical JSON
+/// `{"crv":"<crv>","kty":"OKP","x":"<base64url-x>"}`. Used as a
+/// deterministic kid when the IdP doesn't supply one.
+fn jwk_thumbprint_ed25519(x_b64: &str, crv: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let canonical = format!(
+        r#"{{"crv":"{}","kty":"OKP","x":"{}"}}"#,
+        crv,
+        x_b64
+    );
+    let hash = Sha256::digest(canonical.as_bytes());
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash)
 }
 
 fn verify_signature(
@@ -610,5 +657,40 @@ mod tests {
         });
         let token = sign_token(&signing_key, "kid1", claims);
         assert!(v.validate(&token).is_ok());
+    }
+
+    #[test]
+    fn default_whitelist_is_eddsa_only() {
+        // RS256/ES256 are not yet implemented in verify_signature. A
+        // default whitelist that includes them lets an attacker pick
+        // a "not implemented" path and get a confusing error instead
+        // of a clean rejection.
+        let cfg = JwtConfig::new("iss", "aud");
+        assert_eq!(cfg.algorithms, vec![Algorithm::EdDSA]);
+    }
+
+    #[test]
+    fn jwk_thumbprint_is_deterministic() {
+        // The thumbprint must depend on the public key bytes — two
+        // keys with different x produce different thumbprints.
+        let x1 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode([1u8; 32]);
+        let x2 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode([2u8; 32]);
+        let t1 = jwk_thumbprint_ed25519(&x1, "Ed25519");
+        let t2 = jwk_thumbprint_ed25519(&x2, "Ed25519");
+        assert_ne!(t1, t2);
+        // Same key → same thumbprint.
+        assert_eq!(t1, jwk_thumbprint_ed25519(&x1, "Ed25519"));
+    }
+
+    #[test]
+    fn refresh_interval_from_env_overrides_default() {
+        // AGENTGUARD_JWKS_REFRESH=5s should produce a 5-second
+        // interval on a fresh config.
+        std::env::set_var("AGENTGUARD_JWKS_REFRESH", "5s");
+        let cfg = JwtConfig::new("iss", "aud").with_jwks_refresh_from_env();
+        std::env::remove_var("AGENTGUARD_JWKS_REFRESH");
+        assert_eq!(cfg.jwks_refresh, Duration::from_secs(5));
     }
 }

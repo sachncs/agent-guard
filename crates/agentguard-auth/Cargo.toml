@@ -19,6 +19,7 @@ async-trait.workspace = true
 tokio.workspace = true
 reqwest = { workspace = true, optional = true, features = ["json", "rustls-tls"] }
 chrono.workspace = true
+humantime.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true

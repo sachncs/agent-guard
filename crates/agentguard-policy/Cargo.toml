@@ -23,7 +23,7 @@ tracing.workspace = true
 tempfile = "3"
 
 [features]
-default = []
+default = ["watch"]
 watch = ["dep:notify", "dep:tokio"]
 
 [dev-dependencies]

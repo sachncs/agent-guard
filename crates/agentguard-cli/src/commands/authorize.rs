@@ -24,6 +24,7 @@ pub async fn run(
     entities_path: Option<impl AsRef<Path>>,
     no_audit: bool,
     output: &str,
+    secret_file: Option<&Path>,
 ) -> Result<AuthorizeOutcome> {
     let req: AgentRequest = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
@@ -64,17 +65,20 @@ pub async fn run(
     }
 
     if !no_audit {
-        // Open hash-chained log if AGENTGUARD_CHAIN_SECRET points to a file.
-        let log = if let Ok(secret_path) = std::env::var("AGENTGUARD_CHAIN_SECRET") {
-            let key = std::fs::read(&secret_path).unwrap_or_default();
-            if !key.is_empty() {
-                let key = trim_key(&key);
-                DecisionLog::open_with_chain(audit.as_ref(), &key)?
-            } else {
-                DecisionLog::open(audit.as_ref())?
+        // Open hash-chained log if a secret file is provided via
+        // --secret-file / AGENTGUARD_CHAIN_SECRET. Read errors
+        // surface (no silent plain-mode downgrade).
+        let log = match secret_file {
+            Some(path) => {
+                let key = std::fs::read(path).map_err(|e| {
+                    anyhow!("read chain secret {:?}: {}", path, e)
+                })?;
+                if key.is_empty() {
+                    anyhow::bail!("chain secret file {:?} is empty", path);
+                }
+                DecisionLog::open_with_chain(audit.as_ref(), &trim_key(&key))?
             }
-        } else {
-            DecisionLog::open(audit.as_ref())?
+            None => DecisionLog::open(audit.as_ref())?,
         };
         log.append_decision(&decision)?;
     }

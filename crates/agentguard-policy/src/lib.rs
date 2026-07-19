@@ -5,8 +5,8 @@
 //! - [`PolicyBundle`] — a snapshot of schema + policies, addressable by version
 //! - [`BundleRegistry`] — in-memory version store with persistence
 //! - [`diff`] — line-level diff between two bundles (uses the `similar` crate)
-//! - [`blast_radius::replay_set`] — classify decision changes across a corpus
-//! - hot-reload watcher (gated behind the `watch` feature)
+//! - [`blast_radius::analyze`] — classify decision changes across a corpus
+//! - hot-reload watcher (gated behind the `watch` feature, enabled by default)
 
 pub mod blast_radius;
 pub mod diff;
