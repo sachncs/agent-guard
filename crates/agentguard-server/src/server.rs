@@ -85,7 +85,8 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         .await
         .map_err(|e| anyhow!("build state: {}", e))?,
     );
-    let watcher_handle = spawn_policy_watcher(cfg.store_root.clone(), state.clone());
+    let watcher_handle =
+        spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>);
     let app = router((*state).clone());
 
     // Optional gRPC sidecar: when AGENTGUARD_GRPC_LISTEN is set,
@@ -134,14 +135,6 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
                 .serve(app.into_make_service())
                 .await?;
         }
-        Listener::Unix(path) => {
-            // Unix socket support is a v2.1 enhancement. For now, the user
-            // should use a TCP loopback listener (sidecars work fine that way).
-            return Err(anyhow!(
-                "Unix socket mode is not yet implemented; use tcp://127.0.0.1:<port> instead (path was {})",
-                path.display()
-            ));
-        }
     }
 
     watcher_handle.abort();
@@ -155,10 +148,15 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
 /// Build a ready-to-serve `Router` from the config. Exposed for tests
 /// and embedders that want to run the AuthZEN app inside their own
 /// hyper server.
+///
+/// `allow_loopback_bypass`: when `true`, a config with auth disabled
+/// may be served on a non-loopback listener (intended only for
+/// tests and embedders behind a trusted reverse proxy). Production
+/// callers should pass `false` so the security guard fires.
 pub async fn build_router(
     cfg: ServerConfig,
+    allow_loopback_bypass: bool,
 ) -> Result<(axum::Router, Arc<crate::authzen::AppState>)> {
-    let allow_loopback_bypass = true;
     let auth = AuthLayer::from_config(&cfg.auth, allow_loopback_bypass)
         .map_err(|e| anyhow!("auth layer: {}", e))?;
     let chain_secret = match &cfg.chain_secret {
@@ -181,6 +179,20 @@ pub async fn build_router(
     Ok((app, Arc::new(state)))
 }
 
+/// Minimal sink the watcher needs from app state. Implemented by
+/// `AppState` so tests can pass a fake.
+pub trait ReloadSink: Send + Sync + 'static {
+    /// Invalidate the decision cache and bump `policy_reload_total`.
+    fn reload(&self);
+}
+
+impl ReloadSink for crate::authzen::AppState {
+    fn reload(&self) {
+        self.authorizer().invalidate_cache();
+        self.metrics().record_policy_reload();
+    }
+}
+
 /// Spawn the policy hot-reload watcher. Returns the task handle so the
 /// caller can abort it on shutdown. The task polls the filesystem
 /// every 500 ms, drains the watcher's debounced events, and on each
@@ -191,7 +203,7 @@ pub async fn build_router(
 /// schema or audit log.
 pub fn spawn_policy_watcher(
     store_root: std::path::PathBuf,
-    state: Arc<crate::authzen::AppState>,
+    sink: Arc<dyn ReloadSink>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn_blocking(move || {
         let mut watcher = match policy_watch(&store_root, Duration::from_millis(250)) {
@@ -213,13 +225,11 @@ pub fn spawn_policy_watcher(
             if events.is_empty() {
                 continue;
             }
-            // ponytail: simple invalidation. Re-loading the policy
-            // set is the Authorizer's job; for now we invalidate
-            // the cache and bump the counter. A full reload rebuilds
-            // the cedar PolicySet, which is a bigger lift.
-            state.authorizer().invalidate_cache();
-            state.metrics().record_policy_reload();
-            tracing::info!(events = events.len(), "policy reload triggered by watcher");
+            sink.reload();
+            tracing::info!(
+                events = events.len(),
+                "policy reload triggered by watcher"
+            );
         }
     })
 }

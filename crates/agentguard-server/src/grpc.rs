@@ -44,6 +44,23 @@ impl AccessEvaluation for AccessEvaluationService {
             .resource
             .ok_or_else(|| Status::invalid_argument("missing resource"))?;
 
+        // Parse context + entities once. Previously the entities JSON
+        // was decoded twice per request — once into the AuthZEN
+        // request shape and once into the cedar Entities builder —
+        // which doubled the CPU on the validation path.
+        let context: serde_json::Value = if req.context_json.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&req.context_json)
+                .map_err(|e| Status::invalid_argument(format!("context_json: {e}")))?
+        };
+        let per_request_entities: Vec<serde_json::Value> = if req.entities_json.is_empty() {
+            Vec::new()
+        } else {
+            serde_json::from_str(&req.entities_json)
+                .map_err(|e| Status::invalid_argument(format!("entities_json: {e}")))?
+        };
+
         // Convert proto EntityRef -> AuthZEN JSON shape -> AgentRequest.
         let http_style = crate::authzen::EvaluationRequest {
             subject: crate::authzen::EntityRef {
@@ -58,28 +75,12 @@ impl AccessEvaluation for AccessEvaluationService {
                 entity_type: resource.r#type,
                 id: resource.id,
             },
-            context: if req.context_json.is_empty() {
-                serde_json::json!({})
-            } else {
-                serde_json::from_str(&req.context_json)
-                    .map_err(|e| Status::invalid_argument(format!("context_json: {e}")))?
-            },
-            entities: if req.entities_json.is_empty() {
-                vec![]
-            } else {
-                serde_json::from_str(&req.entities_json)
-                    .map_err(|e| Status::invalid_argument(format!("entities_json: {e}")))?
-            },
+            context: context.clone(),
+            entities: per_request_entities.clone(),
         };
 
         let agent_req =
             evaluation_request_to_agent(http_style).map_err(Status::invalid_argument)?;
-        let per_request_entities: Vec<serde_json::Value> = if req.entities_json.is_empty() {
-            vec![]
-        } else {
-            serde_json::from_str(&req.entities_json)
-                .map_err(|e| Status::invalid_argument(format!("entities_json: {e}")))?
-        };
         let entities = build_request_entities(&per_request_entities).map_err(Status::internal)?;
 
         let started = std::time::Instant::now();

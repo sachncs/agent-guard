@@ -251,7 +251,7 @@ async fn run() -> i32 {
             Ok::<(), anyhow::Error>(())
         }
         Cmd::Sim { request, entities } => {
-            commands::sim::run(&cli.store, &request, entities.as_deref(), out)
+            commands::sim::run(&cli.store, &request, entities.as_deref(), out).await
         }
         Cmd::Delegate {
             from,

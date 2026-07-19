@@ -3,8 +3,8 @@ use agentguard_core::{
 };
 use anyhow::{anyhow, Result};
 use base64::Engine as _;
-use std::io::Read;
 use std::path::Path;
+use tokio::io::AsyncReadExt;
 
 /// A policy decision returned to the caller.
 #[derive(Debug)]
@@ -28,18 +28,31 @@ pub async fn run(
 ) -> Result<AuthorizeOutcome> {
     let req: AgentRequest = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf)?;
+        tokio::io::stdin().read_to_string(&mut buf).await?;
         serde_json::from_str(&buf)?
     } else {
-        let text = std::fs::read_to_string(request.as_ref())?;
+        let text = tokio::fs::read_to_string(request.as_ref()).await?;
         serde_json::from_str(&text)?
     };
 
-    let entities = load_entities(entities_path.as_ref().map(|p| p.as_ref()))?;
+    let entities = load_entities(entities_path.as_ref().map(|p| p.as_ref())).await?;
 
-    let store = PolicyStore::open(store)?;
-    let engine = Authorizer::new(store)?;
-    let decision = engine.authorize(&req, &entities)?;
+    // Cedar engine evaluation + filesystem reads are CPU/IO heavy —
+    // offload to a blocking thread so the tokio runtime stays
+    // responsive.
+    let store_path = store.as_ref().to_path_buf();
+    let audit_path = audit.as_ref().to_path_buf();
+    let secret_path_buf = secret_file.map(|p| p.to_path_buf());
+    let req_for_blocking = req.clone();
+    let entities_for_blocking = entities.clone();
+    let decision = tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
+        let store = PolicyStore::open(&store_path)?;
+        let engine = Authorizer::new(store)?;
+        let decision = engine.authorize(&req_for_blocking, &entities_for_blocking)?;
+        Ok(decision)
+    })
+    .await
+    .map_err(|e| anyhow!("blocking task: {e}"))??;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(&decision)?);
@@ -67,19 +80,28 @@ pub async fn run(
     if !no_audit {
         // Open hash-chained log if a secret file is provided via
         // --secret-file / AGENTGUARD_CHAIN_SECRET. Read errors
-        // surface (no silent plain-mode downgrade).
-        let log = match secret_file {
-            Some(path) => {
-                let key = std::fs::read(path)
-                    .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
-                if key.is_empty() {
-                    anyhow::bail!("chain secret file {:?} is empty", path);
+        // surface (no silent plain-mode downgrade). Audit writes
+        // are sync IO and stay on the blocking thread.
+        let audit_path_for_blocking = audit_path.clone();
+        let secret_path_for_blocking = secret_path_buf.clone();
+        let decision_for_blocking = decision.clone();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let log = match &secret_path_for_blocking {
+                Some(path) => {
+                    let key = std::fs::read(path)
+                        .map_err(|e| anyhow!("read chain secret {:?}: {}", path, e))?;
+                    if key.is_empty() {
+                        anyhow::bail!("chain secret file {:?} is empty", path);
+                    }
+                    DecisionLog::open_with_chain(&audit_path_for_blocking, &trim_key(&key))?
                 }
-                DecisionLog::open_with_chain(audit.as_ref(), &trim_key(&key))?
-            }
-            None => DecisionLog::open(audit.as_ref())?,
-        };
-        log.append_decision(&decision)?;
+                None => DecisionLog::open(&audit_path_for_blocking)?,
+            };
+            log.append_decision(&decision_for_blocking)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow!("blocking task: {e}"))??;
     }
 
     let outcome = AuthorizeOutcome {
@@ -89,19 +111,24 @@ pub async fn run(
     Ok(outcome)
 }
 
-fn load_entities(path: Option<&Path>) -> Result<cedar_policy::Entities> {
+async fn load_entities(path: Option<&Path>) -> Result<cedar_policy::Entities> {
     let path = path.unwrap_or_else(|| Path::new(".agentguard/entities.json"));
     if !path.exists() {
         return Ok(cedar_policy::Entities::empty());
     }
-    let text = std::fs::read_to_string(path)?;
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| {
-        anyhow!(
-            "entities file must be a JSON array of entity objects: {}",
-            e
-        )
-    })?;
-    build_entities(arr).map_err(Into::into)
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<cedar_policy::Entities> {
+        let text = std::fs::read_to_string(&path)?;
+        let arr: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| {
+            anyhow!(
+                "entities file must be a JSON array of entity objects: {}",
+                e
+            )
+        })?;
+        build_entities(arr).map_err(Into::into)
+    })
+    .await
+    .map_err(|e| anyhow!("blocking task: {e}"))?
 }
 
 /// Parse a chain secret: hex (64 chars) or base64. Falls back to raw bytes

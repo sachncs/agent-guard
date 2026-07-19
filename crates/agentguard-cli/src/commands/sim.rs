@@ -2,8 +2,9 @@ use agentguard_core::authorize::build_entities;
 use agentguard_core::{AgentRequest, Authorizer, PolicyStore};
 use anyhow::Result;
 use std::path::Path;
+use tokio::io::AsyncReadExt;
 
-pub fn run(
+pub async fn run(
     store: impl AsRef<Path>,
     request: impl AsRef<Path>,
     entities_path: Option<impl AsRef<Path>>,
@@ -11,24 +12,36 @@ pub fn run(
 ) -> Result<()> {
     let text = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)?;
+        tokio::io::stdin().read_to_string(&mut buf).await?;
         buf
     } else {
-        std::fs::read_to_string(request)?
+        tokio::fs::read_to_string(request.as_ref()).await?
     };
     let req: AgentRequest = serde_json::from_str(&text)?;
 
     let entities = if let Some(p) = entities_path {
-        let text = std::fs::read_to_string(p.as_ref())?;
-        let arr: Vec<serde_json::Value> = serde_json::from_str(&text)?;
-        build_entities(arr)?
+        let path = p.as_ref().to_path_buf();
+        tokio::task::spawn_blocking(move || -> Result<cedar_policy::Entities> {
+            let text = std::fs::read_to_string(&path)?;
+            let arr: Vec<serde_json::Value> = serde_json::from_str(&text)?;
+            Ok(build_entities(arr)?)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("blocking task: {e}"))??
     } else {
         cedar_policy::Entities::empty()
     };
 
-    let store = PolicyStore::open(store)?;
-    let engine = Authorizer::new(store)?;
-    let decision = engine.authorize(&req, &entities)?;
+    let store_path = store.as_ref().to_path_buf();
+    let req_for_blocking = req.clone();
+    let entities_for_blocking = entities.clone();
+    let decision = tokio::task::spawn_blocking(move || -> Result<agentguard_core::authorize::Decision> {
+        let store = PolicyStore::open(&store_path)?;
+        let engine = Authorizer::new(store)?;
+        Ok(engine.authorize(&req_for_blocking, &entities_for_blocking)?)
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("blocking task: {e}"))??;
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(&decision)?);

@@ -43,8 +43,16 @@ pub async fn run(
     confirm: bool,
     _output: &str,
 ) -> Result<()> {
-    let store = PolicyStore::open(store)?;
-    let schema_text = std::fs::read_to_string(store.schema_path()).unwrap_or_default();
+    let store_path = store.to_string();
+    let schema_text = tokio::task::spawn_blocking(move || -> Result<(PolicyStore, String)> {
+        let s = PolicyStore::open(&store_path)?;
+        let text = std::fs::read_to_string(s.schema_path()).unwrap_or_default();
+        Ok((s, text))
+    })
+    .await
+    .map_err(|e| anyhow!("blocking task: {e}"))??;
+    let store = schema_text.0;
+    let schema_text = schema_text.1;
 
     let user_prompt = format!(
         "Schema:\n```cedarschema\n{}\n```\n\nRequirement:\n{}\n\nWrite 1-3 Cedar policies that implement this requirement.",
@@ -146,11 +154,13 @@ pub async fn run(
         // --confirm: prompt for 'y/N' on stderr. Reads one byte, no
         // echo (so the prompt doesn't leak into stdout where the
         // generated policy is printed).
-        use std::io::{Read, Write};
-        eprint!("Apply generated policy? [y/N] ");
-        std::io::stderr().flush().ok();
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let mut stderr = tokio::io::stderr();
+        stderr.write_all(b"Apply generated policy? [y/N] ").await.ok();
+        let _ = stderr.flush().await;
+        let mut stdin = tokio::io::stdin();
         let mut answer = [0u8; 1];
-        let n = std::io::stdin().read(&mut answer).unwrap_or(0);
+        let n = stdin.read(&mut answer).await.unwrap_or(0);
         if n == 0 || (answer[0] != b'y' && answer[0] != b'Y') {
             eprintln!("aborted");
             return Ok(());

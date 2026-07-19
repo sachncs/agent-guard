@@ -14,8 +14,6 @@ pub enum Listener {
         cert: PathBuf,
         key: PathBuf,
     },
-    /// Unix domain socket (K8s sidecar mode).
-    Unix(PathBuf),
 }
 
 impl Listener {
@@ -25,7 +23,6 @@ impl Listener {
         match self {
             Listener::Tcp(addr) => !addr.ip().is_loopback(),
             Listener::Tls { addr, .. } => !addr.ip().is_loopback(),
-            Listener::Unix(_) => false,
         }
     }
 
@@ -65,7 +62,9 @@ impl Listener {
         } else if s.starts_with("unix://") {
             // ponytail: fail fast at parse time so operators see
             // "unix:// not implemented" immediately, not after
-            // binding the HTTP listener.
+            // binding the HTTP listener. The Listener::Unix variant
+            // was removed entirely — will be reintroduced when
+            // implemented.
             Err("unix:// listener is not implemented yet; use tcp:// or tls://".to_string())
         } else {
             Err(format!("unknown listener scheme: {}", s))
