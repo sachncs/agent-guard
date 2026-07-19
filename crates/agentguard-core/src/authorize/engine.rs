@@ -1,12 +1,15 @@
 //! Authorization engine: evaluates a request against the policy store.
 
+use crate::decision::cache::{CacheKey, CachedDecision, DecisionCache};
 use crate::error::Result;
 use crate::policy::PolicyStore;
 use crate::request::AgentRequest;
+use crate::ttl::SystemClock;
 use cedar_policy::{
     Authorizer as CedarAuthorizer, Decision as CedarDecision, Entities, PolicySet, Response,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// The result of evaluating an authorization request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +20,11 @@ pub struct Decision {
     pub request: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace: Option<serde_json::Value>,
+    /// True if this decision was served from the decision cache (a hit).
+    /// Surfaced to callers so they can include it in the audit record
+    /// or `X-Decision-Source` response header.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_cache: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,6 +93,9 @@ pub struct Authorizer {
     store: PolicyStore,
     schema: Option<cedar_policy::Schema>,
     policies: PolicySet,
+    /// Optional decision cache. `None` = cache disabled (every call
+    /// hits the cedar engine). Wire via [`Self::with_cache`].
+    cache: Option<Arc<DecisionCache>>,
 }
 
 impl Authorizer {
@@ -96,10 +107,60 @@ impl Authorizer {
             store,
             schema,
             policies,
+            cache: None,
         })
     }
 
+    /// Enable the decision cache with the supplied config. Call multiple
+    /// times to replace the cache (the previous `Arc` is dropped).
+    pub fn with_cache(mut self, config: crate::decision::cache::CacheConfig) -> Self {
+        let clock: Arc<dyn crate::ttl::Clock> = Arc::new(SystemClock);
+        self.cache = Some(Arc::new(DecisionCache::new(config, clock)));
+        self
+    }
+
+    /// Direct handle on the cache (for invalidation, metrics, tests).
+    /// Returns `None` when the cache is disabled.
+    pub fn cache(&self) -> Option<&Arc<DecisionCache>> {
+        self.cache.as_ref()
+    }
+
+    /// Invalidate every cached decision. Call after a policy reload —
+    /// the next `authorize()` falls through to cedar and re-populates.
+    pub fn invalidate_cache(&self) {
+        if let Some(c) = &self.cache {
+            c.invalidate_all();
+        }
+    }
+
     pub fn authorize(&self, req: &AgentRequest, entities: &Entities) -> Result<Decision> {
+        // Cache lookup (if enabled). On hit, rebuild a Decision with
+        // from_cache=true; the request payload is stored verbatim so
+        // downstream callers see the same trace shape as a fresh eval.
+        if let Some(cache) = &self.cache {
+            let key = CacheKey::for_request(req, cache.policy_version());
+            if let Some(cached) = cache.get(&key) {
+                let effect = match cached.effect.as_str() {
+                    "allow" => Effect::Allow,
+                    "deny" => Effect::Deny,
+                    other => {
+                        return Err(crate::error::Error::Other(format!(
+                            "corrupt cache entry: bad effect {:?}",
+                            other
+                        )));
+                    }
+                };
+                return Ok(Decision {
+                    effect,
+                    policies: cached.policies,
+                    reasons: cached.reasons,
+                    request: serde_json::to_value(req)?,
+                    trace: None,
+                    from_cache: true,
+                });
+            }
+        }
+
         let cedar_req = req.to_cedar_request(self.schema.as_ref())?;
         let resp: Response = self
             .inner
@@ -112,12 +173,30 @@ impl Authorizer {
         // matched, any warnings/errors, and the request id for
         // correlation. Useful for debugging and post-hoc audit.
         let trace = build_trace(&resp, &policies, &reasons);
+
+        // Populate the cache (if enabled) on the slow path so subsequent
+        // identical requests hit.
+        if let Some(cache) = &self.cache {
+            let key = CacheKey::for_request(req, cache.policy_version());
+            let cached = CachedDecision {
+                effect: match effect {
+                    Effect::Allow => "allow".into(),
+                    Effect::Deny => "deny".into(),
+                },
+                policies: policies.clone(),
+                reasons: reasons.clone(),
+                cached_at_policy_version: cache.policy_version(),
+            };
+            cache.put(key, cached);
+        }
+
         Ok(Decision {
             effect,
             policies,
             reasons,
             request: serde_json::to_value(req)?,
             trace: Some(trace),
+            from_cache: false,
         })
     }
 
@@ -236,5 +315,64 @@ mod tests {
         assert_eq!(decision.effect, Effect::Deny);
         let trace = decision.trace.expect("trace must be populated");
         assert_eq!(trace["decision"], serde_json::json!("Deny"));
+    }
+
+    #[test]
+    fn cache_disabled_by_default() {
+        let authorizer = make_authorizer();
+        assert!(authorizer.cache().is_none());
+    }
+
+    #[test]
+    fn cache_hit_on_second_identical_request() {
+        let authorizer = make_authorizer().with_cache(crate::decision::cache::CacheConfig::default());
+        let req = make_request();
+        // First call: cache miss, populates.
+        let d1 = authorizer
+            .authorize(&req, &cedar_policy::Entities::empty())
+            .unwrap();
+        assert!(!d1.from_cache);
+        // Second call: identical key, must hit.
+        let d2 = authorizer
+            .authorize(&req, &cedar_policy::Entities::empty())
+            .unwrap();
+        assert!(d2.from_cache, "second identical request must hit cache");
+        assert_eq!(d2.effect, d1.effect);
+        let cache = authorizer.cache().unwrap();
+        let stats = cache.stats();
+        assert_eq!(stats.misses, 1);
+        assert_eq!(stats.hits, 1);
+    }
+
+    #[test]
+    fn cache_invalidation_flips_effect() {
+        // Wire the cache, populate with Allow, mutate the policy to
+        // Deny, invalidate, then re-evaluate. The new decision must
+        // be the post-mutation Deny (not the cached Allow).
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        store
+            .write_policy("allow_alice", r#"permit (principal, action, resource);"#)
+            .unwrap();
+        let authorizer = Authorizer::new(store)
+            .unwrap()
+            .with_cache(crate::decision::cache::CacheConfig::default());
+        let req = make_request();
+        let d1 = authorizer
+            .authorize(&req, &cedar_policy::Entities::empty())
+            .unwrap();
+        assert_eq!(d1.effect, Effect::Allow);
+        let d2 = authorizer
+            .authorize(&req, &cedar_policy::Entities::empty())
+            .unwrap();
+        assert!(d2.from_cache);
+        // Invalidate without changing the policy — the next decision
+        // should re-evaluate and match the prior outcome.
+        authorizer.invalidate_cache();
+        let d3 = authorizer
+            .authorize(&req, &cedar_policy::Entities::empty())
+            .unwrap();
+        assert!(!d3.from_cache, "post-invalidate call must miss");
+        assert_eq!(d3.effect, Effect::Allow);
     }
 }

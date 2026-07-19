@@ -283,6 +283,33 @@ impl DecisionCache {
             policy_version: self.policy_version(),
         }
     }
+
+    /// Build a `CacheConfig` from the `AGENTGUARD_CACHE_*` environment
+    /// variables. Honors `AGENTGUARD_CACHE_TTL` (allow TTL; human-readable,
+    /// e.g. `60s`/`2m`/`1h`) and `AGENTGUARD_CACHE_CAPACITY`. Falls back
+    /// to defaults when unset or unparseable.
+    pub fn config_from_env() -> CacheConfig {
+        let mut cfg = CacheConfig::default();
+        if let Ok(ttl) = std::env::var("AGENTGUARD_CACHE_TTL") {
+            if let Ok(d) = crate::ttl::parse_duration(&ttl) {
+                cfg.allow_ttl = d;
+                cfg.deny_ttl = std::cmp::min(cfg.deny_ttl, d);
+            } else {
+                tracing::warn!(
+                    ttl = %ttl,
+                    "AGENTGUARD_CACHE_TTL is not a valid duration; using default"
+                );
+            }
+        }
+        if let Ok(cap) = std::env::var("AGENTGUARD_CACHE_CAPACITY") {
+            if let Ok(n) = cap.parse::<usize>() {
+                if n > 0 {
+                    cfg.capacity = n;
+                }
+            }
+        }
+        cfg
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
