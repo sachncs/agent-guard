@@ -41,7 +41,9 @@ impl Sink for JsonlSink {
 
     async fn emit(&self, event: &SinkEvent) -> Result<(), SinkError> {
         let line = serde_json::to_string(event)?;
-        let mut guard = self.inner.lock().expect("JsonlSink mutex poisoned");
+        // ponytail: see StdoutSink — recover from a poisoned
+        // mutex instead of panicking the worker.
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(f) = guard.as_mut() {
             writeln!(f, "{}", line)?;
             f.flush()?;
@@ -50,7 +52,7 @@ impl Sink for JsonlSink {
     }
 
     async fn shutdown(&self) -> Result<(), SinkError> {
-        let mut guard = self.inner.lock().expect("JsonlSink mutex poisoned");
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
         Ok(())
     }

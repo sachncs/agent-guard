@@ -480,51 +480,66 @@ pub struct VerifiedDelegation {
 #[derive(Default)]
 pub struct DelegationVerifier {
     keys: parking_lot::RwLock<std::collections::HashMap<String, (Algorithm, VerifyingKey)>>,
+    /// Clock skew tolerance for `exp` / `nbf` checks. Mirrors
+    /// `JwtConfig::clock_skew` so a 60-second drift doesn't reject
+    /// otherwise-valid tokens. Default 60 s.
+    clock_skew: std::sync::atomic::AtomicI64,
 }
 
 impl DelegationVerifier {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            clock_skew: std::sync::atomic::AtomicI64::new(60),
+            ..Self::default()
+        }
     }
+
+    /// Set the clock-skew tolerance (seconds) used when comparing
+    /// `exp` / `nbf` to "now".
+    pub fn set_clock_skew_seconds(&self, secs: i64) {
+        self.clock_skew
+            .store(secs.max(0), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn clock_skew_seconds(&self) -> i64 {
+        self.clock_skew.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Add a public key (raw Ed25519 bytes).
     ///
-    /// Replaces any existing key under the same `kid`. Takes `&self`
-    /// (not `&mut self`) because the internal registry is behind an
-    /// `RwLock`. Infallible: invalid keys (wrong length, unsupported
-    /// alg) are silently dropped with a tracing warning rather than
-    /// returning an error, mirroring the infallible signature of
-    /// `KeyRegistry::add`. Callers that need strict validation
-    /// should validate the key bytes before passing them in.
-    pub fn add_key(&self, kid: impl Into<String>, alg: Algorithm, raw: &[u8]) {
+    /// Replaces any existing key under the same `kid`. Returns `Err`
+    /// when the key bytes are invalid (wrong length, bad parse) so
+    /// callers see the failure rather than silently dropping it.
+    pub fn add_key(
+        &self,
+        kid: impl Into<String>,
+        alg: Algorithm,
+        raw: &[u8],
+    ) -> crate::error::Result<()> {
         let kid_str = kid.into();
         let key = match alg {
             Algorithm::EdDSA => {
                 if raw.len() != 32 {
-                    tracing::warn!(
-                        kid = %kid_str,
-                        len = raw.len(),
-                        "ed25519 pubkey must be 32 bytes; skipping"
-                    );
-                    return;
+                    return Err(crate::error::Error::Other(format!(
+                        "ed25519 pubkey for kid {:?} must be 32 bytes, got {}",
+                        kid_str,
+                        raw.len()
+                    )));
                 }
-                let bytes: [u8; 32] = match raw.try_into() {
-                    Ok(b) => b,
-                    Err(_) => return,
-                };
-                match VerifyingKey::from_bytes(&bytes) {
-                    Ok(k) => k,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "ed25519 key parse failed; skipping");
-                        return;
-                    }
-                }
+                let bytes: [u8; 32] = raw.try_into().expect("length checked above");
+                VerifyingKey::from_bytes(&bytes).map_err(|e| {
+                    crate::error::Error::Other(format!("ed25519 key parse: {}", e))
+                })?
             }
             _ => {
-                tracing::warn!(?alg, "alg not yet supported for verification; skipping");
-                return;
+                return Err(crate::error::Error::Other(format!(
+                    "alg {:?} not yet supported for verification",
+                    alg
+                )));
             }
         };
         self.keys.write().insert(kid_str, (alg, key));
+        Ok(())
     }
 
     /// Remove all keys.
@@ -599,11 +614,12 @@ impl DelegationVerifier {
         verify_ed255sa(&verifying_key, signing_input.as_bytes(), &sig_bytes)?;
 
         // Step 6: validate time-based claims with clock skew.
-        if parsed.claims.exp <= now_unix {
+        let skew = self.clock_skew_seconds();
+        if parsed.claims.exp + skew <= now_unix {
             return Err(Error::TokenExpired(parsed.claims.exp.to_string()));
         }
         if let Some(nbf) = parsed.claims.nbf {
-            if nbf > now_unix {
+            if nbf > now_unix + skew {
                 return Err(Error::TokenNotYetValid(nbf.to_string()));
             }
         }
@@ -696,6 +712,51 @@ mod tests {
         assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
         assert_eq!(v.claims.aud, "agentguard://prod/email");
         assert_eq!(v.kid, signer.key_id());
+    }
+
+    #[test]
+    fn clock_skew_tolerates_minor_drift() {
+        // Two tokens minted back-to-back; the verifier is asked to
+        // verify them 30 seconds after they were minted (i.e. the
+        // verifier's clock is 30 s behind). With skew=60 the
+        // second one is still inside the window; with skew=0 it
+        // is rejected.
+        let signer = DelegationSigner::generate();
+        let cfg = DelegationConfig::default();
+        let token = signer
+            .mint("a", "b", "aud", vec![], vec![], cfg)
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let drifted_now = now + 30; // verifier clock is 30 s ahead
+        // Token's exp = now + 900. Verifier now is now + 30; with
+        // skew=60, 30 + 60 = 90 < 900 → verify OK.
+        verifier.set_clock_skew_seconds(60);
+        assert!(verifier.verify(&token.to_jws(), "aud", drifted_now).is_ok());
+        // With skew=0, 30 < 900 still verifies — sanity check.
+        verifier.set_clock_skew_seconds(0);
+        assert!(verifier.verify(&token.to_jws(), "aud", drifted_now).is_ok());
+        // Now use a clock 1000 seconds ahead — token is past exp.
+        let far_future = now + 1000;
+        verifier.set_clock_skew_seconds(60);
+        assert!(verifier.verify(&token.to_jws(), "aud", far_future).is_err());
+        verifier.set_clock_skew_seconds(0);
+        assert!(verifier.verify(&token.to_jws(), "aud", far_future).is_err());
+    }
+
+    #[test]
+    fn add_key_rejects_wrong_length() {
+        let v = DelegationVerifier::new();
+        // 31 bytes — too short for Ed25519.
+        let bad = vec![0u8; 31];
+        assert!(v.add_key("k", Algorithm::EdDSA, &bad).is_err());
     }
 
     #[test]

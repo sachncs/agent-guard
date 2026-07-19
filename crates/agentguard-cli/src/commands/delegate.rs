@@ -64,7 +64,9 @@ pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Res
             .split_once('=')
             .ok_or_else(|| anyhow!("expected `kid=base64pubkey` in keys file"))?;
         let bytes = base64_decode(key.trim())?;
-        verifier.add_key(id.trim(), Algorithm::EdDSA, &bytes);
+        verifier
+            .add_key(id.trim(), Algorithm::EdDSA, &bytes)
+            .map_err(|e| anyhow!("add key {:?}: {}", id.trim(), e))?;
     }
 
     let verified = verifier

@@ -34,7 +34,11 @@ impl Sink for StdoutSink {
 
     async fn emit(&self, event: &SinkEvent) -> Result<(), SinkError> {
         let json = serde_json::to_string_pretty(event)?;
-        let mut guard = self.inner.lock().expect("StdoutSink mutex poisoned");
+        // ponytail: a poisoned mutex would normally panic the
+        // thread; recover by acquiring the inner state anyway
+        // (the data is still consistent — only the recovery
+        // metadata was lost).
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         writeln!(guard, "{}", json)?;
         guard.flush()?;
         Ok(())

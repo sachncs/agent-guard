@@ -60,7 +60,7 @@ impl PolicyBundle {
 #[derive(Debug, Default)]
 pub struct BundleRegistry {
     /// tenant_id -> version -> bundle
-    by_tenant: std::sync::RwLock<
+    by_tenant: parking_lot::RwLock<
         std::collections::HashMap<String, std::collections::BTreeMap<u64, PolicyBundle>>,
     >,
 }
@@ -73,7 +73,7 @@ impl BundleRegistry {
     /// Register a bundle. Replaces any existing bundle at the same
     /// `(tenant, version)`.
     pub fn register(&self, bundle: PolicyBundle) -> Result<()> {
-        let mut all = self.by_tenant.write().unwrap();
+        let mut all = self.by_tenant.write();
         let entry = all.entry(bundle.tenant_id.clone()).or_default();
         entry.insert(bundle.version.as_u64(), bundle);
         Ok(())
@@ -81,21 +81,21 @@ impl BundleRegistry {
 
     /// Get the latest bundle for a tenant, if any.
     pub fn latest(&self, tenant_id: &str) -> Option<PolicyBundle> {
-        let all = self.by_tenant.read().unwrap();
+        let all = self.by_tenant.read();
         all.get(tenant_id)
             .and_then(|m| m.values().next_back().cloned())
     }
 
     /// Get a specific version of a tenant's bundle.
     pub fn at(&self, tenant_id: &str, version: PolicyVersion) -> Option<PolicyBundle> {
-        let all = self.by_tenant.read().unwrap();
+        let all = self.by_tenant.read();
         all.get(tenant_id)
             .and_then(|m| m.get(&version.as_u64()).cloned())
     }
 
     /// List all versions for a tenant, oldest first.
     pub fn list(&self, tenant_id: &str) -> Vec<PolicyBundle> {
-        let all = self.by_tenant.read().unwrap();
+        let all = self.by_tenant.read();
         all.get(tenant_id)
             .map(|m| m.values().cloned().collect())
             .unwrap_or_default()
@@ -103,7 +103,7 @@ impl BundleRegistry {
 
     /// Total number of bundles across all tenants.
     pub fn total(&self) -> usize {
-        let all = self.by_tenant.read().unwrap();
+        let all = self.by_tenant.read();
         all.values().map(|m| m.len()).sum()
     }
 }
