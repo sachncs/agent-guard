@@ -540,3 +540,104 @@ async fn auth_evaluation_rejects_unknown_subject_type() {
     // The handler maps the principal-type Err into a 400.
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn metrics_endpoint_renders_prometheus_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = PolicyStore::open(dir.path()).unwrap();
+    store
+        .write_policy("allow_alice", r#"permit (principal, action, resource);"#)
+        .unwrap();
+    let audit_path = dir.path().join("audit.jsonl");
+    let state = build_state(
+        dir.path().to_path_buf(),
+        Some(audit_path),
+        Some(b"test-key".to_vec()),
+        _AuthLayer::Disabled,
+    )
+    .await
+    .unwrap();
+    // Bump a few metrics so the snapshot is non-trivial.
+    state.metrics().record_cache_hit();
+    state.metrics().record_cache_miss();
+    state.metrics().record_decision(
+        "allow",
+        "policy0",
+        "ToolCall::send",
+        "",
+        std::time::Duration::from_millis(1),
+    );
+    let app = router(state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(ct.starts_with("text/plain"), "content-type was {:?}", ct);
+    let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+        .await
+        .unwrap();
+    let text = std::str::from_utf8(&body).unwrap();
+    assert!(text.contains("agentguard_cache_hit_total"));
+    assert!(text.contains("agentguard_cache_miss_total"));
+    assert!(text.contains("agentguard_decision_total"));
+}
+
+#[tokio::test]
+async fn batch_evaluations_rejects_oversized_request() {
+    // MAX_BATCH_EVALUATIONS is 100. Submit 101 to confirm the cap.
+    let dir = tempfile::tempdir().unwrap();
+    let store = PolicyStore::open(dir.path()).unwrap();
+    store
+        .write_policy("permit_all", r#"permit (principal, action, resource);"#)
+        .unwrap();
+    let audit_path = dir.path().join("audit.jsonl");
+    let state = build_state(
+        dir.path().to_path_buf(),
+        Some(audit_path),
+        Some(b"test-key".to_vec()),
+        _AuthLayer::Disabled,
+    )
+    .await
+    .unwrap();
+    let app = router(state);
+    let mut evals = Vec::with_capacity(101);
+    for _ in 0..101 {
+        evals.push(serde_json::json!({
+            "subject": {"type": "User", "id": "alice"},
+            "action": {"type": "Action", "id": "ToolCall::send"},
+            "resource": {"type": "Mailbox", "id": "x@y"},
+            "context": {}
+        }));
+    }
+    let body = serde_json::json!({
+        "subject": {"type": "User", "id": "alice"},
+        "action": {"type": "Action", "id": "ToolCall::send"},
+        "resource": {"type": "Mailbox", "id": "x@y"},
+        "context": {},
+        "evaluations": evals
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluations")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}

@@ -3,18 +3,25 @@
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::decision::DecisionLog;
+use agentguard_core::decision::{cache::CacheConfig, DecisionLog};
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
+use agentguard_telemetry::Metrics;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{from_fn, from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use cedar_policy::Entities;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
+
+/// Maximum number of evaluations accepted in a single
+/// `/access/v1/evaluations` request. Caps memory + CPU per request;
+/// anything larger should be split by the caller.
+pub const MAX_BATCH_EVALUATIONS: usize = 100;
 
 /// OpenID AuthZEN EvaluationRequest (subject/action/resource/context).
 ///
@@ -107,6 +114,9 @@ pub struct AppState {
     /// Authentication layer. `Disabled` allows any caller; `ApiKey`
     /// validates `Authorization: Bearer <raw>`.
     pub auth: crate::auth_layer::AuthLayer,
+    /// Metrics registry. Always populated; even with no exporter
+    /// wired, `/metrics` returns the current snapshot.
+    pub metrics: Arc<Metrics>,
 }
 
 impl AppState {
@@ -119,6 +129,12 @@ impl AppState {
     /// disabled audit logging.
     pub fn audit(&self) -> Option<&DecisionLog> {
         self.audit.as_ref().as_ref()
+    }
+
+    /// The metrics registry. The same handle is used by `/metrics`,
+    /// the OTLP sink (when enabled), and the in-handler counters.
+    pub fn metrics(&self) -> &Arc<Metrics> {
+        &self.metrics
     }
 }
 
@@ -139,8 +155,9 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/access/v1/evaluation", post(evaluation))
         .route("/access/v1/evaluations", post(evaluations))
-        .route("/healthz", axum::routing::get(healthz))
-        .route("/readyz", axum::routing::get(readyz))
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .route("/metrics", get(metrics))
         // Auth runs after trace context (so unauthorized requests still
         // get a span id echoed back), and after the body limit (so we
         // don't buffer megabytes before 401-ing).
@@ -158,6 +175,19 @@ pub fn router(state: AppState) -> Router {
         // correlate logs and decisions.
         .layer(from_fn(trace_context_layer))
         .with_state(state)
+}
+
+/// Prometheus-text snapshot of every metric the server has recorded.
+async fn metrics(State(state): State<AppState>) -> Response {
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        state.metrics().render_prometheus(),
+    )
+        .into_response()
 }
 
 /// W3C Trace Context middleware: read incoming `traceparent` or generate
@@ -269,17 +299,55 @@ async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationReq
     };
     let entities = match build_request_entities(&per_request_entities) {
         Ok(e) => e,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        Err(e) => {
+            state.metrics().record_pdp_error("entities_build");
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
     };
-    match state.authorizer.authorize(&agent_req, &entities) {
+    let started = Instant::now();
+    let outcome = state.authorizer.authorize(&agent_req, &entities);
+    let elapsed = started.elapsed();
+    match outcome {
         Ok(decision) => {
-            // Audit-log the decision. Errors here are logged but NOT
-            // returned to the caller — an authorization result that was
-            // already computed is more valuable than a 500 caused by a
-            // full disk.
+            let effect_label = match decision.effect {
+                Effect::Allow => "allow",
+                Effect::Deny => "deny",
+            };
+            let action_label = format!("{}", agent_req.action);
+            // tenant_id is optional in our model; empty string keeps
+            // the cardinality low but still distinguishable from a
+            // multi-tenant deployment that does set it.
+            let tenant_label = "";
+            let policy_id = decision
+                .policies
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "none".into());
+            state.metrics().record_decision(
+                effect_label,
+                &policy_id,
+                &action_label,
+                tenant_label,
+                elapsed,
+            );
+            if decision.from_cache {
+                state.metrics().record_cache_hit();
+            } else {
+                state.metrics().record_cache_miss();
+            }
+            // Audit-log the decision. When audit is configured
+            // (production posture), a write failure MUST surface as
+            // 500 — silently dropping decisions defeats the audit
+            // requirement.
             if let Some(audit) = state.audit() {
                 if let Err(e) = audit.append_decision(&decision) {
-                    tracing::error!(error = %e, "audit append failed");
+                    state.metrics().record_pdp_error("audit_append");
+                    tracing::error!(error = %e, "audit append failed; refusing decision");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "audit log unavailable",
+                    )
+                        .into_response();
                 }
             }
             let resp = EvaluationResponse {
@@ -290,6 +358,7 @@ async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationReq
             (StatusCode::OK, Json(resp)).into_response()
         }
         Err(e) => {
+            state.metrics().record_pdp_error("authorize");
             tracing::error!(error = %e, "authorize failed");
             // Do NOT include the cedar error verbatim — it can leak
             // policy text. Return a generic message and log details.
@@ -306,6 +375,19 @@ async fn evaluations(
     State(state): State<AppState>,
     Json(req): Json<BatchEvaluationRequest>,
 ) -> Response {
+    // ponytail: cap the batch size here too. Body limit caps total
+    // bytes but a tight loop of tiny items would still slip through.
+    if req.evaluations.len() > MAX_BATCH_EVALUATIONS {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "batch too large: {} > {} max evaluations",
+                req.evaluations.len(),
+                MAX_BATCH_EVALUATIONS
+            ),
+        )
+            .into_response();
+    }
     let semantics = req.evaluation_semantics.unwrap_or_default();
     // Use the top-level request entities for the whole batch. Per-item
     // entities in nested evaluations are ignored (callers should
@@ -376,8 +458,25 @@ pub async fn build_state(
     chain_secret: Option<Vec<u8>>,
     auth: crate::auth_layer::AuthLayer,
 ) -> Result<AppState, String> {
+    build_state_with_cache(store_root, audit_log, chain_secret, auth, None).await
+}
+
+/// Like [`build_state`] but takes an explicit `CacheConfig`. Passing
+/// `None` reads `AGENTGUARD_CACHE_TTL`/`AGENTGUARD_CACHE_CAPACITY`
+/// from the environment (defaulting to the built-in values).
+pub async fn build_state_with_cache(
+    store_root: std::path::PathBuf,
+    audit_log: Option<std::path::PathBuf>,
+    chain_secret: Option<Vec<u8>>,
+    auth: crate::auth_layer::AuthLayer,
+    cache: Option<CacheConfig>,
+) -> Result<AppState, String> {
     let store = PolicyStore::open(&store_root).map_err(|e| format!("open store: {}", e))?;
-    let authorizer = Arc::new(Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?);
+    let mut authorizer = Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?;
+    if let Some(cfg) = cache {
+        authorizer = authorizer.with_cache(cfg);
+    }
+    let authorizer = Arc::new(authorizer);
     let audit = match audit_log {
         Some(path) => {
             let log = match chain_secret {
@@ -393,5 +492,6 @@ pub async fn build_state(
         authorizer,
         audit: Arc::new(audit),
         auth,
+        metrics: Metrics::new(),
     })
 }

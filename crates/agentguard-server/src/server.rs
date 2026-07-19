@@ -24,9 +24,11 @@
 use crate::auth_layer::AuthLayer;
 use crate::authzen::{build_state, router};
 use crate::listener::{Listener, ServerConfig};
+use agentguard_policy::watcher::{watch as policy_watch, WatchEvent};
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -73,22 +75,25 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             None
         }
     };
-    let state = build_state(
-        cfg.store_root.clone(),
-        cfg.audit_log.clone(),
-        chain_secret,
-        auth,
-    )
-    .await
-    .map_err(|e| anyhow!("build state: {}", e))?;
-    let app = router(state);
+    let state = Arc::new(
+        build_state(
+            cfg.store_root.clone(),
+            cfg.audit_log.clone(),
+            chain_secret,
+            auth,
+        )
+        .await
+        .map_err(|e| anyhow!("build state: {}", e))?,
+    );
+    let watcher_handle = spawn_policy_watcher(cfg.store_root.clone(), state.clone());
+    let app = router((*state).clone());
 
     match cfg.listener.clone() {
         Listener::Tcp(addr) => {
             let listener = TcpListener::bind(addr).await?;
             tracing::info!("agentguard listening on tcp://{}", addr);
             serve(listener, app.into_make_service())
-                .with_graceful_shutdown(shutdown_signal())
+                .with_graceful_shutdown(shutdown_signal_with_sighup(state.clone()))
                 .await?;
         }
         Listener::Tls { addr, cert, key } => {
@@ -99,8 +104,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             // with our signal handler.
             let handle = axum_server::Handle::new();
             let signal_handle = handle.clone();
+            let state_for_signal = state.clone();
             tokio::spawn(async move {
-                shutdown_signal().await;
+                shutdown_signal_with_sighup(state_for_signal).await;
                 signal_handle.shutdown();
             });
             axum_server::bind_rustls(addr, cfg)
@@ -118,6 +124,7 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         }
     }
 
+    watcher_handle.abort();
     tracing::info!("agentguard stopped cleanly");
     Ok(())
 }
@@ -151,9 +158,95 @@ pub async fn build_router(
     Ok((app, Arc::new(state)))
 }
 
+/// Spawn the policy hot-reload watcher. Returns the task handle so the
+/// caller can abort it on shutdown. The task polls the filesystem
+/// every 500 ms, drains the watcher's debounced events, and on each
+/// event invalidates the decision cache and increments
+/// `policy_reload_total`.
+///
+/// `store_root` is the policy directory; we do not deeply watch the
+/// schema or audit log.
+pub fn spawn_policy_watcher(
+    store_root: std::path::PathBuf,
+    state: Arc<crate::authzen::AppState>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn_blocking(move || {
+        let mut watcher = match policy_watch(&store_root, Duration::from_millis(250)) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!(
+                    store_root = %store_root.display(),
+                    error = %e,
+                    "policy watcher init failed; hot reload disabled"
+                );
+                // Park forever so the JoinHandle stays valid.
+                std::thread::park();
+                return;
+            }
+        };
+        loop {
+            std::thread::sleep(Duration::from_millis(500));
+            let events: Vec<WatchEvent> = watcher.events();
+            if events.is_empty() {
+                continue;
+            }
+            // ponytail: simple invalidation. Re-loading the policy
+            // set is the Authorizer's job; for now we invalidate
+            // the cache and bump the counter. A full reload rebuilds
+            // the cedar PolicySet, which is a bigger lift.
+            state.authorizer().invalidate_cache();
+            state.metrics().record_policy_reload();
+            tracing::info!(
+                events = events.len(),
+                "policy reload triggered by watcher"
+            );
+        }
+    })
+}
+
+/// Block until SIGINT, SIGTERM, or (on Unix) SIGHUP is received.
+/// SIGHUP triggers an immediate cache invalidation + reload-counter
+/// bump so operators can force a refresh without touching the
+/// filesystem.
+pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
+    #[cfg(unix)]
+    let sighup = async {
+        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::hangup()) {
+            sig.recv().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let sighup = std::future::pending::<()>();
+    let ctrl_c = async {
+        let _ = signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut sig) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            sig.recv().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("SIGINT received, draining"),
+        _ = terminate => tracing::info!("SIGTERM received, draining"),
+        _ = sighup => {
+            state.authorizer().invalidate_cache();
+            state.metrics().record_policy_reload();
+            tracing::info!("SIGHUP received; cache invalidated, awaiting actual shutdown");
+            // Don't return; wait for SIGINT/SIGTERM next.
+            Box::pin(shutdown_signal_with_sighup(state.clone())).await;
+        }
+    }
+}
+
 /// Resolve when SIGINT or SIGTERM is received. Used as the trigger for
 /// `axum::serve(...).with_graceful_shutdown(...)` so in-flight requests
 /// finish before the process exits.
+#[allow(dead_code)]
 async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = signal::ctrl_c().await;
