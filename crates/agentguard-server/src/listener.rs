@@ -28,9 +28,7 @@ impl Listener {
             Listener::Unix(_) => false,
         }
     }
-}
 
-impl Listener {
     pub fn parse(s: &str) -> Result<Self, String> {
         if let Some(rest) = s.strip_prefix("tcp://") {
             rest.parse::<SocketAddr>()
@@ -64,8 +62,11 @@ impl Listener {
                 cert: PathBuf::from(cert),
                 key: PathBuf::from(key),
             })
-        } else if let Some(rest) = s.strip_prefix("unix://") {
-            Ok(Listener::Unix(PathBuf::from(rest)))
+        } else if s.starts_with("unix://") {
+            // ponytail: fail fast at parse time so operators see
+            // "unix:// not implemented" immediately, not after
+            // binding the HTTP listener.
+            Err("unix:// listener is not implemented yet; use tcp:// or tls://".to_string())
         } else {
             Err(format!("unknown listener scheme: {}", s))
         }
@@ -151,5 +152,35 @@ impl ServerConfig {
             auth,
             grpc_listener,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix_listener_rejected_at_parse_time() {
+        // unix:// is unimplemented; parse must fail before the server
+        // even tries to bind anything. Otherwise the user sees
+        // "started" logs and only learns when the bind fails.
+        let err = Listener::parse("unix:///tmp/agentguard.sock").unwrap_err();
+        assert!(err.contains("unix://"), "got: {err}");
+    }
+
+    #[test]
+    fn tls_query_string_rejects_duplicate_keys() {
+        // Duplicate `cert=` would silently overwrite the first
+        // value, hiding a typo from the operator.
+        let err = Listener::parse("tls://0.0.0.0:8443?cert=a&cert=b&key=k").unwrap_err();
+        assert!(err.contains("duplicate"), "got: {err}");
+    }
+
+    #[test]
+    fn is_public_returns_true_for_non_loopback_tcp() {
+        let l = Listener::Tcp("0.0.0.0:8443".parse().unwrap());
+        assert!(l.is_public());
+        let l = Listener::Tcp("127.0.0.1:8443".parse().unwrap());
+        assert!(!l.is_public());
     }
 }
