@@ -33,6 +33,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
+      # Doctests are run separately so a single failing docstring
+      # fails CI even when the lib tests pass. Mirrors `cargo test`
+      # output for the lib crate but only runs the doc-tests.
+      - run: cargo test --workspace --doc
       - run: cargo build --workspace --release
       - run: cargo bench --workspace --no-run
 
@@ -45,8 +49,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: |
-          pip install -e python/agentguard
-          pip install -e python/agentguard_langchain
+          pip install -e python/agentguard[dev]
+          pip install -e python/agentguard_langchain[dev]
+          pytest python/agentguard/tests -q
           python -c "from agentguard import Client; print('SDK OK')"
 
   ts:
@@ -60,6 +65,7 @@ jobs:
       - run: |
           cd typescript/agentguard
           npm install
+          npm test
           npm run build
 
   examples:
@@ -89,12 +95,17 @@ jobs:
       # Bans + licenses + sources are blocking: we own the surface and
       # can fix violations directly.
       - run: cargo deny check bans licenses sources
-      # Advisories are non-blocking: rustls-webpki 0.101 (RustSec
-      # 2026-0098, name-constraint bypass) and rsa 0.9 (RustSec
-      # 2023-0071, Marvin timing attack) are transitive deps from
-      # openidconnect 3.5 / reqwest 0.11. Fixing them requires upgrading
-      # to openidconnect >=0.6 / reqwest 0.13 / rustls 0.24 — tracked
-      # as a v0.3 follow-up. See CHANGELOG.md.
-      - name: cargo-deny advisories (informational, tracked for v0.3)
-        run: cargo deny check advisories
-        continue-on-error: true
+      # Advisories are blocking. The deny.toml ignore list reflects
+      # the only known transitive vulnerabilities (ring <0.17, see
+      # CHANGELOG.md for the v0.3 follow-up).
+      - run: cargo deny check advisories
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      # Hard gate: any unignored advisory fails CI.
+      - run: cargo audit --deny warnings
