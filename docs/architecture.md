@@ -33,9 +33,31 @@
                                           │                            │
                                   ┌───────┴────────┐           ┌───────┴────────┐
                                   │ LangChain      │           │ Vercel AI SDK  │
-                                  │ middleware     │           │ middleware     │
-                                  └────────────────┘           └────────────────┘
+                                   │ middleware     │           │ middleware     │
+                                   └────────────────┘           └────────────────┘
 ```
+
+## The server
+
+`agentguard-server` is the AuthZEN-compatible HTTP + gRPC PDP. It exposes:
+
+- `POST /access/v1/evaluation` — single decision (AuthZEN draft).
+- `POST /access/v1/evaluations` — batch (cap 100 per call).
+- `GET /healthz` / `/readyz` — Kubernetes probes.
+- `GET /metrics` — Prometheus text snapshot.
+- `agentguard.v1.AccessEvaluation` (gRPC) — same surface over HTTP/2.
+
+All `/access/v1/*` endpoints are protected by `auth_layer`:
+
+- `AuthConfig::Disabled` — no auth, refused on a public listener unless
+  `AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1` is set.
+- `AuthConfig::ApiKey` — `Authorization: Bearer <raw>` against a JSON
+  `ApiKeyStore`. Argon2id is the verification path.
+
+A `PolicyWatcher` polls `store_root` every 500 ms; on each event the
+decision cache is invalidated and `policy_reload_total` is bumped. The
+server also installs a SIGHUP handler (Unix) so operators can force a
+refresh without touching the filesystem.
 
 ## The request model
 

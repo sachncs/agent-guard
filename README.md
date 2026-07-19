@@ -341,8 +341,12 @@ agentguard doctor
 | Chain secret | `--secret-file` | `./.chain-secret` | HMAC key for the audit chain |
 | Listen address | `--listen` | `tcp://127.0.0.1:8443` | Server listen address |
 | Store path | `--store` | `./.agentguard` | Cedar schema and policy directory |
-| Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache |
-| JWKS refresh | `AGENTGUARD_JWKS_REFRESH` | `30s` | Cached JWKS refresh interval |
+| gRPC listen | `--grpc-listen` / `AGENTGUARD_GRPC_LISTEN` | *(unset)* | Optional gRPC PDP endpoint (AuthZEN-compatible `AccessEvaluation`) |
+| Auth mode | `AGENTGUARD_AUTH` | `disabled` | `apikey:<path>` enables bearer-token auth on `/access/v1/*` |
+| Allow loopback bypass | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | `0` | Set `1` to allow auth-disabled on a public bind |
+| Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache (humantime) |
+| Decision cache capacity | `AGENTGUARD_CACHE_CAPACITY` | `10000` | Max entries in the decision cache |
+| JWKS refresh | `AGENTGUARD_JWKS_REFRESH` | `30s` | Cached JWKS refresh interval (humantime) |
 | OTLP endpoint | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(unset)* | OpenTelemetry OTLP collector URL |
 
 ---
