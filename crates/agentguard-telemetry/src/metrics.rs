@@ -602,4 +602,29 @@ mod tests {
         // Label-free counter: always present with value 0.
         assert!(text.contains("agentguard_cache_hit_total 0"));
     }
+
+    /// Cardinality invariant: even if a caller records 10× more
+    /// distinct label tuples than the cap, the underlying map never
+    /// grows past `cardinality_cap`. (Older entries are silently
+    /// dropped once the cap is reached.)
+    #[test]
+    fn cardinality_cap_is_enforced() {
+        let m = Metrics::with_cap(8);
+        for i in 0..100 {
+            m.record_decision(
+                "allow",
+                "policy0",
+                &format!("action-{i}"),
+                "",
+                std::time::Duration::from_micros(i as u64),
+            );
+        }
+        let snap = m.snapshot();
+        assert_eq!(
+            snap.decision_total.len(),
+            8,
+            "cardinality cap must be enforced; got {} entries",
+            snap.decision_total.len()
+        );
+    }
 }

@@ -109,3 +109,55 @@ jobs:
       - run: cargo install cargo-audit --locked
       # Hard gate: any unignored advisory fails CI.
       - run: cargo audit --deny warnings
+
+  coverage:
+    name: cargo llvm-cov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+        with:
+          version: latest
+      - run: cargo llvm-cov --workspace --lcov --output-path coverage.lcov
+      - name: enforce 80% line coverage
+        run: |
+          COV=$(cargo llvm-cov report --summary-only | grep -oE '[0-9.]+\.[0-9]+%' | head -1 | tr -d '%')
+          echo "Line coverage: $COV%"
+          awk -v cov="$COV" 'BEGIN { exit !(cov+0 >= 80) }'
+          echo "Coverage gate passed: $COV% >= 80%"
+
+  fuzz:
+    name: cargo fuzz (nightly)
+    runs-on: ubuntu-latest
+    needs: fmt
+    # Nightly fuzz job to keep the existing fuzz harnesses honest.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+      - run: cargo install cargo-fuzz --locked
+      # Each harness runs for 60 seconds; coverage grows quickly
+      # because the audit log + decision cache are the hot paths.
+      - run: cargo fuzz run --release hash_chain_append -- -max_total_time=60
+      - run: cargo fuzz run --release canonical_json -- -max_total_time=60
+      - run: cargo fuzz run --release glob_match -- -max_total_time=60
+
+  miri:
+    name: cargo miri (nightly)
+    runs-on: ubuntu-latest
+    needs: fmt
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          components: miri
+      - run: cargo miri setup
+      # Miri is slow; just the cryptographic + canonical-JSON paths.
+      - run: cargo miri test -p agentguard-core --lib decision::chain
+      - run: cargo miri test -p agentguard-core --lib decision::canonical
+      - run: cargo miri test -p agentguard-core --lib delegation::tests::glob_match_wildcards
