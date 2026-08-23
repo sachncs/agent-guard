@@ -1,23 +1,37 @@
-import type { VerifyRequestBody } from "@/lib/api-types";
 import { agentguard, toErrorResponse } from "@/lib/agentguard";
+import { parseJsonBody, verifySchema } from "@/lib/api-schemas";
+import { authConfig } from "@/lib/auth/config";
+import { isResponse, requireAdmin } from "@/lib/auth/guard";
+import { clientKey, rateLimit } from "@/lib/ratelimit";
 
+export const runtime = "nodejs";
+
+/** Verifies a delegation token against a key set. Admin-only; rate limited. */
 export async function POST(request: Request) {
-  let body: VerifyRequestBody;
-  try {
-    body = (await request.json()) as VerifyRequestBody;
-  } catch {
+  const cfg = authConfig();
+  if (!cfg.valid) {
+    return Response.json({ error: cfg.reason, kind: "not_configured" }, { status: 503 });
+  }
+
+  const session = await requireAdmin(cfg.config.sessionSecret, request);
+  if (isResponse(session)) return session;
+
+  const rl = rateLimit(`verify:${clientKey(request)}`, 20);
+  if (!rl.allowed) {
     return Response.json(
-      { error: "request body must be JSON", kind: "invalid_request" },
-      { status: 400 }
+      { error: "rate limit exceeded", kind: "rate_limited" },
+      { status: 429 }
     );
   }
 
-  if (!body.token || !body.keysFile) {
+  const parsed = await parseJsonBody(request, verifySchema);
+  if (!parsed.ok) {
     return Response.json(
-      { error: "token and keysFile are required", kind: "invalid_request" },
-      { status: 400 }
+      { error: parsed.error, kind: "invalid_request" },
+      { status: parsed.status }
     );
   }
+  const body = parsed.data;
 
   try {
     const result = agentguard().verify(body.token, body.keysFile);
