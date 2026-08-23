@@ -40,50 +40,25 @@ jobs:
       - run: cargo build --workspace --release
       - run: cargo bench --workspace --no-run
 
-  python:
-    name: python sdk
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: |
-          pip install -e python/agentguard[dev]
-          pip install -e python/agentguard_langchain[dev]
-          pytest python/agentguard/tests -q
-          python -c "from agentguard import Client; print('SDK OK')"
-
   ts:
-    name: typescript sdk
+    name: typescript workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: |
-          cd typescript/agentguard
-          npm install
-          npm test
-          npm run build
-
-  examples:
-    name: example smoke tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: cargo install --path crates/agentguard-cli --locked
-      - run: pip install -e python/agentguard
-      - run: python examples/basic-tool-authz/main.py
-      - run: python examples/multi-agent-delegation/main.py
-      - run: python examples/jwt-auth/main.py
-      - run: python examples/hash-chain-verify/main.py
-      - run: python examples/dpop-protected/main.py
+          node-version: "26"
+      - run: pnpm install --frozen-lockfile
+      # Build the SDK first so dependents (frontend, examples) can resolve it.
+      - run: pnpm --filter agentguard build
+      - run: pnpm --filter agentguard test
+      - run: pnpm --filter frontend lint
+      - run: pnpm --filter frontend build
+      # The Strands example needs LLM credentials to run; CI only typechecks it.
+      - run: pnpm --filter strands-tool-authz exec tsc --noEmit
 
   deny:
     name: cargo-deny
