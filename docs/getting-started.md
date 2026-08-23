@@ -103,31 +103,32 @@ agentguard validate
 
 ### 5. Hook into your agent
 
-The Python SDK + LangChain middleware is the fastest path:
+The TypeScript SDK is the fastest path:
 
-```python
-from langchain.agents import initialize_agent, AgentType
-from langchain_openai import OpenAI
-from langchain_community.tools import DuckDuckGoSearchRun
-from agentguard_langchain import GuardConfig, GuardedTool, Principal
+```typescript
+import { Client, Principal, Action } from "agentguard";
 
-search = GuardedTool(
-    DuckDuckGoSearchRun(),
-    GuardConfig(
-        store=".agentguard",
-        principal_factory=lambda _: Principal.user("alice"),
-    ),
-)
+const client = new Client({ store: ".agentguard" });
 
-agent = initialize_agent(
-    tools=[search],
-    llm=OpenAI(),
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-)
-agent.run("...")
+// Raises AuthorizationDenied on deny; call inside your tool handler.
+client.check(
+  Principal.user("alice"),
+  Action.tool("send_email"),
+  { entity_type: "Mailbox", uid: "alice@acme" },
+  { args: { to: "[email protected]" }, session: { mfa: true } }
+);
 ```
 
-Every call to `search` is now authorized. Denials raise `PermissionError`.
+For Strands Agents (TypeScript), see
+[`examples/strands-tool-authz`](../examples/strands-tool-authz/) — a
+`BeforeToolCallEvent` intervention authorizes every tool call against the
+AuthZEN PDP and cancels denied calls.
+
+Prefer no SDK at all? Run `agentguard serve` and POST to
+`/access/v1/evaluation` from any language — every decision still lands in
+the audit log.
+
+Every call is now authorized. Denials raise `AuthorizationDenied`.
 
 ### 6. Test interactively
 
@@ -196,21 +197,21 @@ agentguard_policy_reload_total 3
 
 When your agent calls a sub-agent, mint a scoped token:
 
-```python
-from agentguard import Client
+```typescript
+import { Client } from "agentguard";
 
-client = Client(store=".agentguard")
+const client = new Client({ store: ".agentguard" });
 
-token = client.delegate(
-    from_principal='Agent::"research"',
-    to='Agent::"summarizer"',
-    actions=["ToolCall::send_email"],
-    resources=["Mailbox::alice*"],
-    ttl_seconds=300,
-)
+const token = client.delegate(
+  'Agent::"research"',
+  'Agent::"summarizer"',
+  ["ToolCall::send_email"],
+  ["Mailbox::alice*"],
+  300
+);
 
-# Pass `token` to the sub-agent
-sub_agent.run_with_credentials(..., credentials={"agentguard_token": token})
+// Pass `token` to the sub-agent
+subAgent.runWithCredentials({ agentguardToken: token });
 ```
 
 The sub-agent's authorization engine verifies the token before evaluating any
@@ -251,5 +252,6 @@ forbid (principal, action, resource) when {
 ## Next steps
 
 - [Architecture](architecture.md) — how it all fits together.
-- [Examples](../examples/) — basic authz, multi-agent delegation, NL policy gen.
+- [Frontend console](../frontend/) — dashboard, policy simulator, delegation UI.
+- [Strands example](../examples/strands-tool-authz/) — guard Strands tool calls via the PDP.
 - [Cedar docs](https://docs.cedarpolicy.com/) — the policy language.

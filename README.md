@@ -86,14 +86,14 @@ same Cedar engine and the same audit log:
                │ tool call
    ┌───────────┴────────────────────────────────────────┐
    │                                                    │
-   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐  │
-   │  │ Python  │  │   TS /   │  │   CLI    │  │ HTTP │  │
-   │  │  SDK    │  │  Node    │  │ `agent-  │  │Auth- │  │
-   │  │ (in-    │  │  SDK     │  │  guard`  │  │ ZEN  │  │
-   │  │ process)│  │ (in-proc)│  │  (sub-   │  │ (PDP)│  │
-   │  └────┬────┘  └────┬─────┘  │  process)│  └──┬───┘  │
-   │       │             │        └────┬──────┘    │      │
-   │       └─────────────┴─────────────┘           │      │
+    │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐  │
+    │  │   TS /   │  │Frontend  │  │   CLI    │  │ HTTP │  │
+    │  │  Node    │  │ console  │  │ `agent-  │  │Auth- │  │
+    │  │  SDK     │  │(Next.js) │  │  guard`  │  │  ZEN │  │
+    │  │(in-proc)│  │          │  │  (sub-   │  │ (PDP)│  │
+    │  └────┬─────┘  └────┬─────┘  │  process)│  └──┬───┘  │
+    │       │             │        └────┬──────┘    │      │
+    │       └─────────────┴─────────────┘           │      │
    │                          │                   │      │
    └──────────────────────────┼───────────────────┼──────┘
                               ▼
@@ -125,8 +125,7 @@ same Cedar engine and the same audit log:
   federation tool, and replacement PDP.
 - **Local-first** — files in `.agentguard/` are the source of truth.
   `git diff` your policies. Run the server in-process or as a sidecar.
-- **Multi-language SDKs** — Rust core, Python
-  (`agentguard`, `agentguard_langchain`).
+- **Multi-language SDKs** — Rust core, TypeScript SDK, Next.js console
 
 ---
 
@@ -140,9 +139,8 @@ same Cedar engine and the same audit log:
 | `agentguard-auth` (Rust) | JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, jti replay protection, RFC 8693 token exchange |
 | `agentguard-policy` (Rust) | Versioned bundles, file watcher, hot reload, diff, blast radius, dry-run |
 | `agentguard-server` (Rust) | `agentguard serve` — AuthZEN HTTP PDP, sidecar mode |
-| `agentguard` (Python SDK) | In-process or subprocess mode, JWT/DPoP passthrough, step-up auth, traceparent |
-| `agentguard-langchain` (Python) | Middleware for every LangChain tool call, surfaces step-up |
 | `agentguard` (TypeScript SDK) | In-process Cedar bindings, JWT/DPoP passthrough, step-up auth |
+| `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete v0.2.0 change list.
 The implementation plan lives in [`stages/`](stages/README.md).
@@ -157,20 +155,21 @@ The implementation plan lives in [`stages/`](stages/README.md).
 cargo install --path crates/agentguard-cli
 ```
 
-### Python SDK + LangChain
-
-```bash
-pip install -e python/agentguard
-pip install -e python/agentguard_langchain
-```
-
 ### TypeScript SDK
 
 ```bash
-cd typescript/agentguard && npm install && npm run build
+pnpm install && pnpm --filter agentguard build
 ```
 
-**Requirements:** Rust 1.85+, Python 3.10+, Node.js ≥ 20.
+### Frontend console
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+**Requirements:** Rust 1.85+, Node.js ≥ 20.9 (26 recommended), pnpm ≥ 9.
 
 ---
 
@@ -236,63 +235,17 @@ curl -X POST https://localhost:8443/access/v1/evaluation \
 # {"decision": true, ...}
 ```
 
-### Python SDK
-
-```python
-from agentguard import (
-    Client, Principal, AgentAction, Resource, Context,
-)
-
-client = Client(
-    store=".agentguard",
-    mode="in_process",                 # uses cedar-policy bindings (fast)
-    traceparent="00-aaaa...bbbb-01",    # optional W3C trace context
-)
-
-# Will raise AuthorizationDenied on Deny.
-client.check(
-    Principal.user("alice"),
-    AgentAction.tool("send_email"),
-    Resource("Mailbox", "alice@acme"),
-    Context(args={"to": "[email protected]"}, session={"ip": "10.0.0.1", "mfa": True}),
-)
-```
-
-### LangChain middleware
-
-```python
-from langchain.agents import initialize_agent, AgentType
-from langchain_openai import OpenAI
-from langchain_community.tools import DuckDuckGoSearchRun
-
-from agentguard_langchain import GuardConfig, GuardedTool, Principal
-
-search = GuardedTool(
-    DuckDuckGoSearchRun(),
-    GuardConfig(
-        store=".agentguard",
-        principal_factory=lambda runtime: Principal.user("alice"),
-        on_step_up=lambda step_up: trigger_mfa_flow(step_up),
-    ),
-)
-
-agent = initialize_agent([search], OpenAI(), agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION)
-agent.run("Search for the latest Cedar policy tutorials")
-```
-
 ### Multi-agent delegation (JWS, RFC 8693)
 
-```python
-token = client.delegate(
-    from_principal='Agent::"research"',
-    to='Agent::"summarizer"',
-    audience="agentguard://prod/email",  # required (RFC 8707)
-    actions=["ToolCall::send_email"],
-    resources=["Mailbox::*"],
-    constraints=[{"path": "context.args.amount", "op": "lt", "value": 10000}],
-    ttl_seconds=300,
-)
-# JWS compact: eyJhbGciOiJFZERTQSIs...
+```typescript
+const token = await client.delegate(
+  'Agent::"research"',
+  'Agent::"summarizer"',
+  ["ToolCall::send_email"],
+  ["Mailbox::*"],
+  300
+);
+// JWS compact: eyJhbGciOiJFZERTQSIs...
 ```
 
 ### TypeScript SDK
@@ -302,15 +255,15 @@ import { Client, Principal, AgentAction, Resource, Context } from "agentguard";
 
 const client = new Client({
   store: ".agentguard",
-  mode: "in_process",
 });
 
-await client.check({
-  principal: Principal.user("alice"),
-  action: AgentAction.tool("send_email"),
-  resource: new Resource("Mailbox", "alice@acme"),
-  context: new Context({ args: { to: "[email protected]" }, session: { ip: "10.0.0.1", mfa: true } }),
-});
+const decision = client.check(
+  Principal.user("alice"),
+  Action.tool("send_email"),
+  { entity_type: "Mailbox", uid: "alice@acme" },
+  { args: { to: "[email protected]" }, session: { ip: "10.0.0.1", mfa: true } }
+);
+// raises AuthorizationDenied on deny
 ```
 
 ### Verify and audit
@@ -353,14 +306,15 @@ agentguard doctor
 
 ## Examples
 
-[`examples/`](examples/) — 6 working examples:
+[`examples/`](examples/) — working examples:
 
-- `examples/basic-tool-authz/` — minimum viable authorization with audit
-- `examples/multi-agent-delegation/` — parent → sub-agent JWS delegation
-- `examples/jwt-auth/` — bearer-token authentication
-- `examples/dpop-protected/` — sender-constrained tokens
-- `examples/hash-chain-verify/` — audit log tamper detection
-- `examples/nl-policy-gen/` — natural language → Cedar generation
+- `examples/strands-tool-authz/` — Strands Agents (TypeScript) agent whose
+  tool calls are guarded by the AuthZEN PDP via a `BeforeToolCallEvent`
+  intervention
+
+The Next.js console under [`frontend/`](frontend/) doubles as an
+interactive walkthrough: simulate authorizations, browse the audit log,
+and issue delegated tokens.
 
 ---
 
@@ -393,12 +347,10 @@ agent-guard/
 │   ├── agentguard-auth/         # JWT/OIDC/API-key/DPoP/SPIFFE
 │   ├── agentguard-policy/       # Versioned bundles, hot reload, blast radius
 │   └── agentguard-server/       # AuthZEN HTTP PDP
-├── python/
-│   ├── agentguard/              # Python SDK
-│   └── agentguard_langchain/    # LangChain middleware
 ├── typescript/
 │   └── agentguard/              # TypeScript SDK
-├── examples/                    # 6 working examples
+├── frontend/                    # Next.js 16 console (shadcn/ui)
+├── examples/                    # Working examples (Strands TS agent)
 ├── schemas/                     # Cedar schema fragments
 ├── docs/                        # Architecture & API documentation
 └── stages/                      # Stage-by-stage implementation plan
@@ -417,19 +369,13 @@ cargo test --workspace
 # Build everything
 cargo build --workspace --release
 
-# Python SDK
-cd python/agentguard
-pip install -e ".[dev]"
-pytest
+# TypeScript workspace (SDK, frontend, examples)
+pnpm install
+pnpm --filter agentguard test
+pnpm --filter frontend dev      # console at http://localhost:3000
 
-# TypeScript SDK
-cd typescript/agentguard
-npm install
-npm test
-npm run build
-
-# Run a single example
-python examples/basic-tool-authz/main.py
+# Run the Strands example
+pnpm --filter strands-tool-authz start
 ```
 
 ### Commit Conventions
@@ -437,7 +383,7 @@ python examples/basic-tool-authz/main.py
 We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```text
-feat: add step-up auth flow to Python SDK
+feat: add step-up auth flow to TypeScript SDK
 fix: clamp TTL to configured maximum in decision cache
 docs: document RFC 9449 DPoP binding
 refactor: extract hash-chain HMAC to a dedicated module
@@ -452,8 +398,8 @@ chore: bump cedar-policy to 4.4
 ```bash
 cargo test --workspace             # Rust unit + integration tests
 cargo test --workspace --all-features
-cd python/agentguard && pytest     # Python SDK
-cd typescript/agentguard && npm test  # TypeScript SDK
+pnpm --filter agentguard test      # TypeScript SDK
+pnpm --filter frontend lint        # Frontend console
 ```
 
 ---
@@ -462,7 +408,7 @@ cd typescript/agentguard && npm test  # TypeScript SDK
 
 ```bash
 cargo build --workspace --release
-cd typescript/agentguard && npm run build
+pnpm -r build                      # SDK, frontend, examples
 ```
 
 ---
@@ -472,7 +418,7 @@ cd typescript/agentguard && npm run build
 1. Bump workspace version in `Cargo.toml`
 2. Update `CHANGELOG.md` with the new release notes
 3. Commit with a `version:X.Y.Z` message
-4. Tag and push — CI publishes Rust crates and Python/TypeScript packages
+4. Tag and push — CI publishes Rust crates and the TypeScript package
 
 ---
 
@@ -489,10 +435,10 @@ cd typescript/agentguard && npm run build
 | Crypto | [ed25519-dalek](https://github.com/dalek-cryptography/ed25519-dalek), [hmac](https://github.com/RustCrypto/MACs), [sha2](https://github.com/RustCrypto/hashes) |
 | File watching | [notify](https://github.com/notify-rs/notify) |
 | HTTP client | [reqwest](https://github.com/seanmonstar/reqwest) (rustls) |
-| Python SDK | Python 3.10+, Pydantic v2, [httpx](https://www.python-httpx.org/) |
-| TypeScript SDK | Node.js ≥ 20, [zod](https://zod.dev), native `fetch` |
-| Build (Python) | [Hatchling](https://hatch.pypa.io/) |
-| Build (TypeScript) | [tsc](https://www.typescriptlang.org/) |
+| Python SDK | *(removed in v0.3.0 — use the TypeScript SDK or the AuthZEN PDP)* |
+| TypeScript SDK | Node.js ≥ 20.9 (26 recommended), [zod](https://zod.dev), native `fetch` |
+| Frontend | Next.js 16, React 19.2, [shadcn/ui](https://ui.shadcn.com), Tailwind CSS v4 |
+| Build (TypeScript) | [tsc](https://www.typescriptlang.org/), Turbopack |
 
 ---
 
@@ -502,7 +448,10 @@ cd typescript/agentguard && npm run build
   RFC 8693 token exchange, hash-chained audit log + SIEM formatters,
   TTL & decision cache, CLI (init/validate/authorize/sim/delegate/
   verify/audit/policy/serve/doctor)
-- **v0.3.0** — Planned: distributed decision cache (Redis), policy A/B
+- **v0.3.0** — Current: Python SDK removed (TypeScript SDK + AuthZEN PDP are
+  the supported integration paths), Next.js 16 admin console (`frontend/`),
+  Strands Agents example (AuthZEN-guarded tool calls)
+- **v0.4.0** — Planned: distributed decision cache (Redis), policy A/B
   testing, multi-tenant audit namespaces, OpenTelemetry collector
   integration
 - **v1.0.0** — Stable API, semantic-versioning guarantees, LTS support
