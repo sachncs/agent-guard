@@ -11,11 +11,26 @@ import {
   createRemoteJWKSet,
   jwtVerify,
 } from "jose";
+import { z } from "zod";
 
 import type { AuthConfig } from "./config";
 import type { Role } from "./rbac";
 import { resolveRole } from "./rbac";
 
+/** Required fields of an OIDC discovery document. */
+const discoverySchema = z.object({
+  authorization_endpoint: z.string(),
+  token_endpoint: z.string(),
+  jwks_uri: z.string(),
+  end_session_endpoint: z.string().optional(),
+});
+
+/** Fields we rely on from the token endpoint response. */
+const tokenResponseSchema = z.object({
+  id_token: z.string(),
+});
+
+/** Endpoints needed for the authorization-code flow, from discovery. */
 export interface DiscoveredEndpoints {
   authorizationEndpoint: string;
   tokenEndpoint: string;
@@ -32,10 +47,12 @@ const DISCOVERY_TTL_MS = 10 * 60 * 1000;
 
 let cache: CacheEntry | undefined;
 
+/** Test hook: drop the memoized discovery document. */
 export function resetDiscoveryCache(): void {
   cache = undefined;
 }
 
+/** Fetch (and cache) the issuer's OIDC discovery document. */
 export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints> {
   if (cache && Date.now() - cache.fetchedAt < DISCOVERY_TTL_MS) {
     return cache.endpoints;
@@ -48,21 +65,22 @@ export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints>
   if (!res.ok) {
     throw new OidcError(`discovery failed: issuer returned HTTP ${res.status}`);
   }
-  const doc = (await res.json()) as Record<string, string | undefined>;
-  const { authorization_endpoint: a, token_endpoint: t, jwks_uri: j } = doc;
-  if (!a || !t || !j) {
+  const parsed = discoverySchema.safeParse(await res.json());
+  if (!parsed.success) {
     throw new OidcError("discovery document missing required endpoints");
   }
+  const doc = parsed.data;
   const endpoints: DiscoveredEndpoints = {
-    authorizationEndpoint: a,
-    tokenEndpoint: t,
-    jwksUri: j,
+    authorizationEndpoint: doc.authorization_endpoint,
+    tokenEndpoint: doc.token_endpoint,
+    jwksUri: doc.jwks_uri,
     endSessionEndpoint: doc.end_session_endpoint,
   };
   cache = { endpoints, fetchedAt: Date.now() };
   return endpoints;
 }
 
+/** Error raised for OIDC protocol/discovery failures. */
 export class OidcError extends Error {}
 
 function randomB64url(bytes = 32): string {
@@ -86,6 +104,7 @@ export interface LoginRedirect {
   stateJwt: string;
 }
 
+/** Start the authorization-code flow: build the IdP redirect URL and state JWT. */
 export async function buildLoginRedirect(
   config: AuthConfig,
   redirectUri: string
@@ -129,6 +148,7 @@ export async function buildLoginRedirect(
   };
 }
 
+/** Error raised when a login attempt cannot be completed. */
 export class LoginFailed extends Error {}
 
 /** Result of a completed callback exchange. */
@@ -141,6 +161,10 @@ export interface CompletedLogin {
   endSessionEndpoint?: string;
 }
 
+/**
+ * Complete the callback: validate state, exchange the code, verify the ID
+ * token (issuer/audience/nonce) and resolve the console role.
+ */
 export async function completeLogin(
   config: AuthConfig,
   searchParams: URLSearchParams,
@@ -185,8 +209,11 @@ export async function completeLogin(
   if (!tokenRes.ok) {
     throw new LoginFailed(`token endpoint returned HTTP ${tokenRes.status}`);
   }
-  const tokens = (await tokenRes.json()) as { id_token?: string };
-  if (!tokens.id_token) throw new LoginFailed("token response missing id_token");
+  const parsedTokens = tokenResponseSchema.safeParse(await tokenRes.json());
+  if (!parsedTokens.success) {
+    throw new LoginFailed("token response missing id_token");
+  }
+  const tokens = parsedTokens.data;
 
   const JWKS = createRemoteJWKSet(new URL(endpoints.jwksUri));
   let claims: Record<string, unknown>;

@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import type { LogRecord } from "@/lib/api-types";
+import {
+  errorResponseSchema,
+  logResponseSchema,
+} from "@/lib/api-schemas";
 import { fetchApi } from "@/lib/fetch-api";
 import { CliAlert } from "@/components/cli-alert";
 import { Badge } from "@/components/ui/badge";
@@ -46,13 +50,21 @@ export default function DashboardPage() {
         if (p) qs.set("principal", p);
         if (a) qs.set("action", a);
         const res = await fetchApi(`/api/log?${qs}`);
-        const body = await res.json();
+        const body: unknown = await res.json();
         if (!res.ok) {
-          setError(body.error ?? "failed to load audit log");
-          setCliMissing(body.kind === "cli_unavailable");
+          const err = errorResponseSchema.safeParse(body);
+          setError(
+            err.success && err.data.error ? err.data.error : "failed to load audit log"
+          );
+          setCliMissing(err.success && err.data.kind === "cli_unavailable");
           return;
         }
-        setRecords(body.records as LogRecord[]);
+        const ok = logResponseSchema.safeParse(body);
+        if (!ok.success) {
+          setError("audit log returned an unexpected payload");
+          return;
+        }
+        setRecords(ok.data.records);
         setError(null);
         setCliMissing(false);
       } catch {

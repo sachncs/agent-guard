@@ -6,6 +6,7 @@
  * bootstrapping; 'unsafe-inline' for script-src is a known trade-off.
  */
 
+/** Build the security header map for the given deployment posture. */
 export function securityHeaders(isProd: boolean, isHttps: boolean): Record<string, string> {
   const cspParts = [
     "default-src 'self'",
@@ -32,6 +33,7 @@ export function securityHeaders(isProd: boolean, isHttps: boolean): Record<strin
   return headers;
 }
 
+/** Set the security headers on an existing response and return it. */
 export function applySecurityHeaders(
   response: Response,
   isProd: boolean,

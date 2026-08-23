@@ -25,11 +25,13 @@ export function resetRateLimiter(): void {
   buckets.clear();
 }
 
+/** Outcome of a rate-limit check. */
 export interface RateLimitResult {
   allowed: boolean;
   remaining: number;
 }
 
+/** Consume one slot for `key`; returns whether the request may proceed. */
 export function rateLimit(key: string, limitPerMinute: number): RateLimitResult {
   const now = nowMs();
   const bucket = buckets.get(key);

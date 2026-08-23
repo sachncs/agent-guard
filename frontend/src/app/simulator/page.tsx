@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import type { DecisionDto } from "@/lib/api-types";
+import {
+  decisionResponseSchema,
+  errorResponseSchema,
+} from "@/lib/api-schemas";
 import { fetchApi } from "@/lib/fetch-api";
 import { CliAlert } from "@/components/cli-alert";
 import { Badge } from "@/components/ui/badge";
@@ -71,17 +75,26 @@ export default function SimulatorPage() {
           session,
         }),
       });
-      const body = await res.json();
+      const body: unknown = await res.json();
       if (!res.ok) {
+        const err = errorResponseSchema.safeParse(body);
         setDecision(null);
-        setError(body.error ?? `request failed (${res.status})`);
-        setCliMissing(body.kind === "cli_unavailable");
+        setError(
+          err.success && err.data.error ? err.data.error : `request failed (${res.status})`
+        );
+        setCliMissing(err.success && err.data.kind === "cli_unavailable");
         return;
       }
-      setDecision(body as DecisionDto);
+      const ok = decisionResponseSchema.safeParse(body);
+      if (!ok.success) {
+        setDecision(null);
+        setError("PDP returned an unexpected payload");
+        return;
+      }
+      setDecision(ok.data);
       setError(null);
       setCliMissing(false);
-      if (body.effect === "allow") {
+      if (ok.data.effect === "allow") {
         toast.success("Allowed");
       } else {
         toast.error("Denied");

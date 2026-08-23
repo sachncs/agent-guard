@@ -20,6 +20,7 @@ export interface SessionClaims {
   admin: boolean;
 }
 
+/** Sign a console session JWT (HS256) with the configured TTL. */
 export async function signSession(
   secret: Uint8Array,
   claims: SessionClaims,
@@ -34,8 +35,10 @@ export async function signSession(
     .sign(secret);
 }
 
+/** Discriminated result of a session verification. */
 export type VerifyResult<T> = { ok: true; claims: T } | { ok: false };
 
+/** Verify a session JWT; returns `{ok: false}` for missing/invalid/expired tokens. */
 export async function verifySession(
   secret: Uint8Array,
   token: string | undefined
@@ -84,6 +87,7 @@ export function parseCookieHeader(header: string | null): Record<string, string>
   return out;
 }
 
+/** Attributes for {@link serializeSetCookie}. */
 export interface CookieOptions {
   maxAge?: number;
   secure: boolean;

@@ -5,8 +5,13 @@
 
 import type { AuthConfig } from "./config";
 
+/** Console roles. Admin implies viewer. */
 export type Role = "viewer" | "admin";
 
+/**
+ * Resolve the role from ID-token claims by matching the configured claim
+ * against the configured admin values.
+ */
 export function resolveRole(
   config: Pick<AuthConfig, "adminClaim" | "adminValues">,
   idTokenClaims: Record<string, unknown>

@@ -57,12 +57,18 @@ export async function POST(request: Request) {
       context: { args: body.args, session: body.session },
     });
 
+    // Explicit record construction instead of a cast: AuthZenDecision is an
+    // interface and therefore lacks an implicit index signature.
+    const raw: Record<string, unknown> = {
+      decision: result.decision,
+      ...(result.reason !== undefined && { reason: result.reason }),
+    };
     const decision: DecisionDto = {
       effect: result.decision ? "allow" : "deny",
       policies: [],
       reasons: result.reason ? [result.reason] : [],
       request: {},
-      raw: result as unknown as Record<string, unknown>,
+      raw,
     };
     return Response.json(decision satisfies DecisionDto);
   } catch (e) {

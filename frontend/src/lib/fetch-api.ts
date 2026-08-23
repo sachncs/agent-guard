@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Client fetch wrapper: on session expiry (401) bounce to /login instead
- * of surfacing a raw error. Full page navigation is intentional — the
- * entire app state is dead once the session is gone.
+ * Fetch with same-origin credentials; on session expiry (401) bounce to
+ * /login instead of surfacing a raw error.
  */
 export async function fetchApi(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, { ...init, credentials: "same-origin" });

@@ -6,6 +6,7 @@
 import type { SessionClaims } from "./session";
 import { SESSION_COOKIE, parseCookieHeader, verifySession } from "./session";
 
+/** Resolve the session claims for a request, or null if unauthenticated. */
 export function sessionFromRequest(
   secret: Uint8Array,
   request: Request
@@ -16,6 +17,7 @@ export function sessionFromRequest(
   );
 }
 
+/** 401 JSON response for missing/invalid sessions. */
 export function unauthorized(): Response {
   return Response.json(
     { error: "authentication required", kind: "unauthenticated" },
@@ -23,6 +25,7 @@ export function unauthorized(): Response {
   );
 }
 
+/** 403 JSON response for authenticated non-admin requests. */
 export function forbidden(): Response {
   return Response.json(
     { error: "administrator role required", kind: "forbidden" },
@@ -30,6 +33,7 @@ export function forbidden(): Response {
   );
 }
 
+/** Enforce authentication; returns claims or a 401 Response. */
 export async function requireViewer(
   secret: Uint8Array,
   request: Request
@@ -38,6 +42,7 @@ export async function requireViewer(
   return session ?? unauthorized();
 }
 
+/** Enforce the admin role; returns claims, a 401 or a 403 Response. */
 export async function requireAdmin(
   secret: Uint8Array,
   request: Request
@@ -47,6 +52,7 @@ export async function requireAdmin(
   return session.admin ? session : forbidden();
 }
 
+/** Narrow the union returned by {@link requireViewer}/{@link requireAdmin}. */
 export function isResponse(v: unknown): v is Response {
   return v instanceof Response;
 }

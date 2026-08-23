@@ -6,12 +6,14 @@
  * There is deliberately no "auth disabled" mode.
  */
 
+/** OIDC relying-party settings for the console. */
 export interface OidcConfig {
   issuer: string;
   clientId: string;
   clientSecret: string;
 }
 
+/** Fully resolved console authentication configuration. */
 export interface AuthConfig {
   oidc: OidcConfig;
   /** Signing key for console-issued session/state JWTs. */
@@ -22,10 +24,13 @@ export interface AuthConfig {
   adminValues: string[];
   /** agentguard PDP base URL (no trailing slash). */
   pdpUrl: string;
+  /** Bearer token sent with PDP requests, if the PDP requires one. */
   pdpBearer?: string;
+  /** Allow cookies without Secure (local/e2e over plain HTTP only). */
   insecureCookie: boolean;
 }
 
+/** Either a valid config or the reason authentication cannot start. */
 export type AuthConfigResult =
   | { valid: true; config: AuthConfig }
   | { valid: false; reason: string };
@@ -87,6 +92,7 @@ function stripSlash(s: string): string {
 /** Cached per process; env does not change at runtime. */
 let cached: AuthConfigResult | undefined;
 
+/** Read and memoize console auth configuration from the environment. */
 export function authConfig(): AuthConfigResult {
   cached ??= readEnv();
   return cached;

@@ -37,6 +37,7 @@ export interface LogRecord {
   tenant_id?: string;
 }
 
+/** Body of `POST /api/delegate`. */
 export interface DelegateRequestBody {
   from: string;
   to: string;
@@ -45,6 +46,7 @@ export interface DelegateRequestBody {
   ttlSeconds: number;
 }
 
+/** Body of `POST /api/verify`. */
 export interface VerifyRequestBody {
   token: string;
   keysFile: string;

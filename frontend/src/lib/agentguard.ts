@@ -2,12 +2,14 @@ import "server-only";
 
 import { AgentguardError, CLIUnavailable, Client } from "agentguard";
 
+/** Error classification surfaced to console clients. */
 export type ApiErrorKind =
   | "cli_unavailable"
   | "cli_error"
   | "invalid_request"
   | "unknown";
 
+/** JSON error payload returned by CLI-backed routes. */
 export interface ApiErrorBody {
   error: string;
   kind: ApiErrorKind;
@@ -15,6 +17,7 @@ export interface ApiErrorBody {
 
 let cached: Client | null = null;
 
+/** Memoized SDK {@link Client} configured from AGENTGUARD_* environment variables. */
 export function agentguard(): Client {
   if (!cached) {
     cached = new Client({
@@ -26,6 +29,7 @@ export function agentguard(): Client {
   return cached;
 }
 
+/** Map a thrown error to the appropriate JSON status/body for API routes. */
 export function toErrorResponse(e: unknown): Response {
   const body = toErrorBody(e);
   const status: Record<ApiErrorKind, number> = {

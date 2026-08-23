@@ -1,5 +1,7 @@
 import "server-only";
 
+import { z } from "zod";
+
 /**
  * HTTP client for the agentguard AuthZEN PDP (`agentguard serve`).
  *
@@ -23,6 +25,12 @@ export interface AuthZenDecision {
   decision: boolean;
   reason?: string;
 }
+
+/** Required fields of an AuthZEN evaluation response. */
+const decisionSchema = z.object({
+  decision: z.boolean(),
+  reason: z.string().optional(),
+});
 
 export class PdpUnavailable extends Error {}
 
@@ -51,5 +59,9 @@ export async function evaluate(
   if (!res.ok) {
     throw new PdpUnavailable(`PDP returned HTTP ${res.status}`);
   }
-  return (await res.json()) as AuthZenDecision;
+  const parsed = decisionSchema.safeParse(await res.json());
+  if (!parsed.success) {
+    throw new PdpUnavailable("PDP returned an invalid decision payload");
+  }
+  return parsed.data;
 }

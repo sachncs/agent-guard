@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { fetchApi } from "@/lib/fetch-api";
+import {
+  delegateResponseSchema,
+  errorResponseSchema,
+} from "@/lib/api-schemas";
 import { Copy } from "lucide-react";
 import { CliAlert } from "@/components/cli-alert";
 import { Button } from "@/components/ui/button";
@@ -88,12 +92,23 @@ function IssueForm({
           ttlSeconds: ttl,
         }),
       });
-      const body = await res.json();
+      const body: unknown = await res.json();
       if (!res.ok) {
-        onError(body.error ?? `request failed (${res.status})`, body.kind === "cli_unavailable");
+        const err = errorResponseSchema.safeParse(body);
+        onError(
+          err.success && err.data.error
+            ? err.data.error
+            : `request failed (${res.status})`,
+          err.success && err.data.kind === "cli_unavailable"
+        );
         return;
       }
-      setToken(body.token as string);
+      const ok = delegateResponseSchema.safeParse(body);
+      if (!ok.success) {
+        onError("unexpected response payload", false);
+        return;
+      }
+      setToken(ok.data.token);
       toast.success("Delegation token issued");
     } catch {
       toast.error("Network error while issuing token");
