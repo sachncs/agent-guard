@@ -101,3 +101,17 @@ mode.
   `X-Forwarded-Proto` so HSTS and secure cookies engage.
 - CSP allows `'unsafe-inline'` scripts because the App Router hydration
   bootstrap requires it.
+
+## Style guide compliance
+
+Source follows the [Google TypeScript Style Guide][tsguide]. Deliberate,
+framework-mandated deviations:
+
+- **Default exports** for `page.tsx`/`layout.tsx` and `next.config.ts` — the
+  Next.js App Router requires them.
+- **Framework-fixed filenames** (`page.tsx`, `route.ts`, `layout.tsx`,
+  `proxy.ts`) override the snake_case file rule.
+- **`components/ui/`** is vendor-generated (shadcn/radix) and exempt;
+  regenerating components would reintroduce upstream style.
+
+[tsguide]: https://google.github.io/styleguide/tsguide.html
