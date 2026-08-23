@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { authConfig } from "@/lib/auth/config";
 import { SESSION_COOKIE, parseCookieHeader, serializeSetCookie, verifySession } from "@/lib/auth/session";
-import { applySecurityHeaders } from "@/lib/security-headers";
+import { applySecurityHeaders } from "@/lib/security_headers";
 
 /**
  * Authentication gate + security headers for every console route.

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import type { LogRecord } from "@/lib/api-types";
+import type { LogRecord } from "@/lib/api_types";
 import {
   errorResponseSchema,
   logResponseSchema,
-} from "@/lib/api-schemas";
-import { fetchApi } from "@/lib/fetch-api";
-import { CliAlert } from "@/components/cli-alert";
+} from "@/lib/api_schemas";
+import { fetchApi } from "@/lib/fetch_api";
+import { CliAlert } from "@/components/cli_alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

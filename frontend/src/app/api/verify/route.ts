@@ -1,5 +1,5 @@
 import { agentguard, toErrorResponse } from "@/lib/agentguard";
-import { parseJsonBody, verifySchema } from "@/lib/api-schemas";
+import { parseJsonBody, verifySchema } from "@/lib/api_schemas";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireAdmin } from "@/lib/auth/guard";
 import { clientKey, rateLimit } from "@/lib/ratelimit";

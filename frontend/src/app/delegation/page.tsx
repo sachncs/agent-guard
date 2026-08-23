@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { fetchApi } from "@/lib/fetch-api";
+import { fetchApi } from "@/lib/fetch_api";
 import {
   delegateResponseSchema,
   errorResponseSchema,
-} from "@/lib/api-schemas";
+} from "@/lib/api_schemas";
 import { Copy } from "lucide-react";
-import { CliAlert } from "@/components/cli-alert";
+import { CliAlert } from "@/components/cli_alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,

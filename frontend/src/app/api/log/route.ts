@@ -1,6 +1,6 @@
-import type { LogRecord } from "@/lib/api-types";
+import type { LogRecord } from "@/lib/api_types";
 import { agentguard, toErrorResponse } from "@/lib/agentguard";
-import { logQuerySchema } from "@/lib/api-schemas";
+import { logQuerySchema } from "@/lib/api_schemas";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireViewer } from "@/lib/auth/guard";
 

@@ -6,7 +6,7 @@ import {
   logQuerySchema,
   parseJsonBody,
   verifySchema,
-} from "./api-schemas.ts";
+} from "./api_schemas.ts";
 
 const jsonReq = (body: unknown) =>
   new Request("http://x/", {

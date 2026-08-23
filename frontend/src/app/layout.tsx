@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { ConsoleNav } from "@/components/console-nav";
+import { ConsoleNav } from "@/components/console_nav";
 import { authConfig } from "@/lib/auth/config";
 import {
   SESSION_COOKIE,

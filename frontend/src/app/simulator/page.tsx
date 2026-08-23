@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { DecisionDto } from "@/lib/api-types";
+import type { DecisionDto } from "@/lib/api_types";
 import {
   decisionResponseSchema,
   errorResponseSchema,
-} from "@/lib/api-schemas";
-import { fetchApi } from "@/lib/fetch-api";
-import { CliAlert } from "@/components/cli-alert";
+} from "@/lib/api_schemas";
+import { fetchApi } from "@/lib/fetch_api";
+import { CliAlert } from "@/components/cli_alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
