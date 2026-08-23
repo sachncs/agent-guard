@@ -56,7 +56,10 @@ jobs:
       - run: pnpm --filter agentguard build
       - run: pnpm --filter agentguard test
       - run: pnpm --filter frontend lint
+      - run: pnpm --filter frontend test
       - run: pnpm --filter frontend build
+      # Full auth flow (mock IdP/PDP) against the production build.
+      - run: pnpm --filter frontend exec node scripts/e2e.mjs
       # The Strands example needs LLM credentials to run; CI only typechecks it.
       - run: pnpm --filter strands-tool-authz exec tsc --noEmit
 

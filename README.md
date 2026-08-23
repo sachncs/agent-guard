@@ -314,7 +314,9 @@ agentguard doctor
 
 The Next.js console under [`frontend/`](frontend/) doubles as an
 interactive walkthrough: simulate authorizations, browse the audit log,
-and issue delegated tokens.
+and issue delegated tokens. It requires OIDC sign-in (viewer/admin roles)
+and fails closed with `503` when authentication is not configured — see
+[`frontend/README.md`](frontend/README.md) for the environment contract.
 
 ---
 
