@@ -57,13 +57,13 @@ export class StepUpRequired extends AgentguardError {
 }
 export class CLIUnavailable extends AgentguardError {}
 
-export { parseTraceparent, freshTraceContext, type TraceContext } from "./trace";
+export { parseTraceparent, freshTraceContext, type TraceContext } from "./trace.js";
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parseTraceparent as _parseTraceparent } from "./trace";
+import { parseTraceparent as _parseTraceparent } from "./trace.js";
 const parseTraceparent = _parseTraceparent;
 
 function findCli(explicit?: string): string {
