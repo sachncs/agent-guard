@@ -4,31 +4,37 @@
  * Wraps the `agentguard` CLI binary. Mirrors the Python SDK surface.
  */
 
+/** Who is performing the action: an end user, an agent, or a subagent. */
 export type Principal =
   | { type: "user"; uid: string; attrs?: Record<string, unknown> }
   | { type: "agent"; uid: string; parent_uid?: string; attrs?: Record<string, unknown> };
 
+/** What is being performed: a tool invocation, optionally scoped to an operation. */
 export interface AgentAction {
   tool: string;
   operation?: string;
 }
 
+/** What the action targets, identified by Cedar entity type and uid. */
 export interface Resource {
   entity_type: string;
   uid: string;
   attrs?: Record<string, unknown>;
 }
 
+/** Call-specific data (tool arguments, session state) evaluated by Cedar policies. */
 export interface AgentContext {
   args?: Record<string, unknown>;
   session?: Record<string, unknown>;
 }
 
+/** Identity-assurance requirements that must be satisfied before access. */
 export interface StepUp {
   acr_values: string;
   amr_values: string;
 }
 
+/** Result of an authorization evaluation against the agentguard PDP. */
 export interface Decision {
   effect: "allow" | "deny";
   policies: string[];
@@ -41,30 +47,42 @@ export interface Decision {
   step_up?: StepUp;
 }
 
+/** Base class for all errors raised by this SDK. */
 export class AgentguardError extends Error {}
+/** Thrown by {@link Client.check} when the PDP denies the request. */
 export class AuthorizationDenied extends AgentguardError {
-  constructor(public decision: Decision) {
+  /** The full denial decision, including matched policies and reasons. */
+  readonly decision: Decision;
+  constructor(decision: Decision) {
     super(`authorization denied: ${decision.reasons.join("; ") || "no matching policy"}`);
+    this.decision = decision;
   }
 }
+/** Thrown when a decision allows only after additional identity assurance. */
 export class StepUpRequired extends AgentguardError {
-  constructor(public stepUp: StepUp, public decision: Decision) {
+  /** The required authentication context (acr/amr values). */
+  readonly stepUp: StepUp;
+  /** The conditional decision that triggered the step-up requirement. */
+  readonly decision: Decision;
+  constructor(stepUp: StepUp, decision: Decision) {
     super(
       `step-up required: acr_values=${JSON.stringify(stepUp.acr_values)} ` +
         `amr_values=${JSON.stringify(stepUp.amr_values)}`
     );
+    this.stepUp = stepUp;
+    this.decision = decision;
   }
 }
+/** Thrown when the agentguard CLI binary cannot be found or spawned. */
 export class CLIUnavailable extends AgentguardError {}
-
-export { parseTraceparent, freshTraceContext, type TraceContext } from "./trace.js";
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { parseTraceparent as _parseTraceparent } from "./trace.js";
-const parseTraceparent = _parseTraceparent;
+import { freshTraceContext, parseTraceparent, type TraceContext } from "./trace.js";
+
+export { freshTraceContext, parseTraceparent, type TraceContext };
 
 function findCli(explicit?: string): string {
   if (explicit && existsSync(explicit)) return explicit;
@@ -77,14 +95,26 @@ function findCli(explicit?: string): string {
   );
 }
 
+/** Options for constructing a {@link Client}. */
 export interface ClientOptions {
+  /** Path to the agentguard store directory (defaults to `.agentguard`). */
   store?: string;
+  /** Path to the JSONL audit log (defaults to `.audit/decisions.jsonl`). */
   auditLog?: string;
+  /** Explicit path to the `agentguard` binary, bypassing discovery. */
   cliBin?: string;
+  /** Bearer token forwarded to the CLI as AGENTGUARD_BEARER. */
   bearerToken?: string;
+  /** W3C traceparent header forwarded to the CLI as AGENTGUARD_TRACEPARENT. */
   traceparent?: string;
 }
 
+/**
+ * Synchronous client that shells out to the `agentguard` CLI binary.
+ *
+ * Every method spawns a short-lived process; construct one client and reuse
+ * it rather than creating one per call.
+ */
 export class Client {
   private store: string;
   private auditLog: string;
@@ -118,6 +148,13 @@ export class Client {
     return res.stdout;
   }
 
+  /**
+   * Evaluate an authorization request against the PDP.
+   *
+   * @returns The decision. With `check: true`, throws
+   * {@link StepUpRequired} or {@link AuthorizationDenied} instead of
+   * returning a deny decision (unless `onStepUp` is `"return"`).
+   */
   authorize(
     principal: Principal,
     action: AgentAction,
@@ -175,6 +212,7 @@ export class Client {
     return decision;
   }
 
+  /** Like {@link Client.authorize} with `check: true`: throws on deny. */
   check(
     principal: Principal,
     action: AgentAction,
@@ -184,6 +222,12 @@ export class Client {
     return this.authorize(principal, action, resource, context, { check: true });
   }
 
+  /**
+   * Mint a delegation token letting principal `to` act as `from` for the
+   * listed actions and resources.
+   *
+   * @returns The path of the written token file.
+   */
   delegate(
     from: string,
     to: string,
@@ -205,11 +249,13 @@ export class Client {
     return this.run(args).trim();
   }
 
+  /** Verify a delegation token against a trusted keys file. */
   verify(token: string, keysFile: string): Record<string, unknown> {
     const out = this.run(["--output", "json", "verify", token, "--keys", keysFile]);
     return JSON.parse(out);
   }
 
+  /** Read the most recent audit-log entries, newest last. */
   logTail(n = 20, filter?: { principal?: string; action?: string }): unknown[] {
     const args = ["log", "tail", "--n", String(n)];
     if (filter?.principal) args.push("--principal", filter.principal);
@@ -219,7 +265,7 @@ export class Client {
   }
 }
 
-// Convenience constructors
+/** Shorthand constructors for {@link Principal} values. */
 export const Principal = {
   user: (uid: string, attrs: Record<string, unknown> = {}): Principal => ({
     type: "user",
@@ -239,6 +285,7 @@ export const Principal = {
   }),
 };
 
+/** Shorthand constructors for {@link AgentAction} values. */
 export const Action = {
   tool: (name: string): AgentAction => ({ tool: name }),
   toolOp: (name: string, op: string): AgentAction => ({ tool: name, operation: op }),
