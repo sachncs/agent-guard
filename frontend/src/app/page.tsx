@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import type { LogRecord } from "@/lib/api-types";
+import { fetchApi } from "@/lib/fetch-api";
 import { CliAlert } from "@/components/cli-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ export default function DashboardPage() {
         const qs = new URLSearchParams({ n: "100" });
         if (p) qs.set("principal", p);
         if (a) qs.set("action", a);
-        const res = await fetch(`/api/log?${qs}`);
+        const res = await fetchApi(`/api/log?${qs}`);
         const body = await res.json();
         if (!res.ok) {
           setError(body.error ?? "failed to load audit log");

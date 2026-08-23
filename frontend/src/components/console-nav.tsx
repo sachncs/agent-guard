@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { SessionClaims } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -9,7 +11,7 @@ const links = [
   { href: "/delegation", label: "Delegation" },
 ];
 
-export function ConsoleNav() {
+export function ConsoleNav({ user }: { user: SessionClaims | null }) {
   const pathname = usePathname();
   return (
     <header className="border-b">
@@ -35,6 +37,20 @@ export function ConsoleNav() {
             );
           })}
         </nav>
+        {user && (
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            <span className="text-muted-foreground">
+              {user.email ?? user.name ?? user.sub}
+            </span>
+            {user.admin && <Badge variant="default">admin</Badge>}
+            <a
+              href="/api/auth/logout"
+              className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Sign out
+            </a>
+          </div>
+        )}
       </div>
     </header>
   );

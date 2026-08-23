@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DecisionDto } from "@/lib/api-types";
+import { fetchApi } from "@/lib/fetch-api";
 import { CliAlert } from "@/components/cli-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ export default function SimulatorPage() {
 
     setBusy(true);
     try {
-      const res = await fetch("/api/authorize", {
+      const res = await fetchApi("/api/authorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

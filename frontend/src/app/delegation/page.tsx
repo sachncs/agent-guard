@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fetchApi } from "@/lib/fetch-api";
 import { Copy } from "lucide-react";
 import { CliAlert } from "@/components/cli-alert";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ function IssueForm({
     e.preventDefault();
     setBusy(true);
     try {
-      const res = await fetch("/api/delegate", {
+      const res = await fetchApi("/api/delegate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -176,7 +177,7 @@ function VerifyForm({
     e.preventDefault();
     setBusy(true);
     try {
-      const res = await fetch("/api/verify", {
+      const res = await fetchApi("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, keysFile }),
