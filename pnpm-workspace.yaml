@@ -1,0 +1,9 @@
+packages:
+  - typescript/agentguard
+  - typescript/packages/*
+  - frontend
+  - examples/strands-tool-authz
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
