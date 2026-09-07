@@ -1,0 +1,60 @@
+[package]
+name = "agentguard-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core Cedar-powered authorization library for AI agents"
+
+[dependencies]
+cedar-policy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+base64.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+indexmap.workspace = true
+walkdir.workspace = true
+parking_lot.workspace = true
+humantime.workspace = true
+hex.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+lru = "0.16"
+
+[dev-dependencies]
+tempfile = "3"
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "authorize"
+harness = false
+
+# Workspace lint policy (see /Cargo.toml).
+[lints.rust]
+unsafe_code = "forbid"
+# Deny: a #[must_use] Result that is silently dropped on the call
+# site is a recurring foot-gun. The recent DelegationVerifier::add_key
+# regression fell into this bucket.
+unused_must_use = "deny"
+# The current Rust 1.95 stable toolchain has `clippy::needless_borrow`
+# flag every `&String` auto-deref into `&str` and the suggestion
+# (`as_str()`) triggers an unstable feature. Ignore at workspace
+# level; revisit on a future toolchain.
+unstable_features = "allow"
+# Documented as an ongoing effort in the CHANGELOG. Public items
+# that aren't yet documented are tracked in the hardening roadmap.
+missing_docs = "allow"
+
+[lints.clippy]
+# Pedantic is allowed for now — the workspace pre-dates pedantic
+# and a clean sweep would be a v0.3-only effort. Targeted lints
+# below catch the bugs pedantic would catch.
+# Real-bug catches: clippy's `unused_must_use` is the rustc lint of
+# the same name; deny it via [lints.rust] below.
+unused_self = "deny"

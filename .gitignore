@@ -1,0 +1,32 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+
+# Node
+node_modules/
+*.log
+.next/
+typescript/agentguard/dist/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Agentguard
+*.agentguard/
+.audit/
+*.log
+# Example runtime artifacts
+examples/*/chained.jsonl
+examples/*/.audit/

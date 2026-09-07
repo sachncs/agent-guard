@@ -1,0 +1,23 @@
+[package]
+name = "agentguard-fuzz"
+version = "0.2.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+agentguard-core = { path = "../crates/agentguard-core" }
+
+[[bin]]
+name = "hash_chain_append"
+path = "fuzz_targets/hash_chain_append.rs"
+
+[[bin]]
+name = "canonical_json"
+path = "fuzz_targets/canonical_json.rs"
+
+[[bin]]
+name = "glob_match"
+path = "fuzz_targets/glob_match.rs"

@@ -1,0 +1,32 @@
+[package]
+name = "agentguard-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Policy operations: versioned bundles, hot reload, diff, blast radius"
+
+[dependencies]
+agentguard-core = { path = "../agentguard-core", version = "0.2.0" }
+serde.workspace = true
+serde_json.workspace = true
+notify = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+sha2.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+similar = "2"
+tracing.workspace = true
+tempfile = "3"
+
+[features]
+default = ["watch"]
+watch = ["dep:notify", "dep:tokio"]
+
+[dev-dependencies]
+
+# Workspace lint policy (see /Cargo.toml).
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[lints.clippy]

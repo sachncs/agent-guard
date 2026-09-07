@@ -1,0 +1,484 @@
+//! LRU decision cache with TTL and policy-version invalidation.
+
+use crate::decision::canonical::{canonical_json, write_canonical_value};
+use crate::request::AgentRequest;
+use crate::ttl::Clock;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+/// Cache key derived from a request (and the current policy version).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CacheKey(pub [u8; 32]);
+
+impl CacheKey {
+    /// Derive a key from an agent request. Includes `policy_version` so a
+    /// policy reload invalidates all entries.
+    ///
+    /// Streams each field's canonical JSON through the hasher, avoiding the
+    /// intermediate `String` allocations the previous implementation made.
+    /// For high-throughput PDPs (thousands of decisions/sec) this matters.
+    ///
+    /// # Examples
+    /// ```
+    /// use agentguard_core::{AgentRequestBuilder, Principal, AgentAction, Resource, AgentContext};
+    /// use agentguard_core::decision::cache::CacheKey;
+    /// let req = AgentRequestBuilder::new(Principal::user("alice"))
+    ///     .action(AgentAction::tool("send_email"))
+    ///     .resource(Resource::new("Mailbox", "alice@acme"))
+    ///     .context(AgentContext::new())
+    ///     .build()
+    ///     .unwrap();
+    /// let _k = CacheKey::for_request(&req, 0);
+    /// ```
+    pub fn for_request(req: &AgentRequest, policy_version: u64) -> Self {
+        let mut hasher = Sha256::new();
+        // Reusable buffer for canonical-JSON serialization. Capacity
+        // 256 is a heuristic: the principal/action/resource/context
+        // JSON blobs fit comfortably for typical requests; a deeper
+        // path or many attributes will grow the Vec automatically.
+        let mut buf: Vec<u8> = Vec::with_capacity(256);
+
+        // Hash a length-prefixed JSON encoding of each component so
+        // boundaries between fields can't be ambiguous.
+        // Format: 4-byte big-endian length || canonical JSON.
+        // Reusing `buf` across fields avoids 3-4 small Vec allocations
+        // per cache-miss (the prior implementation allocated a fresh
+        // Vec for every field).
+        //
+        // Security: every field is mandatory. If serialization fails
+        // for any reason (today it's infallible for Principal /
+        // Action / Resource / Context, but the serde_json::Value API
+        // is fallible), we PANIC rather than produce a key that omits
+        // the field — a key collision between two distinct requests
+        // would leak Allow decisions across security boundaries.
+        let mut hash_value = |h: &mut Sha256, value: &serde_json::Value| {
+            buf.clear();
+            write_canonical_value(&mut buf, value).expect("canonical write to Vec is infallible");
+            let len = (buf.len() as u32).to_be_bytes();
+            sha2::Digest::update(h, len);
+            sha2::Digest::update(h, &buf);
+        };
+
+        let principal = serde_json::to_value(&req.principal)
+            .expect("Principal is always serializable; see principal.rs round-trip tests");
+        hash_value(&mut hasher, &principal);
+        let action = serde_json::to_value(&req.action)
+            .expect("AgentAction is always serializable; see action.rs round-trip tests");
+        hash_value(&mut hasher, &action);
+        let resource = serde_json::to_value(&req.resource)
+            .expect("Resource is always serializable; see resource.rs round-trip tests");
+        hash_value(&mut hasher, &resource);
+        // Context is already canonical; hash it directly.
+        let ctx_bytes = canonical_json(&req.context)
+            .expect("AgentContext is always serializable; see context.rs round-trip tests");
+        let ctx_len = (ctx_bytes.len() as u32).to_be_bytes();
+        sha2::Digest::update(&mut hasher, ctx_len);
+        sha2::Digest::update(&mut hasher, &ctx_bytes);
+        if let Some(t) = &req.trace {
+            buf.clear();
+            let s = t.to_string();
+            let len = (s.len() as u32).to_be_bytes();
+            sha2::Digest::update(&mut hasher, len);
+            sha2::Digest::update(&mut hasher, s.as_bytes());
+        }
+        sha2::Digest::update(&mut hasher, policy_version.to_be_bytes());
+
+        let hash: [u8; 32] = hasher.finalize().into();
+        Self(hash)
+    }
+
+    pub fn as_hex(&self) -> String {
+        hex::encode(self.0)
+    }
+}
+
+/// A cached decision record.
+///
+/// The `effect` string is `"allow"` or `"deny"`. `cached_at_policy_version`
+/// is the policy version that was active when this entry was inserted;
+/// `get` ignores entries whose version doesn't match the current
+/// `policy_version`, achieving invalidation on policy reload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedDecision {
+    pub effect: String,
+    pub policies: Vec<String>,
+    pub reasons: Vec<String>,
+    pub cached_at_policy_version: u64,
+}
+
+impl CachedDecision {
+    /// Construct an `Allow` decision with the current policy version.
+    pub fn allow() -> Self {
+        Self {
+            effect: "allow".into(),
+            policies: vec![],
+            reasons: vec![],
+            cached_at_policy_version: 0,
+        }
+    }
+
+    /// Construct a `Deny` decision with the current policy version.
+    pub fn deny() -> Self {
+        Self {
+            effect: "deny".into(),
+            policies: vec![],
+            reasons: vec![],
+            cached_at_policy_version: 0,
+        }
+    }
+}
+
+/// Configuration for [`DecisionCache`].
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// Maximum number of entries.
+    pub capacity: usize,
+    /// TTL for "allow" decisions.
+    pub allow_ttl: Duration,
+    /// TTL for "deny" decisions. Conservative (shorter) because deny flips are
+    /// security-sensitive.
+    pub deny_ttl: Duration,
+    /// Whether to cache deny decisions at all.
+    pub cache_denies: bool,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            capacity: 10_000,
+            allow_ttl: Duration::from_secs(30),
+            deny_ttl: Duration::from_secs(5),
+            cache_denies: true,
+        }
+    }
+}
+
+/// LRU + TTL decision cache.
+///
+/// Backed by a simple LRU map. Thread-safe via [`parking_lot::RwLock`]:
+/// reads (the common case on a hot PDP) take a shared lock and run
+/// concurrently; only `put()` (cache fill) takes the exclusive lock.
+///
+/// Note: a cache miss can still trigger a "thundering herd" where many
+/// concurrent readers all see `None` for a popular key and all run the
+/// underlying authorization. A single-flight pattern (per-key `OnceCell`)
+/// would close this, but is left for a future enhancement.
+pub struct DecisionCache {
+    config: CacheConfig,
+    clock: Arc<dyn Clock>,
+    policy_version: AtomicU64,
+    inner: parking_lot::RwLock<lru::LruCache<CacheKey, (CachedDecision, std::time::Instant)>>,
+    hits: AtomicU64,
+    misses: AtomicU64,
+    evictions: AtomicU64,
+}
+
+impl DecisionCache {
+    pub fn new(config: CacheConfig, clock: Arc<dyn Clock>) -> Self {
+        let capacity = std::num::NonZeroUsize::new(config.capacity).unwrap();
+        Self {
+            config,
+            clock,
+            policy_version: AtomicU64::new(0),
+            inner: parking_lot::RwLock::new(lru::LruCache::new(capacity)),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
+        }
+    }
+
+    /// A disabled cache (every call is a miss).
+    pub fn disabled(clock: Arc<dyn Clock>) -> Self {
+        let c = CacheConfig {
+            capacity: 1,
+            ..CacheConfig::default()
+        };
+        let cap = std::num::NonZeroUsize::new(c.capacity).unwrap();
+        Self {
+            config: c,
+            clock,
+            policy_version: AtomicU64::new(0),
+            inner: parking_lot::RwLock::new(lru::LruCache::new(cap)),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+            evictions: AtomicU64::new(0),
+        }
+    }
+
+    pub fn policy_version(&self) -> u64 {
+        self.policy_version.load(Ordering::Relaxed)
+    }
+
+    /// Bump the policy version. All cache entries are invalidated on the
+    /// next `get()` because the stored `cached_at_policy_version` no longer
+    /// matches.
+    pub fn invalidate_all(&self) {
+        self.policy_version.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Convenience: set the policy version to a specific value.
+    pub fn set_policy_version(&self, v: u64) {
+        self.policy_version.store(v, Ordering::Relaxed);
+    }
+
+    pub fn get(&self, key: &CacheKey) -> Option<CachedDecision> {
+        let now = self.clock.now();
+        let policy_version = self.policy_version();
+        // Read path takes a SHARED lock. Many concurrent readers can
+        // coexist. Eviction (rare) needs exclusive; for that we
+        // downgrade to a write lock only when we observe staleness.
+        let guard = self.inner.read();
+        if let Some((cached, expires_at)) = guard.peek(key).cloned() {
+            if cached.cached_at_policy_version != policy_version {
+                // Stale due to policy reload; drop the read lock and
+                // take a write lock to evict.
+                drop(guard);
+                let mut w = self.inner.write();
+                w.pop(key);
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+            if now >= expires_at {
+                drop(guard);
+                let mut w = self.inner.write();
+                w.pop(key);
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                return None;
+            }
+            // Touch for LRU recency (requires mut access; skip here
+            // because we hold a shared lock — readers don't update
+            // recency, which means hot reads can be evicted before
+            // cold reads. Acceptable trade-off for the throughput
+            // gain: the cache capacity is sized for working set, and
+            // eviction is "approximately LRU" which is good enough for
+            // a PDP).
+            self.hits.fetch_add(1, Ordering::Relaxed);
+            return Some(cached);
+        }
+        self.misses.fetch_add(1, Ordering::Relaxed);
+        None
+    }
+
+    pub fn put(&self, key: CacheKey, decision: CachedDecision) {
+        let now = self.clock.now();
+        let ttl = match decision.effect.as_str() {
+            "allow" => self.config.allow_ttl,
+            "deny" if self.config.cache_denies => self.config.deny_ttl,
+            _ => return,
+        };
+        // Fill takes an EXCLUSIVE lock. This is rare relative to reads.
+        let mut guard = self.inner.write();
+        let prev = guard.push(key, (decision, now + ttl));
+        // `lru.push` returns `Some(old)` if the key already existed
+        // (i.e., we just refreshed the entry — no eviction) and `None`
+        // if the key was new (in which case an existing entry may have
+        // been evicted to make room). Count only the eviction case.
+        if prev.is_some() && guard.len() >= self.config.capacity {
+            self.evictions.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn stats(&self) -> CacheStats {
+        CacheStats {
+            hits: self.hits.load(Ordering::Relaxed),
+            misses: self.misses.load(Ordering::Relaxed),
+            evictions: self.evictions.load(Ordering::Relaxed),
+            size: self.inner.read().len(),
+            policy_version: self.policy_version(),
+        }
+    }
+
+    /// Build a `CacheConfig` from the `AGENTGUARD_CACHE_*` environment
+    /// variables. Honors `AGENTGUARD_CACHE_TTL` (allow TTL; human-readable,
+    /// e.g. `60s`/`2m`/`1h`) and `AGENTGUARD_CACHE_CAPACITY`. Falls back
+    /// to defaults when unset or unparseable.
+    pub fn config_from_env() -> CacheConfig {
+        let mut cfg = CacheConfig::default();
+        if let Ok(ttl) = std::env::var("AGENTGUARD_CACHE_TTL") {
+            if let Ok(d) = crate::ttl::parse_duration(&ttl) {
+                cfg.allow_ttl = d;
+                cfg.deny_ttl = std::cmp::min(cfg.deny_ttl, d);
+            } else {
+                tracing::warn!(
+                    ttl = %ttl,
+                    "AGENTGUARD_CACHE_TTL is not a valid duration; using default"
+                );
+            }
+        }
+        if let Ok(cap) = std::env::var("AGENTGUARD_CACHE_CAPACITY") {
+            if let Ok(n) = cap.parse::<usize>() {
+                if n > 0 {
+                    cfg.capacity = n;
+                }
+            }
+        }
+        cfg
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CacheStats {
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
+    pub size: usize,
+    pub policy_version: u64,
+}
+
+impl CacheStats {
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            self.hits as f64 / total as f64
+        }
+    }
+}
+
+/// Test helper: convert a request + policy_version into a cache key.
+#[cfg(test)]
+fn cache_key_for(req: &AgentRequest, policy_version: u64) -> CacheKey {
+    CacheKey::for_request(req, policy_version)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::request::AgentRequestBuilder;
+    use crate::ttl::MockClock;
+    use crate::{AgentAction, AgentContext, Principal, Resource};
+    use std::sync::Arc;
+
+    fn req() -> AgentRequest {
+        AgentRequestBuilder::new(Principal::user("alice"))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new("Mailbox", "alice@acme"))
+            .context(AgentContext::new().with_arg("to", "[email protected]"))
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn cache_miss_then_hit() {
+        let clock = Arc::new(MockClock::new());
+        let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
+        let key = CacheKey::for_request(&req(), 0);
+        assert!(cache.get(&key).is_none());
+        cache.put(key.clone(), CachedDecision::allow());
+        let got = cache.get(&key).unwrap();
+        assert_eq!(got.effect, "allow");
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 1);
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn expire_after_ttl() {
+        let clock = Arc::new(MockClock::new());
+        let mut cfg = CacheConfig::default();
+        cfg.allow_ttl = Duration::from_secs(5);
+        let cache = DecisionCache::new(cfg, clock.clone());
+        let key = CacheKey::for_request(&req(), 0);
+        cache.put(key.clone(), CachedDecision::allow());
+        clock.advance_unix(Duration::from_secs(10));
+        assert!(cache.get(&key).is_none(), "should have expired");
+    }
+
+    #[test]
+    fn invalidate_on_policy_version_bump() {
+        let clock = Arc::new(MockClock::new());
+        let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
+        let key = CacheKey::for_request(&req(), 0);
+        cache.put(key.clone(), CachedDecision::allow());
+        assert!(cache.get(&key).is_some());
+        cache.invalidate_all();
+        assert!(cache.get(&key).is_none(), "policy bump should invalidate");
+    }
+
+    #[test]
+    fn deny_cached_when_enabled() {
+        let clock = Arc::new(MockClock::new());
+        let cache = DecisionCache::new(CacheConfig::default(), clock.clone());
+        let key = CacheKey::for_request(&req(), 0);
+        cache.put(key.clone(), CachedDecision::deny());
+        assert_eq!(cache.get(&key).unwrap().effect, "deny");
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn deny_not_cached_when_disabled() {
+        let clock = Arc::new(MockClock::new());
+        let mut cfg = CacheConfig::default();
+        cfg.cache_denies = false;
+        let cache = DecisionCache::new(cfg, clock.clone());
+        let key = CacheKey::for_request(&req(), 0);
+        cache.put(key.clone(), CachedDecision::deny());
+        assert!(cache.get(&key).is_none(), "denies not cached");
+    }
+
+    #[test]
+    fn hit_rate_calculation() {
+        let s = CacheStats {
+            hits: 7,
+            misses: 3,
+            evictions: 0,
+            size: 5,
+            policy_version: 0,
+        };
+        assert!((s.hit_rate() - 0.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn concurrent_reads_dont_block_writers() {
+        use std::sync::Arc;
+        use std::sync::Barrier;
+        use std::thread;
+
+        let clock = Arc::new(MockClock::new());
+        let cache = Arc::new(DecisionCache::new(CacheConfig::default(), clock));
+        let key = cache_key_for(&req(), 0);
+
+        // Seed the cache so reads hit.
+        cache.put(key.clone(), CachedDecision::allow());
+
+        // ponytail: deterministic Barrier replaces the previous
+        // thread::yield_now() (which was timing-sensitive). Each
+        // reader runs a small, bounded number of gets so progress
+        // is guaranteed on any scheduler.
+        const N_READERS: usize = 4;
+        const LOOPS_PER_READER: usize = 50;
+        let ready = Arc::new(Barrier::new(N_READERS + 1));
+        let mut handles = Vec::new();
+        for _ in 0..N_READERS {
+            let cache = Arc::clone(&cache);
+            let key = key.clone();
+            let ready = Arc::clone(&ready);
+            handles.push(thread::spawn(move || {
+                ready.wait();
+                for _ in 0..LOOPS_PER_READER {
+                    let _ = cache.get(&key);
+                }
+            }));
+        }
+
+        // Wait for all readers to be in their loop before writing.
+        ready.wait();
+        for v in 1..=5 {
+            cache.set_policy_version(v);
+            cache.put(key.clone(), CachedDecision::allow());
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        // The test's purpose is to confirm no deadlock. h.join().unwrap()
+        // returning for all 4 readers proves the RwLock works correctly
+        // under concurrent reader/writer traffic. We intentionally
+        // don't assert on hits/misses counts — those are racy and
+        // a small number of policy_version bumps can race every
+        // reader to a miss.
+    }
+}

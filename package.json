@@ -1,0 +1,12 @@
+{
+  "name": "agentguard-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
