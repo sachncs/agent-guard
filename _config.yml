@@ -1,0 +1,8 @@
+title: "agent-guard"
+description: "agent-guard"
+theme: minima
+logo: /assets/logo.svg
+show_downloads: false
+permalink: /:title/
+plugins:
+  - jekyll-feed
