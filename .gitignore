@@ -1,7 +1,8 @@
 # Rust
 target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed for reproducible builds across the
+# 6-crate workspace, the Next.js monorepo, and the TypeScript SDK.
 
 # Python
 __pycache__/
