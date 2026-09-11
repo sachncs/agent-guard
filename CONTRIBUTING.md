@@ -17,6 +17,12 @@ Discussions if enabled). For security issues, follow
 rustup toolchain install stable
 ```
 
+The workspace declares `rust-version = "1.89"` in `[workspace.package]`.
+CI verifies the workspace builds under that toolchain (see the `msrv`
+job in `.github/workflows/ci.yml`). Use only stable APIs available in
+1.89; if you need a newer one, bump `rust-version` in the same commit
+and add a CHANGELOG entry.
+
 ## Tests
 
 ```
