@@ -70,6 +70,12 @@ All four integration surfaces converge on the same Cedar engine and the same aud
 ### CLI (Rust)
 
 ```bash
+# agentguard-server's build.rs shells out to protoc to regenerate
+# the gRPC stubs from proto/agentguard.proto. Install protobuf-compiler
+# (or set $PROTOC to its path) before building:
+#   apt:   apt install -y protobuf-compiler
+#   brew:  brew install protobuf
+#   cargo: cargo install protobuf-codegen
 cargo install --path crates/agentguard-cli
 ```
 
