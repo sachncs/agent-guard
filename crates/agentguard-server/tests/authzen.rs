@@ -680,3 +680,30 @@ async fn batch_evaluations_rejects_oversized_request() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn evaluation_preserves_context_key_named_trace() {
+    // Regression: the AuthZEN bridge used to silently drop any
+    // context key named "trace". Forward it as a regular argument
+    // so callers can attach observability data without losing it.
+    use agentguard_server::evaluation_request_to_agent;
+    let req: agentguard_server::authzen::EvaluationRequest =
+        serde_json::from_value(serde_json::json!({
+            "subject": {"type": "User", "id": "alice"},
+            "action": {"type": "Action", "id": "ToolCall::send"},
+            "resource": {"type": "Mailbox", "id": "alice@x"},
+            "context": {
+                "trace": {"span_id": "abc-123", "parent": "root"},
+                "to": "[email protected]"
+            }
+        }))
+        .unwrap();
+    let agent_req = evaluation_request_to_agent(req).unwrap();
+    let trace_value = agent_req.context.args.get("trace");
+    assert!(
+        trace_value.is_some(),
+        "context.trace must be preserved, got {:?}",
+        agent_req.context.args
+    );
+    assert_eq!(trace_value.unwrap()["span_id"], "abc-123");
+}
