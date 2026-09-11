@@ -366,6 +366,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
 
+## Documentation site
+
+A Jekyll-rendered documentation site is published from this repo at
+<https://sachncs.github.io/agent-guard/>. The page index lives in
+[`index.md`](index.md); the GitHub Pages settings live under
+*Settings → Pages* and are configured to build from `master`'s root.
+
 ## Security
 
 Please **do not** file security vulnerabilities as public GitHub issues. Report vulnerabilities to **sachncs@gmail.com** — see [SECURITY.md](SECURITY.md).
