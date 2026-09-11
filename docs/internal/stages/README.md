@@ -1,5 +1,11 @@
 # agentguard v2.0.0 — Implementation Stages
 
+> **Implementation notes — not canonical documentation.**
+> The canonical user-facing architecture is [`docs/architecture.md`](../../architecture.md).
+> These files are internal contracts used during the v2.0.0 development
+> window and are kept here only so the repository's search box continues
+> to surface them.
+
 This directory tracks the implementation plan for v2.0.0 (enterprise hardening).
 Each stage file is a contract: read it before touching code, check off each todo
 as you complete it, and verify the verification commands pass before moving on.
