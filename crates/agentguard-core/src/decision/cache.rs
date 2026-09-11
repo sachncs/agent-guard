@@ -421,9 +421,11 @@ mod tests {
     }
 
     fn req_with_marker(marker: u64) -> AgentRequest {
-        AgentRequestBuilder::new(Principal::user(&format!("alice-{marker}")))
+        let principal_id = format!("alice-{marker}");
+        let resource_id = format!("alice-{marker}@acme");
+        AgentRequestBuilder::new(Principal::user(principal_id))
             .action(AgentAction::tool("send_email"))
-            .resource(Resource::new("Mailbox", &format!("alice-{marker}@acme")))
+            .resource(Resource::new("Mailbox", resource_id))
             .context(AgentContext::new().with_arg("to", "[email protected]"))
             .build()
             .unwrap()
@@ -552,8 +554,10 @@ mod tests {
     #[test]
     fn eviction_counter_increments() {
         let clock = Arc::new(MockClock::new());
-        let mut cfg = CacheConfig::default();
-        cfg.capacity = 2;
+        let cfg = CacheConfig {
+            capacity: 2,
+            ..CacheConfig::default()
+        };
         let cache = DecisionCache::new(cfg, clock.clone());
 
         for i in 0..4u64 {

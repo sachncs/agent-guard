@@ -10,12 +10,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/usr/bin/protoc",
         ];
         if !candidates.iter().any(|c| std::path::Path::new(c).exists()) {
-            return Err(format!(
+            return Err(
                 "protoc not found on PATH; install protobuf-compiler \
                  (apt: 'apt install -y protobuf-compiler', brew: 'brew install protobuf') \
                  or set $PROTOC to its path"
-            )
-            .into());
+                    .into(),
+            );
         }
     }
     tonic_build::configure()
