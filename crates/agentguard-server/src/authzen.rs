@@ -273,8 +273,6 @@ pub fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentReques
                         context = context.with_session(sk, sv.clone());
                     }
                 }
-            } else if k == "trace" {
-                // trace is parsed separately in Stage 8 — skip for now.
             } else {
                 context = context.with_arg(k, v.clone());
             }
