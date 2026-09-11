@@ -216,7 +216,10 @@ Console-specific environment (`AGENTGUARD_OIDC_*`, `AGENTGUARD_SESSION_SECRET`, 
 
 [`examples/`](examples/) contains working examples:
 
-- `examples/strands-tool-authz/` — Strands Agents (TypeScript) agent whose tool calls are guarded by the AuthZEN PDP via a `BeforeToolCallEvent` hook
+- [`examples/strands-tool-authz/`](examples/strands-tool-authz/) — Strands Agents (TypeScript) agent whose tool calls are guarded by the AuthZEN PDP via a `BeforeToolCallEvent` hook
+- [`examples/rust-embedder/`](examples/rust-embedder/) — Rust app that mounts the AuthZEN PDP router inside an existing axum application via `agentguard_server::build_router`
+
+See [`examples/README.md`](examples/README.md) for the index.
 
 The admin console under [`frontend/`](frontend/) doubles as an interactive walkthrough: simulate authorizations, browse the audit log, and issue delegated tokens. It requires OIDC sign-in (viewer/admin roles) and fails closed with `503` when authentication is not configured.
 
@@ -255,7 +258,7 @@ agent-guard/
 ├── typescript/
 │   └── agentguard/              # TypeScript SDK
 ├── frontend/                    # Next.js 16 admin console (shadcn/ui)
-├── examples/                    # Working examples (Strands TS agent)
+├── examples/                    # Working examples (TS + Rust embedder)
 ├── schemas/                     # Cedar schema fragments
 ├── docs/                        # Architecture & API documentation
 └── stages/                      # Stage-by-stage implementation plan
