@@ -1,0 +1,33 @@
+name: Security disclosure
+description: Privately report a security vulnerability (do not open a public issue)
+title: "[security] "
+labels: ["security", "do-not-triage-publicly"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not file public security issues here for undisclosed vulnerabilities.**
+        For sensitive reports, email the address in `SECURITY.md` instead — see
+        https://github.com/sachncs/agent-guard/blob/master/SECURITY.md — and a
+        maintainer will follow up within 2 business days.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Brief summary
+      description: One or two sentences describing the issue (no exploit details yet).
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What is the worst-case outcome if this is exploited?
+    validations:
+      required: true
+  - type: input
+    id: affected
+    attributes:
+      label: Affected versions
+      placeholder: e.g. v0.2.0, commit 0123abc
+    validations:
+      required: true
