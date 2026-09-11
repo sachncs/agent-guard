@@ -140,6 +140,26 @@ pub fn erase(
     Ok(())
 }
 
+/// Force-rotate the audit log at `audit_path`. The active file is
+/// renamed to a timestamped sibling and a fresh file is opened. The
+/// chain id sidecar is moved alongside.
+pub fn rotate(audit_path: impl AsRef<Path>, secret_file: Option<&Path>) -> Result<()> {
+    let rotation = RotationConfig { max_bytes: 1 };
+    let log = match secret_file {
+        Some(secret_path) => {
+            let key = std::fs::read(secret_path).map_err(|e| anyhow!("read secret file: {}", e))?;
+            let key_bytes =
+                decode_chain_secret(&key).ok_or_else(|| anyhow!("chain secret file is empty"))?;
+            DecisionLog::open_with_rotation(audit_path.as_ref(), Some(&key_bytes), rotation)?
+        }
+        None => DecisionLog::open_with_rotation(audit_path.as_ref(), None::<&[u8]>, rotation)?,
+    };
+    log.rotate()?;
+    println!("✓ audit log rotated");
+    println!("  active:    {}", audit_path.as_ref().display());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,24 +212,24 @@ mod tests {
             assert!(cr.record.principal.starts_with("erased:"));
         }
     }
-}
 
-/// Force-rotate the audit log at `audit_path`. The active file is
-/// renamed to a timestamped sibling and a fresh file is opened. The
-/// chain id sidecar is moved alongside.
-pub fn rotate(audit_path: impl AsRef<Path>, secret_file: Option<&Path>) -> Result<()> {
-    let rotation = RotationConfig { max_bytes: 1 };
-    let log = match secret_file {
-        Some(secret_path) => {
-            let key = std::fs::read(secret_path).map_err(|e| anyhow!("read secret file: {}", e))?;
-            let key_bytes =
-                decode_chain_secret(&key).ok_or_else(|| anyhow!("chain secret file is empty"))?;
-            DecisionLog::open_with_rotation(audit_path.as_ref(), Some(&key_bytes), rotation)?
-        }
-        None => DecisionLog::open_with_rotation(audit_path.as_ref(), None::<&[u8]>, rotation)?,
-    };
-    log.rotate()?;
-    println!("✓ audit log rotated");
-    println!("  active:    {}", audit_path.as_ref().display());
-    Ok(())
+    #[test]
+    fn rotate_renames_active_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rotating.jsonl");
+        std::fs::write(&path, b"{\"id\":\"seed\"}\n").unwrap();
+        super::rotate(&path, None).unwrap();
+        let mut entries = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        entries.sort();
+        // Active file must be re-created; one rotated sibling present.
+        assert!(entries.iter().any(|n| n == "rotating.jsonl"));
+        assert!(
+            entries.iter().any(|n| n.starts_with("rotating-")),
+            "expected a rotated sibling, got {entries:?}"
+        );
+    }
 }
