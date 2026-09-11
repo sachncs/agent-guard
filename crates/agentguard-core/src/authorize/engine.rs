@@ -168,6 +168,18 @@ impl Authorizer {
         }
     }
 
+    /// Drain entries that became stale (policy-version mismatch) or
+    /// expired since the last sweep. Cheap no-op when the cache is
+    /// empty or nothing is stale. Returns the number of entries
+    /// removed.
+    ///
+    /// The read path no longer evicts on staleness to avoid
+    /// serializing many concurrent readers on a write lock after a
+    /// policy reload; this method is the matching cleanup hook.
+    pub fn sweep_stale_cache(&self) -> usize {
+        self.cache.as_ref().map(|c| c.sweep_stale()).unwrap_or(0)
+    }
+
     #[tracing::instrument(
         skip_all,
         fields(

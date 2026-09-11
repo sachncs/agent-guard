@@ -228,23 +228,18 @@ impl DecisionCache {
         let now = self.clock.now();
         let policy_version = self.policy_version();
         // Read path takes a SHARED lock. Many concurrent readers can
-        // coexist. Eviction (rare) needs exclusive; for that we
-        // downgrade to a write lock only when we observe staleness.
+        // coexist. Stale / expired entries are NOT evicted under the
+        // read lock — instead, a separate [`sweep_stale`] call (run
+        // from the policy watcher task) drains them so concurrent
+        // readers do not serialize on the writer after a policy
+        // reload.
         let guard = self.inner.read();
         if let Some((cached, expires_at)) = guard.peek(key).cloned() {
             if cached.cached_at_policy_version != policy_version {
-                // Stale due to policy reload; drop the read lock and
-                // take a write lock to evict.
-                drop(guard);
-                let mut w = self.inner.write();
-                w.pop(key);
                 self.misses.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
             if now >= expires_at {
-                drop(guard);
-                let mut w = self.inner.write();
-                w.pop(key);
                 self.misses.fetch_add(1, Ordering::Relaxed);
                 return None;
             }
@@ -260,6 +255,34 @@ impl DecisionCache {
         }
         self.misses.fetch_add(1, Ordering::Relaxed);
         None
+    }
+
+    /// Drain stale (policy-version mismatch) and expired entries
+    /// from the cache. Cheap when nothing is stale: O(1) under the
+    /// fast path. Designed to be called from a background task or
+    /// after [`Self::invalidate_all`].
+    ///
+    /// Returns the number of entries dropped. Used by tests to assert
+    /// the eviction worked.
+    pub fn sweep_stale(&self) -> usize {
+        let now = self.clock.now();
+        let policy_version = self.policy_version();
+        let mut guard = self.inner.write();
+        let before = guard.len();
+        let stale: Vec<CacheKey> = guard
+            .iter()
+            .filter_map(|(k, (cached, expires_at))| {
+                if cached.cached_at_policy_version != policy_version || now >= *expires_at {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for k in &stale {
+            guard.pop(k);
+        }
+        before.saturating_sub(guard.len())
     }
 
     pub fn put(&self, key: CacheKey, decision: CachedDecision) {
@@ -514,6 +537,46 @@ mod tests {
             cache.stats().evictions >= 2,
             "evictions counter should reflect LRU churn, got {}",
             cache.stats().evictions
+        );
+    }
+
+    #[test]
+    fn concurrent_eviction_throughput() {
+        // Stress test for the read-then-evict contention path: many
+        // readers simultaneously observe stale entries after a
+        // policy reload. With the old implementation they serialized
+        // on the writer; the new implementation defers eviction to
+        // sweep_stale and lets readers return None without taking a
+        // write lock.
+        use std::sync::Barrier;
+        let clock = Arc::new(MockClock::new());
+        let cache = Arc::new(DecisionCache::new(CacheConfig::default(), clock.clone()));
+
+        let key = CacheKey::for_request(&req(), 0);
+        cache.put(key.clone(), CachedDecision::allow());
+        cache.invalidate_all();
+
+        let barrier = Arc::new(Barrier::new(16));
+        let mut handles = Vec::new();
+        for _ in 0..16 {
+            let cache = cache.clone();
+            let key = key.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                for _ in 0..1000 {
+                    assert!(cache.get(&key).is_none());
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        // Drain any stragglers via the new background sweep.
+        let drained = cache.sweep_stale();
+        assert!(
+            drained >= 1,
+            "sweep_stale must have evicted the stale entry, got {drained}"
         );
     }
 }
