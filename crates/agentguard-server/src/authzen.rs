@@ -239,6 +239,40 @@ fn readyz_unavailable(reason: &str) -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, format!("{reason}\n")).into_response()
 }
 
+/// Sanitize an authorization error for logging. Returns a stable
+/// error code plus a short summary that does NOT include the
+/// underlying cedar policy / schema text. The full error is kept
+/// for a separate debug-level log line so engineering can still
+/// investigate without sending it to log aggregators.
+fn summarize_authorize_error(e: &agentguard_core::Error) -> (&'static str, String) {
+    use agentguard_core::Error;
+    match e {
+        Error::Io(_) => ("io", "io error".to_string()),
+        Error::Json(_) => ("json", "json error".to_string()),
+        Error::Schema(_) => ("schema", "schema error".to_string()),
+        Error::InvalidPrincipal(_) => ("invalid_principal", "invalid principal".to_string()),
+        Error::InvalidResource(_) => ("invalid_resource", "invalid resource".to_string()),
+        Error::InvalidContext(_) => ("invalid_context", "invalid context".to_string()),
+        Error::PolicyParse { .. } => ("policy_parse", "policy parse error".to_string()),
+        Error::Validation(_) => ("validation", "policy validation failed".to_string()),
+        Error::Entities(_) => ("entities", "entities build failed".to_string()),
+        Error::Walk(_) => ("walk", "policy walk failed".to_string()),
+        Error::Other(_) => ("other", "internal error".to_string()),
+        // Token variants are surfaced by the auth layer, not the
+        // PDP, but be exhaustive just in case.
+        Error::InvalidToken(_) => ("invalid_token", "invalid delegation token".to_string()),
+        Error::TokenExpired(_) => ("token_expired", "delegation token expired".to_string()),
+        Error::TokenSignature { .. } => {
+            ("token_signature", "delegation signature invalid".to_string())
+        }
+        Error::TokenNotYetValid(_) => (
+            "token_not_yet_valid",
+            "delegation token not yet valid".to_string(),
+        ),
+        _ => ("other", "internal error".to_string()),
+    }
+}
+
 pub fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentRequest, String> {
     let principal = match req.subject.entity_type.as_str() {
         "User" => agentguard_core::Principal::user(req.subject.id.clone()),
@@ -358,9 +392,14 @@ async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationReq
         }
         Err(e) => {
             state.metrics().record_pdp_error("authorize");
-            tracing::error!(error = %e, "authorize failed");
-            // Do NOT include the cedar error verbatim — it can leak
-            // policy text. Return a generic message and log details.
+            // Sanitize the error before logging: cedar policy and
+            // schema text can echo into Diagnostics, and tracing
+            // output is commonly shipped to log aggregators. Log a
+            // stable error code + short summary at error level; keep
+            // the full error at debug level for engineering triage.
+            let (code, summary) = summarize_authorize_error(&e);
+            tracing::error!(error_code = %code, error = %summary, "authorize failed");
+            tracing::debug!(error = ?e, "full authorize error");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal authorization error",
@@ -493,4 +532,50 @@ pub async fn build_state_with_cache(
         auth,
         metrics: Arc::new(Metrics::new()),
     })
+}
+
+#[cfg(test)]
+mod summarize_tests {
+    use super::summarize_authorize_error;
+    use agentguard_core::Error;
+
+    #[test]
+    fn invalid_context_summary_does_not_leak_message() {
+        // The Cedar error text echoes policy / schema fragments.
+        // The sanitizer must produce a code + summary that does
+        // NOT include any of that text.
+        let err = Error::InvalidContext(
+            "policy 'permit(principal, action, resource) when { secret == \"hunter2\" }': \
+             unresolved attribute: secret"
+                .to_string(),
+        );
+        let (code, summary) = summarize_authorize_error(&err);
+        assert_eq!(code, "invalid_context");
+        assert!(
+            !summary.contains("hunter2"),
+            "summary leaked policy text: {summary}"
+        );
+        assert!(
+            !summary.contains("permit"),
+            "summary leaked policy text: {summary}"
+        );
+    }
+
+    #[test]
+    fn policy_parse_summary_does_not_leak_filename() {
+        let err = Error::PolicyParse {
+            message: "unexpected token at column 7".into(),
+            file: "/etc/agentguard/policies/30_strands.cedar".into(),
+        };
+        let (code, summary) = summarize_authorize_error(&err);
+        assert_eq!(code, "policy_parse");
+        assert!(
+            !summary.contains("30_strands.cedar"),
+            "summary leaked file path: {summary}"
+        );
+        assert!(
+            !summary.contains("column 7"),
+            "summary leaked parse position: {summary}"
+        );
+    }
 }
