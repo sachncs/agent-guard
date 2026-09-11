@@ -26,6 +26,17 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  msrv:
+    # Enforce the workspace MSRV declared in `[workspace.package]
+    # rust-version`. A change that uses a stable-only API newer than
+    # this fails CI here, before downstream consumers hit it.
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - run: cargo check --workspace --all-targets
+
   test:
     name: cargo test
     runs-on: ubuntu-latest

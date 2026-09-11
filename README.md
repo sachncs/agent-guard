@@ -87,7 +87,7 @@ pnpm install
 pnpm dev
 ```
 
-**Requirements:** Rust 1.85+, Node.js ≥ 20.9 (26 recommended), pnpm ≥ 9.
+**Requirements:** Rust 1.89+, Node.js ≥ 20.9 (26 recommended), pnpm ≥ 9.
 
 ## Quick Start
 
