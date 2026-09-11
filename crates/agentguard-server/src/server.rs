@@ -378,8 +378,13 @@ mod tls_validation_tests {
         let cert_path = dir.path().join("cert.pem");
         let key_path = dir.path().join("key.pem");
         std::fs::File::create(&cert_path).unwrap();
-        std::fs::File::create(&key_path).unwrap().write_all(b"x").unwrap();
-        let err = validate_tls_paths(&cert_path, &key_path).unwrap_err().to_string();
+        std::fs::File::create(&key_path)
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
+        let err = validate_tls_paths(&cert_path, &key_path)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("cert"), "missing cert label: {err}");
         assert!(err.contains("empty"), "missing size reason: {err}");
     }
@@ -387,7 +392,12 @@ mod tls_validation_tests {
     #[test]
     fn directory_instead_of_file_reports_helpful_error() {
         let dir = tempfile::tempdir().unwrap();
-        let err = validate_tls_paths(dir.path(), dir.path()).unwrap_err().to_string();
-        assert!(err.contains("not a regular file"), "missing dir reason: {err}");
+        let err = validate_tls_paths(dir.path(), dir.path())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("not a regular file"),
+            "missing dir reason: {err}"
+        );
     }
 }

@@ -109,11 +109,7 @@ impl DecisionLog {
         root_key: Option<&[u8]>,
         rotation: RotationConfig,
     ) -> Result<Self> {
-        Self::open_internal(
-            path.into(),
-            root_key.map(|k| k.to_vec()),
-            Some(rotation),
-        )
+        Self::open_internal(path.into(), root_key.map(|k| k.to_vec()), Some(rotation))
     }
 
     fn open_internal(
@@ -223,8 +219,14 @@ impl DecisionLog {
                 *guard = None;
             }
         }
-        std::fs::rename(&self.path, &rotated)
-            .map_err(|e| Error::Io(format!("rotate {} -> {}: {}", self.path.display(), rotated.display(), e)))?;
+        std::fs::rename(&self.path, &rotated).map_err(|e| {
+            Error::Io(format!(
+                "rotate {} -> {}: {}",
+                self.path.display(),
+                rotated.display(),
+                e
+            ))
+        })?;
         if self.chain_id_path.exists() {
             let rotated_sidecar = chain_id_sidecar_path(&rotated);
             let _ = std::fs::rename(&self.chain_id_path, &rotated_sidecar);
@@ -721,12 +723,9 @@ mod tests {
     fn rotation_creates_new_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("rotating.jsonl");
-        let log = DecisionLog::open_with_rotation(
-            &path,
-            None::<&[u8]>,
-            RotationConfig { max_bytes: 64 },
-        )
-        .unwrap();
+        let log =
+            DecisionLog::open_with_rotation(&path, None::<&[u8]>, RotationConfig { max_bytes: 64 })
+                .unwrap();
         let rec = DecisionRecord {
             id: "a".into(),
             timestamp: chrono::Utc::now(),
@@ -752,11 +751,7 @@ mod tests {
         let rotated: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("rotating-")
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with("rotating-"))
             .collect();
         assert!(
             !rotated.is_empty(),

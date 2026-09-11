@@ -50,7 +50,10 @@ async fn main() -> anyhow::Result<()> {
 
     let app = axum::Router::new()
         .route("/healthz", get(|| async { "ok" }))
-        .route("/version", get(|| async { Json(json!({"name": "rust-embedder"})) }))
+        .route(
+            "/version",
+            get(|| async { Json(json!({"name": "rust-embedder"})) }),
+        )
         .nest("/access/v1", pdp);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8443").await?;
