@@ -22,7 +22,8 @@ pub struct JwtConfig {
     /// Whitelist of accepted signing algorithms (RFC 8725 §3.1).
     /// Default = `[EdDSA]` because `verify_signature` only implements
     /// Ed25519 today; RS256/ES256 are reserved for v2.1. Operators
-    /// can opt in via `with_algorithms` once they're implemented.
+    /// who need them today should keep the default and configure
+    /// their IdP to sign with EdDSA (see `with_algorithms_try`).
     pub algorithms: Vec<Algorithm>,
     /// JWKS URI (optional). If set, keys are fetched from this URL.
     pub jwks_uri: Option<String>,
@@ -45,8 +46,47 @@ impl JwtConfig {
         }
     }
 
-    pub fn with_algorithms(mut self, algs: Vec<Algorithm>) -> Self {
+    /// Replace the accepted-algorithm whitelist. Pass only algorithms
+    /// that [`verify_signature`] actually supports today; the set of
+    /// supported algorithms is exposed via
+    /// [`crate::SUPPORTED_ALGORITHMS`].
+    ///
+    /// # Errors
+    /// Returns `AuthError::JwtInvalid` listing the unsupported entries
+    /// so misconfiguration is surfaced at construction time, not at
+    /// the first incoming token.
+    pub fn with_algorithms(
+        mut self,
+        algs: Vec<Algorithm>,
+    ) -> std::result::Result<Self, crate::AuthError> {
+        for alg in &algs {
+            if !crate::SUPPORTED_ALGORITHMS.contains(alg) {
+                return Err(crate::AuthError::JwtInvalid(format!(
+                    "algorithm {:?} is not verifiable in this release; supported: {:?}",
+                    alg,
+                    crate::SUPPORTED_ALGORITHMS
+                )));
+            }
+        }
         self.algorithms = algs;
+        Ok(self)
+    }
+
+    /// Lossless infallible variant: only succeeds if every entry is in
+    /// `SUPPORTED_ALGORITHMS`, otherwise logs a warning and falls back
+    /// to the default `[EdDSA]`. Use this when reading configuration
+    /// from untrusted sources where panicking on bad input is
+    /// undesirable (e.g. OIDC discovery).
+    pub fn with_algorithms_lossy(mut self, algs: Vec<Algorithm>) -> Self {
+        let supported: Vec<Algorithm> = algs
+            .into_iter()
+            .filter(|a| crate::SUPPORTED_ALGORITHMS.contains(a))
+            .collect();
+        if supported.is_empty() {
+            self.algorithms = vec![Algorithm::EdDSA];
+        } else {
+            self.algorithms = supported;
+        }
         self
     }
 
@@ -459,6 +499,34 @@ mod tests {
         let token = sign_token(&signing_key, "kid1", claims);
         let res = v.validate(&token);
         assert!(res.is_ok(), "expected valid token, got {:?}", res);
+    }
+
+    #[test]
+    fn with_algorithms_rejects_unsupported() {
+        // RS256 parses out of a JOSE header but verify_signature
+        // only implements EdDSA today. The constructor must surface
+        // the gap instead of letting the operator discover it on the
+        // first inbound token.
+        let res = JwtConfig::new("https://idp.example.com", "agentguard")
+            .with_algorithms(vec![Algorithm::RS256]);
+        assert!(res.is_err(), "RS256 must be rejected at construction");
+        let msg = format!("{}", res.unwrap_err());
+        assert!(msg.contains("RS256"), "error must name the bad algorithm: {msg}");
+    }
+
+    #[test]
+    fn with_algorithms_lossy_filters_unsupported() {
+        // Lossy variant drops unsupported entries and keeps the rest;
+        // an all-unsupported list falls back to the default `[EdDSA]`
+        // so OIDC discovery never breaks a server that just received
+        // a buggy IdP config.
+        let cfg = JwtConfig::new("https://idp.example.com", "agentguard")
+            .with_algorithms_lossy(vec![Algorithm::RS256, Algorithm::EdDSA]);
+        assert_eq!(cfg.algorithms, vec![Algorithm::EdDSA]);
+
+        let cfg = JwtConfig::new("https://idp.example.com", "agentguard")
+            .with_algorithms_lossy(vec![Algorithm::RS256]);
+        assert_eq!(cfg.algorithms, vec![Algorithm::EdDSA]);
     }
 
     #[test]

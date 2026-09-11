@@ -24,3 +24,9 @@ pub use jti::JtiTracker;
 pub use jwt::{JwtConfig, JwtValidator, ValidatedJwt};
 pub use oidc::{OidcConfig, OidcMetadata};
 pub use spiffe::SpiffeValidator;
+
+/// Algorithms the JWT/DPoP verifiers actually implement today. Exposed
+/// so `JwtConfig::with_algorithms` can validate input and surface a
+/// construction-time error for unsupported values (RS256/ES256 are
+/// parsed but not verified in this release).
+pub const SUPPORTED_ALGORITHMS: &[Algorithm] = &[Algorithm::EdDSA];
