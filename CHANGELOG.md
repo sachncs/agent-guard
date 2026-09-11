@@ -607,7 +607,7 @@ ordering, missing `/metrics` route, two `cargo-deny advisories` for
 transitive `rustls-pemfile` and `rustls-webpki`) are documented in
 the existing "Known upstream advisories" section below.
 
-## [0.2.0] - 2026-07-14
+## [0.2.1] - 2026-09-11
 
 ### Hardening (post v0.2.0 release audit — second batch)
 
