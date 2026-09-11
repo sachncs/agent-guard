@@ -239,6 +239,14 @@ pub trait ReloadSink: Send + Sync + 'static {
 impl ReloadSink for crate::authzen::AppState {
     fn reload(&self) {
         self.authorizer().invalidate_cache();
+        // Drain stale cache entries that the read path no longer
+        // evicts (see DecisionCache::sweep_stale). Cheap when the
+        // cache is empty; bounds the stale-entry accumulation
+        // between policy reloads.
+        let drained = self.authorizer().sweep_stale_cache();
+        if drained > 0 {
+            tracing::debug!(drained, "swept stale cache entries on reload");
+        }
         self.metrics().record_policy_reload();
     }
 }
