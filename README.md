@@ -213,8 +213,12 @@ agentguard doctor
 | Allow loopback bypass | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | `0` | Set `1` to allow auth-disabled on a public bind |
 | Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache (humantime) |
 | Decision cache capacity | `AGENTGUARD_CACHE_CAPACITY` | `10000` | Max entries in the decision cache |
+| Deny cache TTL | `AGENTGUARD_DENY_CACHE_TTL` | `5s` | TTL for deny entries in the decision cache (humantime) |
+| Audit rotation threshold | `AGENTGUARD_AUDIT_MAX_BYTES` | *(unset)* | Rotate the audit log when the active file exceeds this size |
 | JWKS refresh | `AGENTGUARD_JWKS_REFRESH` | `30s` | Cached JWKS refresh interval (humantime) |
 | OTLP endpoint | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(unset)* | OpenTelemetry OTLP collector URL |
+| Bearer (subprocess) | `AGENTGUARD_BEARER` | *(unset)* | Bearer token forwarded by the TS SDK; honored by `agentguard-server` |
+| Traceparent (subprocess) | `AGENTGUARD_TRACEPARENT` | *(unset)* | W3C trace context forwarded by the TS SDK; applied to the in-process request |
 
 Console-specific environment (`AGENTGUARD_OIDC_*`, `AGENTGUARD_SESSION_SECRET`, …) is documented in [`frontend/README.md`](frontend/README.md).
 

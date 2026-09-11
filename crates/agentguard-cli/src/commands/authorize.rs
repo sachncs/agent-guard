@@ -26,7 +26,7 @@ pub async fn run(
     output: &str,
     secret_file: Option<&Path>,
 ) -> Result<AuthorizeOutcome> {
-    let req: AgentRequest = if request.as_ref().as_os_str() == "-" {
+    let mut req: AgentRequest = if request.as_ref().as_os_str() == "-" {
         let mut buf = String::new();
         tokio::io::stdin().read_to_string(&mut buf).await?;
         serde_json::from_str(&buf)?
@@ -34,6 +34,34 @@ pub async fn run(
         let text = tokio::fs::read_to_string(request.as_ref()).await?;
         serde_json::from_str(&text)?
     };
+
+    // The TS SDK (and any other wrapper that spawns the CLI as a
+    // subprocess) forwards W3C trace context via AGENTGUARD_TRACEPARENT
+    // so distributed traces stitch across the process boundary.
+    // Apply it on top of whatever the request file carried — the env
+    // var wins when present because the wrapper knew its caller.
+    if let Ok(tp) = std::env::var("AGENTGUARD_TRACEPARENT") {
+        match tp.parse::<agentguard_core::observability::TraceContext>() {
+            Ok(ctx) => req.trace = Some(ctx),
+            Err(e) => tracing::warn!(
+                tp = %tp,
+                error = %e,
+                "AGENTGUARD_TRACEPARENT is not a valid trace context; ignoring"
+            ),
+        }
+    }
+
+    // AGENTGUARD_BEARER has no in-process use today (the CLI does not
+    // contact a remote PDP), but the TS SDK still forwards it. Warn
+    // once at startup so a misconfigured deployment gets a hint
+    // instead of a silent no-op.
+    if std::env::var_os("AGENTGUARD_BEARER").is_some() {
+        tracing::debug!(
+            "AGENTGUARD_BEARER is set; the CLI evaluates in-process and does \
+             not currently forward this token. Use it when running an \
+             agentguard-server deployment instead."
+        );
+    }
 
     let entities = load_entities(entities_path.as_ref().map(|p| p.as_ref())).await?;
 
