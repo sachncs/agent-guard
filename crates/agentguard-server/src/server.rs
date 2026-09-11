@@ -28,10 +28,32 @@ use agentguard_core::decode_chain_secret;
 use agentguard_policy::watcher::{watch as policy_watch, WatchEvent};
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
+
+/// Validate that both TLS files exist, are readable, and are
+/// non-empty. Used at the top of [`run`] so a misconfigured cert /
+/// key path fails before the policy store loads or the HTTP
+/// listener binds.
+pub(crate) fn validate_tls_paths(cert: &Path, key: &Path) -> Result<()> {
+    for (label, path) in [("cert", cert), ("key", key)] {
+        let meta = std::fs::metadata(path)
+            .map_err(|e| anyhow!("tls {label} {:?} not readable: {e}", path.display()))?;
+        if !meta.is_file() {
+            return Err(anyhow!(
+                "tls {label} {:?} is not a regular file",
+                path.display()
+            ));
+        }
+        if meta.len() == 0 {
+            return Err(anyhow!("tls {label} {:?} is empty", path.display()));
+        }
+    }
+    Ok(())
+}
 
 /// Run the server. Returns when the listener stops (e.g. on SIGTERM/SIGINT).
 /// In-flight requests are allowed to complete before the process exits.
@@ -40,6 +62,12 @@ use tokio::signal;
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
+    // Validate TLS paths early so a bad tls://addr?cert=PATH&key=PATH
+    // is reported at startup, not after the policy store loads and
+    // the HTTP listener binds.
+    if let crate::listener::Listener::Tls { cert, key, .. } = &cfg.listener {
+        validate_tls_paths(cert, key)?;
+    }
     let allow_loopback_bypass = std::env::var("AGENTGUARD_ALLOW_LOOPBACK_BYPASS")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
@@ -317,3 +345,41 @@ pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
 /// can never resolve (signals don't exist on Windows).
 #[cfg(not(unix))]
 type Never = std::convert::Infallible;
+
+#[cfg(test)]
+mod tls_validation_tests {
+    use super::validate_tls_paths;
+    use std::io::Write;
+
+    #[test]
+    fn missing_cert_reports_helpful_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert = dir.path().join("does-not-exist.pem");
+        let key = dir.path().join("also-missing.pem");
+        let err = validate_tls_paths(&cert, &key).unwrap_err().to_string();
+        assert!(err.contains("tls cert"), "missing label: {err}");
+        assert!(
+            err.contains("not readable"),
+            "missing actionable reason: {err}"
+        );
+    }
+
+    #[test]
+    fn empty_cert_reports_helpful_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        std::fs::File::create(&cert_path).unwrap();
+        std::fs::File::create(&key_path).unwrap().write_all(b"x").unwrap();
+        let err = validate_tls_paths(&cert_path, &key_path).unwrap_err().to_string();
+        assert!(err.contains("cert"), "missing cert label: {err}");
+        assert!(err.contains("empty"), "missing size reason: {err}");
+    }
+
+    #[test]
+    fn directory_instead_of_file_reports_helpful_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = validate_tls_paths(dir.path(), dir.path()).unwrap_err().to_string();
+        assert!(err.contains("not a regular file"), "missing dir reason: {err}");
+    }
+}
