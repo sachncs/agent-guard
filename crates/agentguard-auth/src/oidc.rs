@@ -107,7 +107,7 @@ impl OidcConfig {
             )));
         }
         let mut cfg = JwtConfig::new(self.issuer.clone(), self.audience.clone())
-            .with_algorithms(self.algorithms.clone())
+            .with_algorithms_lossy(self.algorithms.clone())
             .with_jwks_uri(meta.jwks_uri.clone());
         cfg.clock_skew = std::time::Duration::from_secs(60);
         let validator = JwtValidator::new(cfg);

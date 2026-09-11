@@ -15,6 +15,12 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// JWS signing algorithm (RFC 7518, RFC 8725 §3.1).
+///
+/// All four variants parse out of header strings, but only `EdDSA`
+/// is implemented by the signature verifier today. `JwtConfig::with_algorithms`
+/// rejects non-`EdDSA` values at construction time so a misconfigured
+/// operator sees the failure before the first token arrives. RS256
+/// and ES256 are reserved for a future release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Algorithm {
