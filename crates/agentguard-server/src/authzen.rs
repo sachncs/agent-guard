@@ -262,9 +262,10 @@ fn summarize_authorize_error(e: &agentguard_core::Error) -> (&'static str, Strin
         // PDP, but be exhaustive just in case.
         Error::InvalidToken(_) => ("invalid_token", "invalid delegation token".to_string()),
         Error::TokenExpired(_) => ("token_expired", "delegation token expired".to_string()),
-        Error::TokenSignature { .. } => {
-            ("token_signature", "delegation signature invalid".to_string())
-        }
+        Error::TokenSignature { .. } => (
+            "token_signature",
+            "delegation signature invalid".to_string(),
+        ),
         Error::TokenNotYetValid(_) => (
             "token_not_yet_valid",
             "delegation token not yet valid".to_string(),

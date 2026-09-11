@@ -201,15 +201,10 @@ pub fn rotate(audit_path: impl AsRef<Path>, secret_file: Option<&Path>) -> Resul
     let rotation = RotationConfig { max_bytes: 1 };
     let log = match secret_file {
         Some(secret_path) => {
-            let key = std::fs::read(secret_path)
-                .map_err(|e| anyhow!("read secret file: {}", e))?;
+            let key = std::fs::read(secret_path).map_err(|e| anyhow!("read secret file: {}", e))?;
             let key_bytes =
                 decode_chain_secret(&key).ok_or_else(|| anyhow!("chain secret file is empty"))?;
-            DecisionLog::open_with_rotation(
-                audit_path.as_ref(),
-                Some(&key_bytes),
-                rotation,
-            )?
+            DecisionLog::open_with_rotation(audit_path.as_ref(), Some(&key_bytes), rotation)?
         }
         None => DecisionLog::open_with_rotation(audit_path.as_ref(), None::<&[u8]>, rotation)?,
     };

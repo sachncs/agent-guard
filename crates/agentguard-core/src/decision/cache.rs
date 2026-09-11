@@ -423,10 +423,7 @@ mod tests {
     fn req_with_marker(marker: u64) -> AgentRequest {
         AgentRequestBuilder::new(Principal::user(&format!("alice-{marker}")))
             .action(AgentAction::tool("send_email"))
-            .resource(Resource::new(
-                "Mailbox",
-                &format!("alice-{marker}@acme"),
-            ))
+            .resource(Resource::new("Mailbox", &format!("alice-{marker}@acme")))
             .context(AgentContext::new().with_arg("to", "[email protected]"))
             .build()
             .unwrap()

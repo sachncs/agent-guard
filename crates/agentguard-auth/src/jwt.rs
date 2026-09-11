@@ -511,7 +511,10 @@ mod tests {
             .with_algorithms(vec![Algorithm::RS256]);
         assert!(res.is_err(), "RS256 must be rejected at construction");
         let msg = format!("{}", res.unwrap_err());
-        assert!(msg.contains("RS256"), "error must name the bad algorithm: {msg}");
+        assert!(
+            msg.contains("RS256"),
+            "error must name the bad algorithm: {msg}"
+        );
     }
 
     #[test]
