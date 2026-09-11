@@ -268,7 +268,7 @@ impl DecisionLog {
         let f = File::open(path.as_ref())?;
         let r = BufReader::new(f);
         let mut out = Vec::new();
-        for line in r.lines() {
+        for (idx, line) in r.lines().enumerate() {
             let line = line?;
             if line.trim().is_empty() {
                 continue;
@@ -280,10 +280,16 @@ impl DecisionLog {
             // DecisionRecord parsing fail.
             let rec: DecisionRecord = match serde_json::from_str(&line) {
                 Ok(r) => r,
-                Err(_) => {
-                    let chained: ChainedRecord = serde_json::from_str(&line)?;
-                    chained.record
-                }
+                Err(plain_err) => match serde_json::from_str::<ChainedRecord>(&line) {
+                    Ok(chained) => chained.record,
+                    Err(chained_err) => {
+                        return Err(Error::Json(format!(
+                            "line {}: not a DecisionRecord ({plain_err}); \
+                             also not a ChainedRecord ({chained_err})",
+                            idx + 1
+                        )));
+                    }
+                },
             };
             out.push(rec);
         }
@@ -522,5 +528,53 @@ mod tests {
         for r in &records {
             assert_eq!(r.principal, "alice");
         }
+    }
+
+    #[test]
+    fn read_all_mixed_surfaces_both_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupt.jsonl");
+        // One valid plain record, then a truncated line that is neither
+        // a DecisionRecord nor a ChainedRecord.
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        let log = DecisionLog::open(&path).unwrap();
+        log.append(&rec).unwrap();
+        // Append a corrupt line.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(b"{\"this\":\"is broken")
+            .unwrap();
+        let err = DecisionLog::read_all(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("line 2"),
+            "error must reference the offending line number: {msg}"
+        );
+        assert!(
+            msg.contains("DecisionRecord"),
+            "error must mention the DecisionRecord parse failure: {msg}"
+        );
+        assert!(
+            msg.contains("ChainedRecord"),
+            "error must mention the ChainedRecord parse failure: {msg}"
+        );
     }
 }
