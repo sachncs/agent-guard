@@ -287,7 +287,7 @@ pub fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentReques
 /// Per-request entities are typical for AuthZEN (each PEP sends the
 /// entities relevant to its call); a future enhancement can layer
 /// shared/static entities on top.
-pub(crate) fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
+pub fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, String> {
     build_entities(items.to_vec()).map_err(|e| format!("entities: {}", e))
 }
 

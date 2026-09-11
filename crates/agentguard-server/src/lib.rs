@@ -10,6 +10,8 @@ pub mod proto;
 pub mod server;
 
 pub use auth_layer::AuthLayer;
-pub use authzen::AppState;
+pub use authzen::{
+    build_request_entities, evaluation_request_to_agent, AppState, MAX_BATCH_EVALUATIONS,
+};
 pub use listener::{AuthConfig, ServerConfig};
-pub use server::run;
+pub use server::{build_router, run};
