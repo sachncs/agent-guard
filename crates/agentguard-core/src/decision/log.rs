@@ -23,10 +23,9 @@ use std::sync::Mutex;
 /// chained to the previous via HMAC-SHA256.
 pub struct DecisionLog {
     mode: LogMode,
-    /// Resolved path of the audit log file (used for atomic-rename temp
-    /// files in chained mode). Currently retained for diagnostic /
-    /// future expansion; the file handle in `mode` is the active one.
-    #[allow(dead_code)]
+    /// Resolved path of the audit log file. Used by tracing
+    /// instrumentation on every append and exposed via [`Self::path`]
+    /// for diagnostics and tests.
     path: PathBuf,
     /// Sidecar file holding the chain id (UUID). Persisted on first
     /// use so the chain's identity survives process restarts.
@@ -124,6 +123,12 @@ impl DecisionLog {
 
     pub fn default_path() -> PathBuf {
         PathBuf::from(".audit/decisions.jsonl")
+    }
+
+    /// Path the log was opened at. Useful for `agentguard doctor` and
+    /// for tests that need to assert where the audit was written.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     pub fn chain_id(&self) -> Option<ChainId> {
