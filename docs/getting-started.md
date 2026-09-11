@@ -17,6 +17,11 @@ deployments, run the `agentguard-server` binary which exposes the
 same engine over AuthZEN HTTP + gRPC:
 
 ```bash
+# Server-side prerequisite: build.rs shells out to protoc to
+# regenerate gRPC stubs. Install protobuf-compiler first:
+#   apt:   apt install -y protobuf-compiler
+#   brew:  brew install protobuf
+# Or set $PROTOC to its path.
 cargo install --path /path/to/agentguard/crates/agentguard-server
 
 export AGENTGUARD_LISTEN="tcp://127.0.0.1:8443"

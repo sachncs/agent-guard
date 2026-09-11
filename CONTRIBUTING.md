@@ -15,6 +15,11 @@ Discussions if enabled). For security issues, follow
 
 ```
 rustup toolchain install stable
+# Required by crates/agentguard-server/build.rs to regenerate gRPC
+# stubs from proto/agentguard.proto:
+#   apt:   apt install -y protobuf-compiler
+#   brew:  brew install protobuf
+# Or set $PROTOC to its path.
 ```
 
 The workspace declares `rust-version = "1.89"` in `[workspace.package]`.
