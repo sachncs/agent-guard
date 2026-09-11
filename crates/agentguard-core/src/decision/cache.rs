@@ -319,23 +319,54 @@ impl DecisionCache {
     }
 
     /// Build a `CacheConfig` from the `AGENTGUARD_CACHE_*` environment
-    /// variables. Honors `AGENTGUARD_CACHE_TTL` (allow TTL; human-readable,
-    /// e.g. `60s`/`2m`/`1h`) and `AGENTGUARD_CACHE_CAPACITY`. Falls back
-    /// to defaults when unset or unparseable.
+    /// variables.
+    ///
+    /// Environment knobs (humantime where applicable):
+    ///
+    /// - `AGENTGUARD_CACHE_TTL` — sets `allow_ttl`. Does NOT touch
+    ///   `deny_ttl` (use `AGENTGUARD_DENY_CACHE_TTL` for that).
+    /// - `AGENTGUARD_DENY_CACHE_TTL` — sets `deny_ttl` independently.
+    ///   Falls back to the default when unset.
+    /// - `AGENTGUARD_CACHE_CAPACITY` — sets the LRU capacity (positive
+    ///   integer).
+    ///
+    /// Falls back to defaults when unset or unparseable.
     pub fn config_from_env() -> CacheConfig {
+        Self::config_from_overrides(
+            std::env::var("AGENTGUARD_CACHE_TTL").ok(),
+            std::env::var("AGENTGUARD_DENY_CACHE_TTL").ok(),
+            std::env::var("AGENTGUARD_CACHE_CAPACITY").ok(),
+        )
+    }
+
+    /// Same as [`Self::config_from_env`] but accepts explicit
+    /// overrides. Used by tests so they don't have to mutate
+    /// `std::env` from `unsafe` blocks (the crate forbids unsafe).
+    pub fn config_from_overrides(
+        cache_ttl: Option<String>,
+        deny_ttl: Option<String>,
+        capacity: Option<String>,
+    ) -> CacheConfig {
         let mut cfg = CacheConfig::default();
-        if let Ok(ttl) = std::env::var("AGENTGUARD_CACHE_TTL") {
-            if let Ok(d) = crate::ttl::parse_duration(&ttl) {
-                cfg.allow_ttl = d;
-                cfg.deny_ttl = std::cmp::min(cfg.deny_ttl, d);
-            } else {
-                tracing::warn!(
+        if let Some(ttl) = cache_ttl {
+            match crate::ttl::parse_duration(&ttl) {
+                Ok(d) => cfg.allow_ttl = d,
+                Err(_) => tracing::warn!(
                     ttl = %ttl,
                     "AGENTGUARD_CACHE_TTL is not a valid duration; using default"
-                );
+                ),
             }
         }
-        if let Ok(cap) = std::env::var("AGENTGUARD_CACHE_CAPACITY") {
+        if let Some(ttl) = deny_ttl {
+            match crate::ttl::parse_duration(&ttl) {
+                Ok(d) => cfg.deny_ttl = d,
+                Err(_) => tracing::warn!(
+                    ttl = %ttl,
+                    "AGENTGUARD_DENY_CACHE_TTL is not a valid duration; using default"
+                ),
+            }
+        }
+        if let Some(cap) = capacity {
             if let Ok(n) = cap.parse::<usize>() {
                 if n > 0 {
                     cfg.capacity = n;
@@ -578,5 +609,19 @@ mod tests {
             drained >= 1,
             "sweep_stale must have evicted the stale entry, got {drained}"
         );
+    }
+
+    #[test]
+    fn config_from_overrides_sets_both_independently() {
+        // AGENTGUARD_CACHE_TTL should set allow_ttl only;
+        // AGENTGUARD_DENY_CACHE_TTL sets deny_ttl independently.
+        // Neither silently caps the other.
+        let cfg = DecisionCache::config_from_overrides(
+            Some("600s".to_string()),
+            Some("2s".to_string()),
+            None,
+        );
+        assert_eq!(cfg.allow_ttl, Duration::from_secs(600));
+        assert_eq!(cfg.deny_ttl, Duration::from_secs(2));
     }
 }
