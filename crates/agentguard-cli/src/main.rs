@@ -195,6 +195,20 @@ enum AuditCmd {
         #[arg(long)]
         out: Option<String>,
     },
+    /// Force-rotate the audit log (rename active file to a timestamped
+    /// sibling and open a fresh active file). Pair with
+    /// AGENTGUARD_AUDIT_MAX_BYTES for size-based rotation in the
+    /// server.
+    Rotate {
+        /// Path to the audit log (default: --audit)
+        #[arg(long)]
+        audit: Option<String>,
+        /// Path to the secret file containing the HMAC root key —
+        /// required for chained logs so the chain head is preserved
+        /// across rotations.
+        #[arg(long)]
+        secret_file: Option<String>,
+    },
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -328,6 +342,14 @@ async fn run() -> i32 {
             } => {
                 let path = audit.as_deref().unwrap_or(&cli.audit);
                 commands::audit::erase(path, &subject_id, &salt_file, out_path.as_deref())
+            }
+            AuditCmd::Rotate { audit, secret_file } => {
+                let path = audit.as_deref().unwrap_or(&cli.audit);
+                let secret = secret_file
+                    .as_deref()
+                    .or(cli.secret_file.as_deref())
+                    .map(std::path::Path::new);
+                commands::audit::rotate(path, secret)
             }
         },
         Cmd::Doctor => {
