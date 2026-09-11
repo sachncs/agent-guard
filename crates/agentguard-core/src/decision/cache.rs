@@ -271,13 +271,17 @@ impl DecisionCache {
         };
         // Fill takes an EXCLUSIVE lock. This is rare relative to reads.
         let mut guard = self.inner.write();
-        let prev = guard.push(key, (decision, now + ttl));
-        // `lru.push` returns `Some(old)` if the key already existed
-        // (i.e., we just refreshed the entry — no eviction) and `None`
-        // if the key was new (in which case an existing entry may have
-        // been evicted to make room). Count only the eviction case.
-        if prev.is_some() && guard.len() >= self.config.capacity {
-            self.evictions.fetch_add(1, Ordering::Relaxed);
+        let prev = guard.push(key.clone(), (decision, now + ttl));
+        // `lru::LruCache::push` returns `Some((old_k, old_v))` when the
+        // key already existed (the old value is returned on refresh)
+        // OR when a new key caused an LRU eviction (the evicted key
+        // is returned). Distinguish by comparing the returned key
+        // against the one we just pushed: an eviction has a different
+        // key, a refresh returns the same one.
+        if let Some((evicted_key, _)) = prev {
+            if evicted_key != key {
+                self.evictions.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 
@@ -357,6 +361,18 @@ mod tests {
         AgentRequestBuilder::new(Principal::user("alice"))
             .action(AgentAction::tool("send_email"))
             .resource(Resource::new("Mailbox", "alice@acme"))
+            .context(AgentContext::new().with_arg("to", "[email protected]"))
+            .build()
+            .unwrap()
+    }
+
+    fn req_with_marker(marker: u64) -> AgentRequest {
+        AgentRequestBuilder::new(Principal::user(&format!("alice-{marker}")))
+            .action(AgentAction::tool("send_email"))
+            .resource(Resource::new(
+                "Mailbox",
+                &format!("alice-{marker}@acme"),
+            ))
             .context(AgentContext::new().with_arg("to", "[email protected]"))
             .build()
             .unwrap()
@@ -480,5 +496,24 @@ mod tests {
         // don't assert on hits/misses counts — those are racy and
         // a small number of policy_version bumps can race every
         // reader to a miss.
+    }
+
+    #[test]
+    fn eviction_counter_increments() {
+        let clock = Arc::new(MockClock::new());
+        let mut cfg = CacheConfig::default();
+        cfg.capacity = 2;
+        let cache = DecisionCache::new(cfg, clock.clone());
+
+        for i in 0..4u64 {
+            let key = CacheKey::for_request(&req_with_marker(i), i);
+            cache.put(key, CachedDecision::allow());
+        }
+
+        assert!(
+            cache.stats().evictions >= 2,
+            "evictions counter should reflect LRU churn, got {}",
+            cache.stats().evictions
+        );
     }
 }
