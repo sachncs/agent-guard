@@ -281,6 +281,11 @@ cargo test --workspace
 # Build everything
 cargo build --workspace --release
 
+# Cargo.lock is committed so two clones of the same commit produce
+# identical binaries. Bump deps with:
+#   cargo update -p <crate>
+# then open a focused PR per crate.
+
 # TypeScript workspace (SDK, frontend, examples)
 pnpm install
 pnpm --filter agentguard test
