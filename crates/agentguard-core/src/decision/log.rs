@@ -16,6 +16,33 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+/// Rotation policy for a [`DecisionLog`].
+///
+/// When the active file's size exceeds `max_bytes`, the next append
+/// renames it to a timestamped sibling and opens a fresh file. The
+/// chain id sidecar is preserved per file so a verifier can walk
+/// rotated logs in order. Default behaviour (no rotation) is the
+/// backward-compatible path; supply `Some(RotationConfig { .. })` to
+/// `open_with_chain` / `open` to enable it.
+#[derive(Debug, Clone)]
+pub struct RotationConfig {
+    /// Rotate when the active file exceeds this many bytes.
+    pub max_bytes: u64,
+}
+
+impl RotationConfig {
+    /// Read `AGENTGUARD_AUDIT_MAX_BYTES` from the environment. Returns
+    /// `None` when unset or unparseable, signalling no rotation.
+    pub fn from_env() -> Option<Self> {
+        let raw = std::env::var("AGENTGUARD_AUDIT_MAX_BYTES").ok()?;
+        let max_bytes: u64 = raw.parse().ok()?;
+        if max_bytes == 0 {
+            return None;
+        }
+        Some(Self { max_bytes })
+    }
+}
+
 /// Thread-safe append-only JSONL log.
 ///
 /// When constructed via [`DecisionLog::open`], the log is plain JSONL.
@@ -30,6 +57,9 @@ pub struct DecisionLog {
     /// Sidecar file holding the chain id (UUID). Persisted on first
     /// use so the chain's identity survives process restarts.
     chain_id_path: PathBuf,
+    /// Optional rotation policy. When `Some`, append() rotates the
+    /// active file once its size exceeds `max_bytes`.
+    rotation: Option<RotationConfig>,
 }
 
 enum LogMode {
@@ -53,7 +83,7 @@ impl DecisionLog {
     /// let log = DecisionLog::open("/tmp/audit.jsonl").unwrap();
     /// ```
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        Self::open_internal(path.into(), None)
+        Self::open_internal(path.into(), None, None)
     }
 
     /// Open a hash-chained JSONL log at `path` with the given root key.
@@ -68,10 +98,29 @@ impl DecisionLog {
     /// let log = DecisionLog::open_with_chain("/tmp/audit.jsonl", b"root-key").unwrap();
     /// ```
     pub fn open_with_chain(path: impl Into<PathBuf>, root_key: &[u8]) -> Result<Self> {
-        Self::open_internal(path.into(), Some(root_key.to_vec()))
+        Self::open_internal(path.into(), Some(root_key.to_vec()), None)
     }
 
-    fn open_internal(path: PathBuf, root_key: Option<Vec<u8>>) -> Result<Self> {
+    /// Open with an explicit rotation policy. When the active file
+    /// exceeds `rotation.max_bytes`, the next append renames it to a
+    /// timestamped sibling and opens a fresh active file.
+    pub fn open_with_rotation(
+        path: impl Into<PathBuf>,
+        root_key: Option<&[u8]>,
+        rotation: RotationConfig,
+    ) -> Result<Self> {
+        Self::open_internal(
+            path.into(),
+            root_key.map(|k| k.to_vec()),
+            Some(rotation),
+        )
+    }
+
+    fn open_internal(
+        path: PathBuf,
+        root_key: Option<Vec<u8>>,
+        rotation: Option<RotationConfig>,
+    ) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -82,6 +131,7 @@ impl DecisionLog {
                 mode: LogMode::Plain(Mutex::new(Some(f))),
                 path,
                 chain_id_path,
+                rotation,
             }),
             Some(key) => {
                 let chain = HashChain::new(&key);
@@ -116,6 +166,7 @@ impl DecisionLog {
                     },
                     path,
                     chain_id_path,
+                    rotation,
                 })
             }
         }
@@ -123,6 +174,91 @@ impl DecisionLog {
 
     pub fn default_path() -> PathBuf {
         PathBuf::from(".audit/decisions.jsonl")
+    }
+
+    /// Rotate the active file when it crosses `rotation.max_bytes`.
+    /// Cheap no-op when rotation is disabled or the threshold has not
+    /// been reached. Called at the top of [`Self::append`].
+    fn rotate_if_needed(&self) -> Result<()> {
+        let rotation = match &self.rotation {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+        let size = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        if size < rotation.max_bytes {
+            return Ok(());
+        }
+        self.rotate()
+    }
+
+    /// Force a rotation: rename the active file to a timestamped
+    /// sibling in the same directory and reopen the active file. The
+    /// chain id sidecar is moved alongside so the rotated file's
+    /// chain id is preserved.
+    pub fn rotate(&self) -> Result<()> {
+        let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
+        let stem = self
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("decisions");
+        let ext = self
+            .path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("jsonl");
+        let rotated = parent.join(format!("{stem}-{ts}.{ext}"));
+
+        // Close + rename + reopen. Drop the inner file before the
+        // rename so the OS isn't holding the source handle across
+        // the rename on Windows.
+        match &self.mode {
+            LogMode::Plain(file) => {
+                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+            }
+            LogMode::Chained { file, .. } => {
+                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+            }
+        }
+        std::fs::rename(&self.path, &rotated)
+            .map_err(|e| Error::Io(format!("rotate {} -> {}: {}", self.path.display(), rotated.display(), e)))?;
+        if self.chain_id_path.exists() {
+            let rotated_sidecar = chain_id_sidecar_path(&rotated);
+            let _ = std::fs::rename(&self.chain_id_path, &rotated_sidecar);
+        }
+        let f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
+        match &self.mode {
+            LogMode::Plain(file) => {
+                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = Some(f);
+            }
+            LogMode::Chained { file, chain } => {
+                // Re-load chain head from the rotated file so the new
+                // active file chains from where the rotated one left
+                // off. The chain id is preserved through the sidecar
+                // rename above.
+                chain
+                    .load_head_from_file(&rotated)
+                    .map_err(|e| Error::Io(format!("reload chain after rotate: {e}")))?;
+                if let Some(id) = read_chain_id_sidecar(&chain_id_sidecar_path(&rotated)) {
+                    chain.adopt_id(id);
+                }
+                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = Some(f);
+            }
+        }
+        tracing::info!(
+            active = %self.path.display(),
+            rotated = %rotated.display(),
+            "rotated audit log"
+        );
+        Ok(())
     }
 
     /// Path the log was opened at. Useful for `agentguard doctor` and
@@ -163,6 +299,9 @@ impl DecisionLog {
     #[tracing::instrument(skip_all, fields(path = %self.path.display()))]
     pub fn append(&self, rec: &DecisionRecord) -> Result<()> {
         let canonical = canonical_json(rec)?;
+        // Rotate before writing if the active file has crossed the
+        // size threshold. Cheap no-op when nothing is configured.
+        self.rotate_if_needed()?;
         match &self.mode {
             LogMode::Plain(file) => {
                 let line = serde_json::to_string(rec)?;
@@ -576,5 +715,54 @@ mod tests {
             msg.contains("ChainedRecord"),
             "error must mention the ChainedRecord parse failure: {msg}"
         );
+    }
+
+    #[test]
+    fn rotation_creates_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rotating.jsonl");
+        let log = DecisionLog::open_with_rotation(
+            &path,
+            None::<&[u8]>,
+            RotationConfig { max_bytes: 64 },
+        )
+        .unwrap();
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        for _ in 0..5 {
+            log.append(&rec).unwrap();
+        }
+        // 5 records * ~300 bytes each > 64 bytes threshold; at least
+        // one rotation must have happened.
+        let rotated: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("rotating-")
+            })
+            .collect();
+        assert!(
+            !rotated.is_empty(),
+            "expected at least one rotated file in {}",
+            dir.path().display()
+        );
+        assert!(path.exists(), "active file must still be open");
     }
 }

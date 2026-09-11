@@ -1,6 +1,6 @@
-//! Audit log commands: verify, export, sar, erase.
+//! Audit log commands: verify, export, sar, erase, rotate.
 
-use agentguard_core::decision::{AuditFormat, DecisionLog};
+use agentguard_core::decision::{AuditFormat, DecisionLog, RotationConfig};
 use agentguard_core::decode_chain_secret;
 use anyhow::{anyhow, Result};
 use hmac::{Hmac, Mac};
@@ -192,4 +192,29 @@ mod tests {
             assert!(cr.record.principal.starts_with("erased:"));
         }
     }
+}
+
+/// Force-rotate the audit log at `audit_path`. The active file is
+/// renamed to a timestamped sibling and a fresh file is opened. The
+/// chain id sidecar is moved alongside.
+pub fn rotate(audit_path: impl AsRef<Path>, secret_file: Option<&Path>) -> Result<()> {
+    let rotation = RotationConfig { max_bytes: 1 };
+    let log = match secret_file {
+        Some(secret_path) => {
+            let key = std::fs::read(secret_path)
+                .map_err(|e| anyhow!("read secret file: {}", e))?;
+            let key_bytes =
+                decode_chain_secret(&key).ok_or_else(|| anyhow!("chain secret file is empty"))?;
+            DecisionLog::open_with_rotation(
+                audit_path.as_ref(),
+                Some(&key_bytes),
+                rotation,
+            )?
+        }
+        None => DecisionLog::open_with_rotation(audit_path.as_ref(), None::<&[u8]>, rotation)?,
+    };
+    log.rotate()?;
+    println!("✓ audit log rotated");
+    println!("  active:    {}", audit_path.as_ref().display());
+    Ok(())
 }
