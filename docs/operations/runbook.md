@@ -23,12 +23,13 @@ or environment variables. The full table:
 | `AGENTGUARD_STORE` | `--store` | `.agentguard` | Policy directory |
 | `AGENTGUARD_AUDIT` | `--audit` | `.audit/decisions.jsonl` | Audit log path |
 | `AGENTGUARD_CHAIN_SECRET` / `--secret-file` | — | (unset → plain JSONL) | HMAC chain secret (hex / base64 / raw) |
-| `AGENTGUARD_AUTH` | `--auth` | `disabled` | `disabled` or `apikey:<path>` |
-| `AGENTGUARD_AUTH_KEY_FILE` | `--auth-key-file` | (required if `--auth apikey`) | API-key store |
+| `AGENTGUARD_AUTH` | `--auth` | `disabled` | `disabled` or `apikey:<path>` (point at the JSON key store) |
 | `AGENTGUARD_GRPC_LISTEN` | `--grpc-listen` | (empty → disabled) | gRPC listen address |
 | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | — | `0` | Allow auth-disabled on public listener |
-| `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache TTL (humantime) |
+| `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache allow TTL (humantime) |
+| `AGENTGUARD_DENY_CACHE_TTL` | — | `5s` | Decision cache deny TTL (humantime) |
 | `AGENTGUARD_CACHE_CAPACITY` | — | `10000` | Decision cache size |
+| `AGENTGUARD_AUDIT_MAX_BYTES` | — | (unset → no rotation) | Rotate the audit log when the active file exceeds this size |
 | `AGENTGUARD_JWKS_REFRESH` | — | `30s` | JWKS refresh interval (humantime) |
 
 ## Deployment
@@ -49,10 +50,25 @@ or environment variables. The full table:
    export AGENTGUARD_AUTH="apikey:/etc/agentguard/keys.json"
    export AGENTGUARD_GRPC_LISTEN="0.0.0.0:9443"
    ```
-3. Generate API keys for callers:
-   ```bash
-   agentguard keygen --prefix ag_live --output /etc/agentguard/keys.json
+3. Generate API keys for callers. There is no `agentguard keygen`
+   subcommand today; the key store is a JSON file holding a
+   top-level array of `ApiKey` records (the shape produced by
+   `agentguard_auth::ApiKeyStore`). Each entry is the result of
+   calling `ApiKeyStore::create(prefix, scopes, ttl)`:
+
+   ```rust
+   // In a one-off `cargo run --example` against the workspace:
+   let store = agentguard_auth::ApiKeyStore::new();
+   let (_key, raw) = store.create("ag_live", vec![], None)?;
+   store.save_to_file("/etc/agentguard/keys.json")?;
+   // Surface `raw` (format: `<prefix>:<id>:<base64url>`) to the
+   // caller exactly once. Only the Argon2id hash of the secret is
+   // persisted in the JSON file.
    ```
+
+   Manually-constructed files must satisfy the same `Vec<ApiKey>`
+   shape: every `secret_hash` is a PHC-formatted Argon2id hash,
+   not raw SHA-256.
 4. Start the server. The watcher auto-reloads the policy directory on
    file change.
 
