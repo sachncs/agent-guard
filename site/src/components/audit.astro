@@ -1,0 +1,21 @@
+---
+import { AuditVisual } from "@/components/audit-visual";
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="container-page py-24 md:py-32">
+  <div class="mx-auto max-w-3xl text-center">
+    <Badge variant="outline" class="mb-5">Tamper-evident audit</Badge>
+    <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+      Every decision, <span class="display italic text-[var(--fg-muted)]"> chained. </span>
+    </h2>
+    <p class="mx-auto mt-5 max-w-xl text-pretty text-[var(--fg-muted)]">
+      Append-only, HMAC-linked, JWS-enveloped. Verify the chain at any time. Export to
+      your SIEM in the format it already speaks.
+    </p>
+  </div>
+
+  <div class="mx-auto mt-16 max-w-6xl">
+    <AuditVisual client:visible />
+  </div>
+</section>

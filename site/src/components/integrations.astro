@@ -1,0 +1,64 @@
+---
+import { integrations } from "@/lib/content";
+---
+
+<section class="border-y border-[var(--border)] bg-[var(--bg-inset)]/40">
+  <div class="container-page py-24 md:py-32">
+    <div class="mx-auto max-w-3xl text-center">
+      <p class="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+        Integrations
+      </p>
+      <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+        Drops into the
+        <span class="display italic text-[var(--fg-muted)]"> agent you already run. </span>
+      </h2>
+    </div>
+
+    <div class="mx-auto mt-14 grid max-w-6xl gap-3 sm:grid-cols-2">
+      {
+        integrations.map((i) => (
+          <a
+            href={i.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="surface group flex items-start gap-4 rounded-2xl p-6 transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-soft)]"
+          >
+            <div class="mt-1 flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--accent)]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="size-4"
+              >
+                <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
+              </svg>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-base font-medium tracking-tight">{i.name}</h3>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="size-4 text-[var(--fg-subtle)] transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[var(--accent)]"
+                >
+                  <path d="M7 17L17 7" />
+                  <path d="M7 7h10v10" />
+                </svg>
+              </div>
+              <p class="mt-1.5 text-sm leading-relaxed text-[var(--fg-muted)]">{i.body}</p>
+            </div>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>

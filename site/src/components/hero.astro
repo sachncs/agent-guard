@@ -1,0 +1,72 @@
+---
+import { HeroVisual } from "@/components/hero-visual";
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="relative overflow-hidden">
+  <div class="absolute inset-0 grid-bg pointer-events-none" aria-hidden="true"></div>
+  <div class="absolute inset-0 gradient-glow pointer-events-none" aria-hidden="true"></div>
+
+  <div class="container-page relative pt-16 pb-20 md:pt-28 md:pb-32">
+    <div class="mx-auto max-w-3xl text-center">
+      <a
+        href="https://github.com/sachncs/agent-guard/releases"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex animate-in-up items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-1 text-xs text-[var(--fg-muted)] transition-all hover:border-[var(--border-strong)] hover:text-[var(--fg)]"
+      >
+        <span class="relative flex size-1.5">
+          <span class="absolute inset-0 animate-ping rounded-full bg-[var(--accent)]/60"></span>
+          <span class="relative inline-flex size-1.5 rounded-full bg-[var(--accent)]"></span>
+        </span>
+        v0.2.0 · Cedar 4.x · AuthZEN-compatible PDP
+      </a>
+
+      <h1
+        class="display mt-6 text-balance text-5xl leading-[1.05] tracking-tight text-[var(--fg)] animate-in-up delay-100 sm:text-6xl md:text-7xl"
+      >
+        Authorization for
+        <span class="display italic text-[var(--accent)]"> AI agents </span>
+        you can verify.
+      </h1>
+
+      <p
+        class="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] animate-in-up delay-200 sm:text-lg"
+      >
+        Cedar-powered policy evaluation for every tool call. Tamper-evident audit, scoped
+        delegation, JWS-signed tokens. Drop in a CLI, mount a sidecar, or embed the engine
+        in-process — the same decisions, the same chain.
+      </p>
+
+      <div class="mt-10 flex flex-col items-center justify-center gap-3 animate-in-up delay-300 sm:flex-row">
+        <a
+          href="https://github.com/sachncs/agent-guard#quick-start"
+          class="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[var(--accent)] px-7 text-sm font-medium text-[var(--accent-fg)] shadow-[var(--shadow-cedar)] transition-all hover:brightness-110"
+        >
+          Get started
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a
+          href="#how"
+          class="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-inset)] px-7 text-sm font-medium text-[var(--fg)] transition-all hover:border-[var(--border-strong)]"
+        >
+          How it works
+        </a>
+      </div>
+
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-2 text-xs text-[var(--fg-subtle)] animate-in-up delay-400">
+        <span>Apache-2.0</span>
+        <span class="text-[var(--border-strong)]">·</span>
+        <span>Rust 1.89+</span>
+        <span class="text-[var(--border-strong)]">·</span>
+        <span>Node.js 20.9+</span>
+        <span class="text-[var(--border-strong)]">·</span>
+        <span>Zero proprietary protocols</span>
+      </div>
+    </div>
+
+    <div class="relative mx-auto mt-20 max-w-5xl animate-in-up delay-500 md:mt-28">
+      <HeroVisual client:visible />
+    </div>
+  </div>
+</section>

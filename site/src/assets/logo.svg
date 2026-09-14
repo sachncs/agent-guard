@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="agent-guard">
+  <defs>
+    <linearGradient id="ag" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D8553B"/>
+      <stop offset="100%" stop-color="#A8321B"/>
+    </linearGradient>
+    <linearGradient id="ag-stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1A1815" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#1A1815" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#ag)"/>
+  <rect width="512" height="512" rx="112" fill="url(#ag-stroke)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="22">
+    <path d="M256 108 L372 168 L372 304 C372 360 322 396 256 412 C190 396 140 360 140 304 L140 168 Z"/>
+    <path d="M256 108 L372 168 L256 228 L140 168 Z" fill="#FFFFFF" fill-opacity="0.18" stroke="none"/>
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="20">
+    <path d="M212 286 L242 316 L302 256"/>
+  </g>
+</svg>

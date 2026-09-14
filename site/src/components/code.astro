@@ -1,0 +1,26 @@
+---
+import { CodeShowcase } from "@/components/code-showcase";
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="border-y border-[var(--border)] bg-[var(--bg-inset)]/40">
+  <div class="container-page py-24 md:py-32">
+    <div class="mx-auto grid max-w-6xl gap-12 md:grid-cols-[1fr_2fr] md:gap-16">
+      <div class="md:pt-2">
+        <Badge variant="outline" class="mb-5">One engine, every surface</Badge>
+        <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-[44px]">
+          Same decision,
+          <span class="display italic text-[var(--fg-muted)]"> same chain. </span>
+        </h2>
+        <p class="mt-5 text-pretty text-[var(--fg-muted)]">
+          The TypeScript SDK, the AuthZEN HTTP PDP, the CLI subprocess, and the admin
+          console all converge on the same Cedar engine. Authorize from anywhere — the
+          audit doesn't know the difference.
+        </p>
+      </div>
+      <div>
+        <CodeShowcase client:visible />
+      </div>
+    </div>
+  </div>
+</section>

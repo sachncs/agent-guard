@@ -1,0 +1,89 @@
+---
+const steps = [
+  {
+    n: "01",
+    title: "Intercept",
+    body: "Every tool call passes through one of four surfaces — TypeScript SDK, AuthZEN HTTP, CLI, or the admin console — bound to a short-lived identity (JWT, DPoP, SPIFFE, API key).",
+    code: 'principal: Agent::"research"\naction:    ToolCall::send_email\nresource:  Mailbox::"alice@acme"',
+  },
+  {
+    n: "02",
+    title: "Evaluate",
+    body: "The Cedar engine resolves entities against a typed schema, walks the policy bundle, and produces an explicit Allow or Deny. Hot-reloaded, versioned, blast-radius-checked.",
+    code: "policy 20_agents.cedar (v7)\nforbid(principal, action, resource)\nwhen { principal.scope excludes resource }",
+  },
+  {
+    n: "03",
+    title: "Record",
+    body: "Every decision is appended to a hash-chained log with a JWS-signed envelope. Verify the chain end-to-end; export to ECS, CEF, LEEF, or JSONL for your SIEM.",
+    code: "decision_id: 0x9f4a\nprev_hash:    0x71c2\nhash:         0xa3b8…  (HMAC-SHA-256)",
+  },
+];
+---
+
+<section class="relative border-y border-[var(--border)] bg-[var(--bg-inset)]/40" id="how">
+  <div class="container-page py-24 md:py-32">
+    <div class="mx-auto max-w-3xl text-center">
+      <p class="mb-4 font-mono text-xs uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+        How it works
+      </p>
+      <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+        Three steps. <span class="display italic text-[var(--fg-muted)]">One chain.</span>
+      </h2>
+      <p class="mx-auto mt-5 max-w-xl text-pretty text-[var(--fg-muted)]">
+        Every tool call flows through the same pipeline, regardless of surface.
+      </p>
+    </div>
+
+    <div class="mx-auto mt-16 grid max-w-6xl gap-6 lg:grid-cols-3">
+      {
+        steps.map((s, i) => (
+          <article class="surface-inset relative overflow-hidden rounded-2xl p-7">
+            <div class="mb-5 flex items-baseline justify-between">
+              <span class="font-mono text-xs text-[var(--fg-subtle)]">{s.n}</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                class="size-4 text-[var(--fg-subtle)]"
+              >
+                {i === 0 && <path d="M4 12h16M14 6l6 6-6 6" />}
+                {i === 1 && <path d="M12 4v16M4 12h16" />}
+                {i === 2 && <path d="M4 6h16M4 12h16M4 18h16" />}
+              </svg>
+            </div>
+            <h3 class="text-lg font-medium tracking-tight">{s.title}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-[var(--fg-muted)]">{s.body}</p>
+            <pre class="mt-5 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--fg-muted)]">
+              <code>{s.code}</code>
+            </pre>
+          </article>
+        ))
+      }
+    </div>
+
+    <div class="mx-auto mt-16 max-w-4xl">
+      <div class="surface relative overflow-hidden rounded-2xl p-1">
+        <div class="rounded-[14px] bg-[var(--bg-inset)] p-6">
+          <div class="flex items-center gap-2 border-b border-[var(--border)] pb-3">
+            <span class="size-2.5 rounded-full bg-rose-400/60" />
+            <span class="size-2.5 rounded-full bg-amber-400/60" />
+            <span class="size-2.5 rounded-full bg-emerald-400/60" />
+            <span class="ml-2 font-mono text-xs text-[var(--fg-subtle)]">
+              .agentguard/policies/20_agents.cedar
+            </span>
+          </div>
+          <pre class="overflow-x-auto pt-4 font-mono text-[12.5px] leading-relaxed text-[var(--fg-muted)]"><code set:html={`// <span style="color:var(--fg)">forbid</span> a sub-agent from sending email outside its delegated scope
+<span style="color:var(--accent)">forbid</span>(
+  <span style="color:var(--fg-subtle)">principal</span> in <span style="color:var(--fg)">Agent::"research"</span>,
+  <span style="color:var(--fg-subtle)">action</span>    == <span style="color:var(--fg)">Action::"send_email"</span>,
+  <span style="color:var(--fg-subtle)">resource</span>  in <span style="color:var(--fg)">Mailbox::"*"</span>
+)
+<span style="color:var(--fg)">when</span> { principal.scope.mailboxes excludes resource };`} /></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

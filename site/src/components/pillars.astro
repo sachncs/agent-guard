@@ -1,0 +1,55 @@
+---
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { pillars } from "@/lib/content";
+import { Badge } from "@/components/ui/badge";
+import {
+  ShieldCheck,
+  Fingerprint,
+  GitBranch,
+  FileCheck,
+  KeyRound,
+  RefreshCw,
+} from "lucide-react";
+
+const icons = {
+  "shield-check": ShieldCheck,
+  fingerprint: Fingerprint,
+  "git-branch": GitBranch,
+  "file-check": FileCheck,
+  "key-round": KeyRound,
+  "refresh-cw": RefreshCw,
+};
+---
+
+<section class="container-page py-24 md:py-32" id="product">
+  <div class="mx-auto max-w-3xl text-center">
+    <Badge variant="outline" class="mb-5">Product</Badge>
+    <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+      Six primitives.
+      <span class="display italic text-[var(--fg-muted)]"> Zero guesswork.</span>
+    </h2>
+    <p class="mx-auto mt-5 max-w-xl text-pretty text-[var(--fg-muted)]">
+      Everything you need to put a verifiable authorization boundary around an agent —
+      no bespoke plumbing.
+    </p>
+  </div>
+
+  <div class="mx-auto mt-16 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      pillars.map((p) => {
+        const Icon = icons[p.icon as keyof typeof icons];
+        return (
+          <Card class="group relative overflow-hidden p-1 transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-soft)]">
+            <div class="rounded-[14px] bg-[var(--bg-inset)] p-7">
+              <div class="mb-5 flex size-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--accent)] transition-colors group-hover:border-[var(--accent)]/30 group-hover:bg-[var(--accent)]/8">
+                <Icon class="size-5" />
+              </div>
+              <h3 class="text-base font-medium tracking-tight">{p.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-[var(--fg-muted)]">{p.body}</p>
+            </div>
+          </Card>
+        );
+      })
+    }
+  </div>
+</section>

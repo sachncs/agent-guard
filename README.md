@@ -268,6 +268,7 @@ agent-guard/
 ├── typescript/
 │   └── agentguard/              # TypeScript SDK
 ├── frontend/                    # Next.js 16 admin console (shadcn/ui)
+├── site/                        # Astro 5 product landing page (GitHub Pages)
 ├── examples/                    # Working examples (TS + Rust embedder)
 ├── schemas/                     # Cedar schema fragments
 ├── docs/                        # Architecture & API documentation
@@ -368,10 +369,22 @@ This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
 
 ## Documentation site
 
-A Jekyll-rendered documentation site is published from this repo at
-<https://sachncs.github.io/agent-guard/>. The page index lives in
-[`index.md`](index.md); the GitHub Pages settings live under
-*Settings → Pages* and are configured to build from `master`'s root.
+The product landing page is published at <https://sachncs.github.io/agent-guard/>.
+
+The site lives under [`site/`](site/) as a standalone Astro 5 + Tailwind v4
+project. It is built and deployed by the
+[`.github/workflows/deploy-site.yml`](.github/workflows/deploy-site.yml) workflow
+on every push to `master`. The Pages source is configured to **GitHub Actions**,
+so no branch-based publishing is involved.
+
+```bash
+cd site
+pnpm install --ignore-workspace   # site/ is not part of the pnpm workspace
+pnpm build                         # → site/dist/
+pnpm preview                       # local preview
+```
+
+Local development requires Node.js ≥ 20.9 and pnpm ≥ 10.
 
 ## Security
 

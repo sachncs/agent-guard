@@ -1,0 +1,134 @@
+---
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="border-y border-[var(--border)] bg-[var(--bg-inset)]/40" id="architecture">
+  <div class="container-page py-24 md:py-32">
+    <div class="mx-auto max-w-3xl text-center">
+      <Badge variant="outline" class="mb-5">Architecture</Badge>
+      <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+        One engine,
+        <span class="display italic text-[var(--fg-muted)]"> every surface. </span>
+      </h2>
+      <p class="mx-auto mt-5 max-w-xl text-pretty text-[var(--fg-muted)]">
+        SDKs, the HTTP PDP, the CLI, and the admin console all converge on the same
+        Cedar core and the same hash-chained audit.
+      </p>
+    </div>
+
+    <div class="relative mx-auto mt-16 max-w-5xl">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 960 420"
+        class="w-full"
+        role="img"
+        aria-label="agent-guard architecture: SDK, CLI, console, and HTTP PDP flow into the Cedar engine which writes to an audit log and emits OpenTelemetry spans."
+      >
+        <defs>
+          <linearGradient id="core-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#D8553B" />
+            <stop offset="100%" stop-color="#A8321B" />
+          </linearGradient>
+          <linearGradient id="surface-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--bg-inset)" />
+            <stop offset="100%" stop-color="var(--bg)" />
+          </linearGradient>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+          </marker>
+        </defs>
+
+        <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="currentColor">
+          <!-- Surfaces -->
+          <g>
+            <rect x="40" y="40" width="180" height="56" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="130" y="68" text-anchor="middle" font-weight="500">TypeScript SDK</text>
+            <text x="130" y="84" text-anchor="middle" fill="var(--fg-subtle)" font-size="11">in-process</text>
+
+            <rect x="40" y="130" width="180" height="56" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="130" y="158" text-anchor="middle" font-weight="500">AuthZEN HTTP PDP</text>
+            <text x="130" y="174" text-anchor="middle" fill="var(--fg-subtle)" font-size="11">sidecar / gateway</text>
+
+            <rect x="40" y="220" width="180" height="56" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="130" y="248" text-anchor="middle" font-weight="500">CLI</text>
+            <text x="130" y="264" text-anchor="middle" fill="var(--fg-subtle)" font-size="11">subprocess</text>
+
+            <rect x="40" y="310" width="180" height="56" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="130" y="338" text-anchor="middle" font-weight="500">Admin Console</text>
+            <text x="130" y="354" text-anchor="middle" fill="var(--fg-subtle)" font-size="11">Next.js · OIDC</text>
+          </g>
+
+          <!-- Connector lines -->
+          <g stroke="currentColor" stroke-opacity="0.35" fill="none" marker-end="url(#arrow)">
+            <path d="M 220 68 C 320 68, 360 190, 460 190" />
+            <path d="M 220 158 C 320 158, 360 195, 460 195" />
+            <path d="M 220 248 C 320 248, 360 200, 460 200" />
+            <path d="M 220 338 C 320 338, 360 205, 460 205" />
+          </g>
+
+          <!-- Core -->
+          <g>
+            <rect x="460" y="160" width="220" height="80" rx="14" fill="url(#core-grad)" />
+            <text x="570" y="194" text-anchor="middle" fill="#FFFFFF" font-weight="600" font-size="15">agentguard-core</text>
+            <text x="570" y="214" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="11">Cedar 4.x engine</text>
+            <text x="570" y="230" text-anchor="middle" fill="#FFFFFF" fill-opacity="0.85" font-size="11">decision cache · hot reload</text>
+          </g>
+
+          <!-- Outbound lines -->
+          <g stroke="currentColor" stroke-opacity="0.35" fill="none" marker-end="url(#arrow)">
+            <path d="M 680 190 C 760 190, 760 110, 840 110" />
+            <path d="M 680 210 C 760 210, 760 250, 840 250" />
+          </g>
+
+          <!-- Outputs -->
+          <g>
+            <rect x="800" y="78" width="130" height="64" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="865" y="106" text-anchor="middle" font-weight="500" font-size="12">Audit log</text>
+            <text x="865" y="124" text-anchor="middle" fill="var(--fg-subtle)" font-size="10">hash-chained · JSONL</text>
+
+            <rect x="800" y="218" width="130" height="64" rx="10" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="865" y="246" text-anchor="middle" font-weight="500" font-size="12">OTel / OTLP</text>
+            <text x="865" y="264" text-anchor="middle" fill="var(--fg-subtle)" font-size="10">spans · metrics</text>
+          </g>
+
+          <!-- Decision bubble -->
+          <g>
+            <rect x="460" y="270" width="220" height="64" rx="12" fill="url(#surface-grad)" stroke="var(--border)" />
+            <text x="570" y="294" text-anchor="middle" font-weight="500" font-size="12">Decision</text>
+            <text x="570" y="312" text-anchor="middle" fill="var(--fg-subtle)" font-size="10">Allow · Deny · StepUpRequired</text>
+          </g>
+
+          <g stroke="currentColor" stroke-opacity="0.35" fill="none" marker-end="url(#arrow)">
+            <path d="M 570 240 L 570 270" />
+          </g>
+
+          <!-- Allow/Deny return paths -->
+          <g stroke="currentColor" stroke-opacity="0.35" fill="none" marker-end="url(#arrow)">
+            <path d="M 460 300 C 360 300, 360 130, 220 68" />
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-3">
+      <div class="surface-inset rounded-2xl p-5">
+        <div class="mb-2 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-subtle)]">Inputs</div>
+        <p class="text-sm leading-relaxed text-[var(--fg-muted)]">
+          Principal · action · resource · context. Short-lived identity (JWT, DPoP, SPIFFE, API key).
+        </p>
+      </div>
+      <div class="surface-inset rounded-2xl p-5">
+        <div class="mb-2 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-subtle)]">Engine</div>
+        <p class="text-sm leading-relaxed text-[var(--fg-muted)]">
+          Typed Cedar schema. Versioned policy bundles. Hot reload with blast-radius check.
+        </p>
+      </div>
+      <div class="surface-inset rounded-2xl p-5">
+        <div class="mb-2 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-subtle)]">Outputs</div>
+        <p class="text-sm leading-relaxed text-[var(--fg-muted)]">
+          Allow · Deny · StepUpRequired. OTel span with authz.* attributes. Append to hash-chained log.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

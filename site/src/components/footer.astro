@@ -1,0 +1,116 @@
+---
+import Logo from "@/components/logo.astro";
+import { site } from "@/lib/content";
+
+const groups = [
+  {
+    title: "Product",
+    links: [
+      { label: "How it works", href: "#how" },
+      { label: "Standards", href: "#standards" },
+      { label: "Adoption", href: "#adoption" },
+      { label: "Architecture", href: "#architecture" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { label: "Quick start", href: "https://github.com/sachncs/agent-guard#quick-start" },
+      { label: "API reference", href: "https://github.com/sachncs/agent-guard/tree/master/docs" },
+      { label: "Examples", href: "https://github.com/sachncs/agent-guard/tree/master/examples" },
+      { label: "Changelog", href: "https://github.com/sachncs/agent-guard/blob/master/CHANGELOG.md" },
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      { label: "GitHub", href: site.repo },
+      { label: "Crates.io", href: "https://crates.io/crates/agentguard-core" },
+      { label: "Issues", href: `${site.repo}/issues` },
+      { label: "Security", href: "https://github.com/sachncs/agent-guard/blob/master/SECURITY.md" },
+    ],
+  },
+];
+---
+
+<footer class="border-t border-[var(--border)]">
+  <div class="container-page py-16">
+    <div class="grid gap-10 lg:grid-cols-[2fr_3fr]">
+      <div class="space-y-5">
+        <a href="/" class="flex items-center gap-2 text-sm font-medium">
+          <Logo size={22} />
+          <span>agent-guard</span>
+        </a>
+        <p class="max-w-sm text-sm leading-relaxed text-[var(--fg-muted)]">
+          Cedar-powered authorization for AI agents. Per-call decisions,
+          tamper-evident audit, scoped delegation.
+        </p>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full border border-[var(--border)] bg-[var(--bg-inset)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
+            v{site.version}
+          </span>
+          <span class="rounded-full border border-[var(--border)] bg-[var(--bg-inset)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
+            {site.license}
+          </span>
+          <span class="rounded-full border border-[var(--border)] bg-[var(--bg-inset)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
+            Rust + TypeScript
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
+        {
+          groups.map((g) => (
+            <div>
+              <h4 class="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--fg-subtle)]">
+                {g.title}
+              </h4>
+              <ul class="space-y-2.5">
+                {g.links.map((l) => (
+                  <li>
+                    <a
+                      href={l.href}
+                      class="text-sm text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)]"
+                    >
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="mt-14 flex flex-col items-start justify-between gap-4 border-t border-[var(--border)] pt-8 sm:flex-row sm:items-center">
+      <p class="text-xs text-[var(--fg-subtle)]">
+        © 2026 Sachin · Apache-2.0 · No tracking, no analytics, no cookies.
+      </p>
+      <div class="flex items-center gap-4">
+        <a
+          href={site.repo}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GitHub"
+          class="text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)]"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-4" fill="currentColor">
+            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.13c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.95 10.95 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.41-5.25 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z" />
+          </svg>
+        </a>
+        <a
+          href="https://crates.io/crates/agentguard-core"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Crates.io"
+          class="text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)]"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="size-4" fill="currentColor">
+            <path d="M2.25 4.5h19.5v3.75H2.25V4.5zm0 5.25h19.5v9.75H2.25V9.75zm3 3v3.75h3V12.75h-3zm6 0v3.75h3V12.75h-3z" />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</footer>

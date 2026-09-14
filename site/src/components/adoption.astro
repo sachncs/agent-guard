@@ -1,0 +1,61 @@
+---
+import { adoption } from "@/lib/content";
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="container-page py-24 md:py-32" id="adoption">
+  <div class="mx-auto max-w-3xl text-center">
+    <Badge variant="outline" class="mb-5">Adoption</Badge>
+    <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+      Run it
+      <span class="display italic text-[var(--fg-muted)]"> your way. </span>
+    </h2>
+    <p class="mx-auto mt-5 max-w-xl text-pretty text-[var(--fg-muted)]">
+      Open-source under Apache-2.0. Three patterns that cover almost every deployment
+      shape we've seen.
+    </p>
+  </div>
+
+  <div class="mx-auto mt-16 grid max-w-6xl gap-4 md:grid-cols-3">
+    {
+      adoption.map((a, i) => (
+        <article class="surface-inset relative flex flex-col gap-5 rounded-2xl p-7">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs uppercase tracking-wider text-[var(--fg-subtle)]">
+              0{i + 1}
+            </span>
+            <span class="rounded-full border border-[var(--border)] bg-[var(--bg)] px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
+              open-source
+            </span>
+          </div>
+          <h3 class="text-lg font-medium tracking-tight">{a.title}</h3>
+          <p class="text-sm leading-relaxed text-[var(--fg-muted)]">{a.body}</p>
+          <div class="mt-auto rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11.5px] text-[var(--fg-muted)]">
+            <span class="text-[var(--accent)]">$</span> {a.cta}
+          </div>
+          <a
+            href={a.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--fg)] hover:text-[var(--accent)]"
+          >
+            Read the docs
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="size-3.5"
+            >
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </a>
+        </article>
+      ))
+    }
+  </div>
+</section>

@@ -1,0 +1,32 @@
+---
+import { Badge } from "@/components/ui/badge";
+---
+
+<section class="container-page py-24 md:py-32" id="problem">
+  <div class="mx-auto grid max-w-6xl gap-12 md:grid-cols-2 md:gap-16">
+    <div>
+      <Badge variant="outline" class="mb-5">The agent-permission gap</Badge>
+      <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
+        The hard part of agents
+        <span class="display italic text-[var(--fg-muted)]"> isn't the model. </span>
+      </h2>
+    </div>
+    <div class="space-y-5 text-base leading-relaxed text-[var(--fg-muted)]">
+      <p>
+        Once an agent can call tools, every call is a decision. Who made it. What was
+        allowed. With what context. Whether the policy the security team wrote yesterday
+        still applies today.
+      </p>
+      <p>
+        Most stacks answer those questions with imperative code, scattered logs, and
+        vendor-specific protocols. By the time an incident lands, the chain is broken
+        and the audit is unreadable.
+      </p>
+      <p class="text-[var(--fg)]">
+        agent-guard moves authorization out of the application and into a verifiable,
+        standards-native engine — one chain for every decision, every surface, every
+        agent.
+      </p>
+    </div>
+  </div>
+</section>
