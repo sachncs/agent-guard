@@ -10,6 +10,7 @@ const sections = [
   ["Deployment", `${base}docs/deploy/`],
   ["API reference", `${base}docs/api/`],
   ["Security model", `${base}docs/security/`],
+  ["Operations", `${base}docs/operations/`],
 ];
 interface Props { title: string; description?: string; active?: string; }
 const { title, description = "agent-guard documentation", active = "" } = Astro.props;
@@ -17,4 +18,20 @@ const { title, description = "agent-guard documentation", active = "" } = Astro.
 <Base title={`${title} — agent-guard docs`} description={description}>
   <header class="docs-nav"><a href={base} class="brand"><Logo size={27} /><span>agent<span class="brand-mark">-</span>guard</span></a><span class="docs-divider">/</span><span class="docs-label">DOCUMENTATION</span><div class="docs-nav-right"><a href={base}>Back to product ↗</a><ThemeToggle client:load /></div></header>
   <div class="docs-layout"><aside class="docs-sidebar"><div class="docs-sidebar-title">GUIDE</div>{sections.map(([label, href]) => <a class={active === label ? "active" : ""} href={href}>{label}</a>)}<div class="docs-sidebar-title second">PROJECT</div><a href="https://github.com/sachncs/agent-guard">GitHub ↗</a><a href="https://github.com/sachncs/agent-guard/blob/master/SECURITY.md">Security policy ↗</a></aside><main class="docs-main"><slot /></main></div>
+  <script>
+    document.querySelectorAll<HTMLElement>(".doc-code").forEach(block => {
+      const text = block.innerText;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "copy-code";
+      button.textContent = "Copy";
+      button.setAttribute("aria-label", "Copy code example");
+      button.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
+        catch { button.textContent = "Select code to copy"; }
+        setTimeout(() => { button.textContent = "Copy"; }, 2000);
+      });
+      block.append(button);
+    });
+  </script>
 </Base>

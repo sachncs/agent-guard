@@ -47,7 +47,7 @@ jobs:
 
       - name: Build
         working-directory: site
-        run: pnpm build
+        run: pnpm check && pnpm build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

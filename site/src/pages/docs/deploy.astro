@@ -3,10 +3,12 @@ import Docs from "@/layouts/docs.astro";
 ---
 <Docs title="Deployment" active="Deployment">
   <div class="doc-title"><span class="section-kicker">GUIDE / 03</span><h1>Deployment</h1><p>Pick the boundary that matches your architecture. The policy engine and audit model stay the same.</p></div>
-  <h2>Embedded in Rust</h2><p>Use this when authorization is part of an existing Axum service and you want no network hop on the decision path.</p><div class="doc-code">agentguard-core = "0.2"<br />agentguard-server = "0.2"</div>
-  <h2>Sidecar or standalone PDP</h2><p>Run the server next to your agent runtime. HTTP and gRPC endpoints are AuthZEN-compatible, so non-Rust agents can use the same control plane.</p><div class="doc-code">agentguard serve \
-  --listen tcp://0.0.0.0:8443 \
-  --policy-dir .agentguard/policies</div>
-  <h2>Production checklist</h2><div class="checklist"><div>□ Terminate TLS at the edge and keep the PDP private.</div><div>□ Configure OIDC, API keys, or SPIFFE for service identity.</div><div>□ Store signing keys outside the repository and rotate them.</div><div>□ Export decision logs and alert on unexpected deny spikes.</div><div>□ Run policy validation and blast-radius checks in CI.</div></div>
+  <h2>Embedded in Rust</h2><p>Use the core Authorizer inside your Rust process or mount the server router in Axum. The <a class="inline-link" href="https://github.com/sachncs/agent-guard/tree/master/examples/rust-embedder">Rust embedder example</a> includes the repository dependency configuration and application wiring.</p>
+  <h2>Sidecar or standalone PDP</h2><p>Run the server next to your agent runtime. HTTP and gRPC endpoints are AuthZEN-compatible, so non-Rust agents can use the same control plane.</p><div class="doc-code">agentguard-server \
+  --listen tcp://127.0.0.1:8443 \
+  --store .agentguard</div>
+  <h2>Authentication and network boundaries</h2><p>The standalone binary exposes disabled authentication for loopback development or API-key authentication. OIDC login belongs to the optional admin console; JWT and SPIFFE support in library crates does not mean the standalone server accepts those modes. Configure the appropriate adapter when embedding.</p>
+  <p>Keep this loopback example behind your local application boundary. For remote access, use the TLS listener and authenticated server configuration described in the <a class="inline-link" href="https://github.com/sachncs/agent-guard/blob/master/crates/agentguard-server/src/listener.rs">listener reference</a>. The optional gRPC listener is plaintext and restricted to loopback; arrange a trusted local TLS proxy if remote clients need it.</p>
+  <h2>State and lifecycle</h2><p>Persist the policy store, decision log, and chain secret across restarts. Deploy validated policy files together with their schema. Back up logs and keys with access controls appropriate to their contents. Test reload and rollback with representative allow and deny requests before relying on them operationally.</p>
   <div class="doc-next"><span>Next</span><a href="../api/">Connect your agent →</a></div>
 </Docs>

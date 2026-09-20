@@ -8,7 +8,7 @@ export default defineConfig({
   site: 'https://sachncs.github.io',
   base: '/agent-guard',
   output: 'static',
-  trailingSlash: 'ignore',
+  trailingSlash: 'always',
   integrations: [react(), sitemap()],
   vite: {
     plugins: [tailwindcss()],

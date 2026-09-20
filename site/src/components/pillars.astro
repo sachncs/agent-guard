@@ -23,7 +23,7 @@ const icons = {
 
 <section class="container-page py-24 md:py-32" id="product">
   <div class="mx-auto max-w-3xl text-center">
-    <Badge variant="outline" class="mb-5">Product</Badge>
+    <Badge variant="outline" className="mb-5">Product</Badge>
     <h2 class="display text-balance text-4xl leading-tight tracking-tight md:text-5xl">
       Six primitives.
       <span class="display italic text-[var(--fg-muted)]"> Zero guesswork.</span>
@@ -39,10 +39,10 @@ const icons = {
       pillars.map((p) => {
         const Icon = icons[p.icon as keyof typeof icons];
         return (
-          <Card class="group relative overflow-hidden p-1 transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-soft)]">
+          <Card className="group relative overflow-hidden p-1 transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-soft)]">
             <div class="rounded-[14px] bg-[var(--bg-inset)] p-7">
               <div class="mb-5 flex size-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--accent)] transition-colors group-hover:border-[var(--accent)]/30 group-hover:bg-[var(--accent)]/8">
-                <Icon class="size-5" />
+                <Icon className="size-5" />
               </div>
               <h3 class="text-base font-medium tracking-tight">{p.title}</h3>
               <p class="mt-2 text-sm leading-relaxed text-[var(--fg-muted)]">{p.body}</p>

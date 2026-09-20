@@ -9,27 +9,23 @@ export function ThemeToggle({ className }: { className?: string }) {
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    const current = document.documentElement.classList.contains("dark") ? "dark" : "light";
-    setTheme(current);
+    const sync = () => setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     setMounted(true);
+    return () => observer.disconnect();
   }, []);
 
   const toggle = React.useCallback(() => {
-    const next = theme === "dark" ? "light" : "dark";
+    const next = document.documentElement.classList.contains("dark") ? "light" : "dark";
     setTheme(next);
-    if (document.startViewTransition) {
-      document.startViewTransition(() => {
-        document.documentElement.classList.toggle("dark", next === "dark");
-        document.documentElement.dataset.theme = next;
-      });
-    } else {
-      document.documentElement.classList.toggle("dark", next === "dark");
-      document.documentElement.dataset.theme = next;
-    }
+    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem("theme", next);
     } catch {}
-  }, [theme]);
+  }, []);
 
   return (
     <button
