@@ -9,6 +9,7 @@ members = [
     "crates/agentguard-server",
     "examples/rust-embedder",
 ]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.2.0"
