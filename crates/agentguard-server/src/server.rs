@@ -122,6 +122,11 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     // server. Same AppState, same authorizer — only the transport
     // differs.
     let grpc_handle = if let Some(addr) = cfg.grpc_listener {
+        if !addr.ip().is_loopback() {
+            return Err(anyhow!(
+                "gRPC listener must be loopback-bound until TLS is supported"
+            ));
+        }
         let svc = crate::grpc::service(state.clone());
         tracing::info!("agentguard gRPC listening on tcp://{}", addr);
         Some(tokio::spawn(async move {

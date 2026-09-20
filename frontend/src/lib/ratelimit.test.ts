@@ -40,10 +40,10 @@ describe("rate limiter", () => {
     assert.equal(rateLimit("b", 1).allowed, true);
   });
 
-  it("uses the first forwarded hop as the key", () => {
+  it("does not trust spoofable forwarded headers", () => {
     const req = new Request("http://x/", {
       headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" },
     });
-    assert.equal(clientKey(req), "203.0.113.7");
+    assert.equal(clientKey(req), "x");
   });
 });

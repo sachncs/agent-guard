@@ -14,8 +14,7 @@ import { applySecurityHeaders } from "@/lib/security_headers";
  */
 
 function isHttps(request: NextRequest): boolean {
-  const proto = request.headers.get("x-forwarded-proto");
-  return proto ? proto.split(",")[0].trim() === "https" : request.nextUrl.protocol === "https:";
+  return request.nextUrl.protocol === "https:";
 }
 
 export async function proxy(request: NextRequest) {

@@ -82,7 +82,14 @@ export function parseCookieHeader(header: string | null): Record<string, string>
     if (value.startsWith('"') && value.endsWith('"')) {
       value = value.slice(1, -1);
     }
-    if (name) out[name] = decodeURIComponent(value);
+    if (name) {
+      try {
+        out[name] = decodeURIComponent(value);
+      } catch {
+        // Ignore malformed cookie encoding rather than turning an attacker
+        // controlled Cookie header into a route-level 500.
+      }
+    }
   }
   return out;
 }

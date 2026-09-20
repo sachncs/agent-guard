@@ -50,6 +50,21 @@ impl AuthLayer {
         }
         Ok(layer)
     }
+
+    /// Validate a bearer credential for transports that do not use Axum's
+    /// HTTP middleware (currently the optional gRPC listener).
+    pub fn accepts_bearer(&self, authorization: Option<&str>) -> bool {
+        match self {
+            Self::Disabled => true,
+            Self::ApiKey(store) => authorization
+                .and_then(|value| {
+                    value
+                        .strip_prefix("Bearer ")
+                        .or_else(|| value.strip_prefix("bearer "))
+                })
+                .is_some_and(|token| store.verify(token).is_ok()),
+        }
+    }
 }
 
 /// Middleware function. Wire via `axum::middleware::from_fn_with_state`

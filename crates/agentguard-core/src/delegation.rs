@@ -624,10 +624,20 @@ impl DelegationVerifier {
 
         // Step 4: look up the key by kid in the registry.
         let keys = self.keys.read();
-        let (_, verifying_key) = *keys.get(&kid).ok_or_else(|| Error::TokenSignature {
-            reason: format!("unknown kid: {}", kid),
-        })?;
+        let (registered_alg, verifying_key) =
+            *keys.get(&kid).ok_or_else(|| Error::TokenSignature {
+                reason: format!("unknown kid: {}", kid),
+            })?;
         drop(keys);
+
+        if alg != registered_alg {
+            return Err(Error::TokenSignature {
+                reason: format!(
+                    "algorithm mismatch for kid {}: token={}, registered={}",
+                    kid, alg, registered_alg
+                ),
+            });
+        }
 
         // Step 5: compute the EdDSA signature check.
         let parts: Vec<&str> = token.split('.').collect();

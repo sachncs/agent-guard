@@ -41,6 +41,14 @@ impl AccessEvaluation for AccessEvaluationService {
         &self,
         request: Request<PbRequest>,
     ) -> Result<Response<PbResponse>, Status> {
+        if !self.state.auth.accepts_bearer(
+            request
+                .metadata()
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+        ) {
+            return Err(Status::unauthenticated("unauthorized"));
+        }
         let req = request.into_inner();
         let subject = req
             .subject

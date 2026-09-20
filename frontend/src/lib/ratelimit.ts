@@ -46,9 +46,11 @@ export function rateLimit(key: string, limitPerMinute: number): RateLimitResult 
   return { allowed: true, remaining: limitPerMinute - bucket.count };
 }
 
-/** Best-effort client identity for rate limiting (first proxy hop). */
+/**
+ * Use only the origin visible to the application. Forwarded client headers
+ * are intentionally ignored because direct clients can spoof them unless a
+ * trusted proxy is guaranteed to overwrite them.
+ */
 export function clientKey(request: Request): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return "local";
+  return new URL(request.url).host || "local";
 }

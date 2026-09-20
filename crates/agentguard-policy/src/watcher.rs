@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, PollWatcher, RecursiveMode, Watcher};
 
 /// A debounced filesystem event for a watched policy directory.
 #[derive(Debug, Clone)]
@@ -69,7 +69,7 @@ impl From<&EventKind> for WatchEventKind {
 /// recommended backend. Events are coalesced on a single mpsc
 /// channel; drain with [`PolicyWatcher::events`].
 pub struct PolicyWatcher {
-    _inner: RecommendedWatcher,
+    _inner: PollWatcher,
     /// Batched (paths, dominant kind) tuples. The notify callback
     /// collapses an entire batch into one item.
     rx: Receiver<(Vec<PathBuf>, WatchEventKind)>,
@@ -124,18 +124,23 @@ impl PolicyWatcher {
 pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<PolicyWatcher> {
     let (tx, rx) = channel();
     let dir = dir.as_ref().to_path_buf();
-    let mut inner = notify::recommended_watcher(move |res: notify::Result<Event>| {
-        // Collapse each notify::Event into (paths, kind). The kind
-        // is the dominant kind for the event — multiple kinds in one
-        // batch are coalesced at the consumer via `pending_kind`.
-        if let Ok(ev) = res {
-            let kind = WatchEventKind::from(&ev.kind);
-            let paths: Vec<PathBuf> = ev.paths.into_iter().collect();
-            if !paths.is_empty() {
-                let _ = tx.send((paths, kind));
+    let mut inner = PollWatcher::new(
+        move |res: notify::Result<Event>| {
+            // Collapse each notify::Event into (paths, kind). The kind
+            // is the dominant kind for the event — multiple kinds in one
+            // batch are coalesced at the consumer via `pending_kind`.
+            if let Ok(ev) = res {
+                let kind = WatchEventKind::from(&ev.kind);
+                let paths: Vec<PathBuf> = ev.paths.into_iter().collect();
+                if !paths.is_empty() {
+                    let _ = tx.send((paths, kind));
+                }
             }
-        }
-    })
+        },
+        Config::default()
+            .with_poll_interval(Duration::from_millis(100))
+            .with_compare_contents(true),
+    )
     .map_err(|e| std::io::Error::other(format!("notify watcher: {e}")))?;
     inner
         .watch(&dir, RecursiveMode::NonRecursive)
@@ -171,9 +176,17 @@ mod tests {
             f.write_all(b"permit (principal, action, resource);\n")
                 .unwrap();
         }
-        // Wait for the debounce window to elapse plus a small margin.
-        std::thread::sleep(Duration::from_millis(150));
-        let events = w.events();
+        // Filesystem notification delivery is asynchronous and varies by
+        // backend. Poll for a bounded period instead of relying on a fixed
+        // sleep that flakes under load or on slower CI runners.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let events = loop {
+            let events = w.events();
+            if !events.is_empty() || std::time::Instant::now() >= deadline {
+                break events;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
         assert!(!events.is_empty(), "expected at least one event");
         let paths: Vec<_> = events.iter().flat_map(|e| e.paths.iter()).collect();
         assert!(
