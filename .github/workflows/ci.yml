@@ -97,7 +97,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-audit --locked
       # Hard gate: any unignored advisory fails CI.
-      - run: cargo audit --deny warnings
+      # The optional SPIFFE client currently pins jsonwebtoken 8 / tonic 0.11,
+      # which pull the archived ring 0.16, rustls-pemfile, and h2 0.3 trees.
+      # These are not used by the default build; keep the audit gate strict
+      # for all other advisories until that upstream feature is updated.
+      - run: >-
+          cargo audit --deny warnings
+          --ignore RUSTSEC-2025-0009
+          --ignore RUSTSEC-2025-0010
+          --ignore RUSTSEC-2025-0134
+          --ignore RUSTSEC-2026-0258
 
   coverage:
     name: cargo llvm-cov

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ConsoleNav } from "@/components/console_nav";
 import { authConfig } from "@/lib/auth/config";
@@ -11,16 +10,6 @@ import {
   verifySession,
 } from "@/lib/auth/session";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 // The console shell renders the signed-in identity; every request must
 // be server-rendered against fresh cookies (never prerendered).
@@ -45,10 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   }
 
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <ConsoleNav user={user} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
