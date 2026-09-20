@@ -148,6 +148,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: fmt
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # These tests use tempfile-backed policy fixtures; Miri's default
+    # isolation rejects the mkdir calls needed to create them.
+    env:
+      MIRIFLAGS: "-Zmiri-disable-isolation"
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
