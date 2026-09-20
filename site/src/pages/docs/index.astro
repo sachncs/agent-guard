@@ -1,0 +1,16 @@
+---
+import Docs from "@/layouts/docs.astro";
+const base = import.meta.env.BASE_URL;
+const cards = [
+  ["01", "Getting started", "Install the CLI, create your first policy, and authorize a tool call in under five minutes.", `${base}docs/getting-started/`],
+  ["02", "Core concepts", "Understand decisions, entities, delegation, the audit chain, and the policy lifecycle.", `${base}docs/concepts/`],
+  ["03", "Deployment", "Choose embedded Rust, a sidecar, or the AuthZEN HTTP/gRPC server for your environment.", `${base}docs/deploy/`],
+  ["04", "API reference", "Request shapes, responses, CLI commands, SDKs, and integration examples.", `${base}docs/api/`],
+  ["05", "Security model", "Threat model, key handling, trust boundaries, and the operational security checklist.", `${base}docs/security/`],
+];
+---
+<Docs title="Documentation" active="Overview" description="Learn how to authorize, audit, and delegate AI agent actions with agent-guard.">
+  <div class="docs-hero"><span class="section-kicker">AGENT-GUARD / DOCS</span><h1>Build agents<br /><em>you can trust.</em></h1><p>Everything you need to put a policy boundary around agent actions—from the first local decision to a production control plane.</p></div>
+  <div class="docs-grid">{cards.map(([number, title, body, href]) => <a class="docs-card" href={href}><span class="docs-card-number">{number}</span><h2>{title} <b>↗</b></h2><p>{body}</p></a>)}</div>
+  <div class="docs-note"><strong>Already know the model?</strong><span>Jump straight to the <a href={`${base}docs/api/`}>API reference →</a></span></div>
+</Docs>

@@ -1,36 +1,43 @@
 ---
 import Base from "@/layouts/base.astro";
-import Nav from "@/components/nav.astro";
-import Hero from "@/components/hero.astro";
-import TrustStrip from "@/components/trust-strip.astro";
-import Problem from "@/components/problem.astro";
-import How from "@/components/how.astro";
-import Pillars from "@/components/pillars.astro";
-import Code from "@/components/code.astro";
-import Audit from "@/components/audit.astro";
-import Architecture from "@/components/architecture.astro";
-import Standards from "@/components/standards.astro";
-import Integrations from "@/components/integrations.astro";
-import Adoption from "@/components/adoption.astro";
-import CTA from "@/components/cta.astro";
-import Footer from "@/components/footer.astro";
+import Logo from "@/components/logo.astro";
+import { ThemeToggle } from "@/components/theme-toggle";
+const base = import.meta.env.BASE_URL;
+const docs = `${base}docs/`;
+const repo = "https://github.com/sachncs/agent-guard";
+const features = [
+  { number: "01", title: "Authorize every tool call", body: "Make the decision at the boundary—not after the agent has already touched production. Cedar evaluates principal, action, resource, and context in milliseconds.", accent: "lime" },
+  { number: "02", title: "Prove what happened", body: "Every allow and deny becomes a tamper-evident record. Follow the hash chain, export to your SIEM, and answer the incident question with evidence.", accent: "cyan" },
+  { number: "03", title: "Delegate without losing control", body: "Give sub-agents the smallest useful slice of authority. Tokens are scoped, time-boxed, sender-constrained, and revocable.", accent: "coral" },
+];
+const integrations = ["Strands", "LangChain", "MCP", "Axum", "OpenTelemetry", "Kubernetes"];
 ---
 
-<Base>
-  <Nav />
-  <main>
-    <Hero />
-    <TrustStrip />
-    <Problem />
-    <How />
-    <Pillars />
-    <Code />
-    <Audit />
-    <Architecture />
-    <Standards />
-    <Integrations />
-    <Adoption />
-    <CTA />
-  </main>
-  <Footer />
+<Base title="agent-guard — the authorization control plane for AI agents" description="Policy, proof, and control for every AI agent action. Cedar-powered authorization, scoped delegation, and tamper-evident audit for production agents.">
+  <div class="site-shell">
+    <header class="site-nav"><div class="nav-inner">
+      <a href={base} class="brand" aria-label="agent-guard home"><Logo size={30} /><span>agent<span class="brand-mark">-</span>guard</span></a>
+      <nav class="desktop-nav" aria-label="Main navigation"><a href="#platform">Platform</a><a href="#how-it-works">How it works</a><a href="#integrations">Integrations</a><a href={docs}>Docs</a></nav>
+      <div class="nav-actions"><a class="nav-github" href={repo} target="_blank" rel="noopener noreferrer">GitHub <span>↗</span></a><a class="button button-small button-lime" href={`${docs}getting-started/`}>Start building</a><ThemeToggle client:load /></div>
+    </div></header>
+    <main>
+      <section class="hero-section"><div class="hero-grid"></div><div class="hero-glow hero-glow-one"></div><div class="hero-glow hero-glow-two"></div><div class="container hero-content">
+        <div class="eyebrow reveal"><span class="pulse-dot"></span> Open-source authorization for agentic systems</div>
+        <div class="hero-layout"><div class="hero-copy reveal delay-1"><h1>Give every AI action <em>a policy boundary.</em></h1><p class="hero-lede">agent-guard is the authorization control plane for production agents. Decide what they can do, prove what they did, and keep humans in control.</p><div class="hero-actions"><a class="button button-lime" href={`${docs}getting-started/`}>Read the quickstart <span>→</span></a><a class="button button-ghost" href={repo} target="_blank" rel="noopener noreferrer">View on GitHub <span>↗</span></a></div><div class="hero-meta"><span>Apache-2.0</span><i></i><span>Rust + TypeScript</span><i></i><span>Self-hosted</span></div></div>
+          <div class="decision-card reveal delay-2"><div class="card-topline"><span class="window-dots"><i></i><i></i><i></i></span><span class="mono muted">decision.stream</span><span class="live-pill"><b></b> LIVE</span></div><div class="decision-summary"><div><span class="mono muted small-label">REQUESTS / 24H</span><strong>18,492</strong></div><div><span class="mono muted small-label">BLOCKED</span><strong class="blocked">1.8%</strong></div><div><span class="mono muted small-label">P95 LATENCY</span><strong>8ms</strong></div></div><div class="stream-label mono muted"><span>RECENT DECISIONS</span><span>just now</span></div><div class="event-list"><div class="event-row"><span class="event-icon allow">✓</span><div><strong>payments.refund</strong><small>agent: support-copilot · order: 8F21</small></div><span class="event-status allow-text">ALLOW</span></div><div class="event-row"><span class="event-icon deny">×</span><div><strong>secrets.read</strong><small>agent: research-bot · vault: prod</small></div><span class="event-status deny-text">DENY</span></div><div class="event-row"><span class="event-icon allow">✓</span><div><strong>tickets.update</strong><small>agent: support-copilot · ticket: 4420</small></div><span class="event-status allow-text">ALLOW</span></div></div><div class="chain-footer"><span><span class="chain-check">⛓</span> hash chain verified</span><span class="mono muted">#00018A</span></div></div>
+        </div><div class="hero-foot reveal delay-3"><span>Built for teams shipping agents into environments where “trust me” is not a control.</span><span class="scroll-cue">Scroll to explore <b>↓</b></span></div>
+      </div></section>
+      <section class="signal-strip"><div class="container signal-inner"><span class="signal-label">THE AGENT AUTHORIZATION LAYER</span><span class="signal-line"></span>{integrations.map((item) => <span class="signal-item">{item}</span>)}</div></section>
+      <section id="platform" class="section platform-section"><div class="container"><div class="section-intro"><div><span class="section-kicker">01 / PLATFORM</span><h2>Powerful by default.<br /><span>Inspectable by design.</span></h2></div><p>AI systems move fast. Your security model should be the thing that makes that speed safe—not the thing that slows it down.</p></div><div class="feature-grid">{features.map((feature) => <article class={`feature-card ${feature.accent}`}><span class="feature-number mono">{feature.number}</span><div class="feature-icon">{feature.accent === "lime" ? "◈" : feature.accent === "cyan" ? "⌁" : "◌"}</div><h3>{feature.title}</h3><p>{feature.body}</p><a href={docs} class="text-link">Explore the model <span>→</span></a></article>)}</div></div></section>
+      <section id="how-it-works" class="section how-section"><div class="container"><div class="section-intro compact"><div><span class="section-kicker">02 / HOW IT WORKS</span><h2>One decision.<br /><span>Every time.</span></h2></div><p>Keep policy separate from agent logic. agent-guard sits between intent and execution, so a model can propose an action without receiving permission by default.</p></div><div class="flow-diagram"><div class="flow-node"><span class="node-index">01</span><strong>Agent</strong><small>proposes a tool call</small></div><div class="flow-connector"><span>request</span><b>→</b></div><div class="flow-node active"><span class="node-index">02</span><strong>agent-guard</strong><small>Cedar policy decision</small><div class="node-chip">principal · action · resource</div></div><div class="flow-connector"><span>decision</span><b>→</b></div><div class="flow-node"><span class="node-index">03</span><strong>Tool / API</strong><small>executes if allowed</small></div></div><div class="code-panel"><div class="code-head"><span class="window-dots"><i></i><i></i><i></i></span><span class="mono">policy.cedar</span><span class="code-lang">CEDAR</span></div><pre><code><span class="code-comment">// Narrow authority to the task at hand.</span>
+<span class="code-keyword">permit</span> (
+  <span class="code-keyword">principal</span> <span class="code-op">==</span> <span class="code-value">Agent::"support-copilot"</span>,
+  <span class="code-keyword">action</span> <span class="code-op">in</span> [<span class="code-value">Action::"tickets.read"</span>, <span class="code-value">Action::"tickets.update"</span>],
+  <span class="code-keyword">resource</span>
+) <span class="code-keyword">when</span> &#123; context.environment <span class="code-op">==</span> <span class="code-value">"production"</span> &#125;;</code></pre></div></div></section>
+      <section id="integrations" class="section integrations-section"><div class="container"><div class="section-intro compact"><div><span class="section-kicker">03 / FITS YOUR STACK</span><h2>Bring your agent.<br /><span>Keep your stack.</span></h2></div><p>HTTP, gRPC, or embedded Rust. AuthZEN-compatible at the edge and ergonomic inside the process.</p></div><div class="integration-grid"><div class="integration-copy"><div class="integration-quote">“Authorization belongs at the tool boundary, where intent becomes impact.”</div><div class="integration-points"><div><b>Any agent framework</b><span>Strands, LangChain, custom loops, and MCP servers.</span></div><div><b>Any deployment shape</b><span>Sidecar, embedded router, or standalone PDP.</span></div><div><b>Any observability stack</b><span>OpenTelemetry traces, JSONL, and SIEM exports.</span></div></div></div><div class="stack-card"><div class="stack-orbit orbit-one"></div><div class="stack-orbit orbit-two"></div><div class="stack-center"><Logo size={42} /></div><span class="stack-tag tag-top">Cedar</span><span class="stack-tag tag-right">AuthZEN</span><span class="stack-tag tag-bottom">OTel</span><span class="stack-tag tag-left">Rust</span></div></div></div></section>
+      <section class="docs-callout"><div class="container docs-callout-inner"><div><span class="section-kicker">SHIP WITH CONFIDENCE</span><h2>From first policy<br />to production audit.</h2></div><div><p>The docs walk through the mental model, the API surface, deployment patterns, and the security decisions behind the product.</p><a class="button button-lime" href={docs}>Open the documentation <span>→</span></a></div></div></section>
+    </main>
+    <footer class="site-footer"><div class="container footer-top"><div><a href={base} class="brand"><Logo size={28} /><span>agent<span class="brand-mark">-</span>guard</span></a><p>Authorization infrastructure for the agentic era.</p></div><div class="footer-links"><div><span>PRODUCT</span><a href="#platform">Platform</a><a href="#how-it-works">How it works</a><a href={docs}>Documentation</a></div><div><span>PROJECT</span><a href={repo}>GitHub ↗</a><a href="https://crates.io/crates/agentguard-core">Crates.io ↗</a><a href={`${repo}/blob/master/SECURITY.md`}>Security</a></div><div><span>RESOURCES</span><a href={`${docs}getting-started/`}>Quickstart</a><a href={`${docs}api/`}>API reference</a><a href={`${repo}/tree/master/examples`}>Examples ↗</a></div></div></div><div class="container footer-bottom"><span>© 2026 agent-guard · Apache-2.0</span><span>Built in the open <span class="footer-heart">◆</span></span></div></footer>
+  </div>
 </Base>

@@ -1,0 +1,12 @@
+---
+import Docs from "@/layouts/docs.astro";
+---
+<Docs title="Deployment" active="Deployment">
+  <div class="doc-title"><span class="section-kicker">GUIDE / 03</span><h1>Deployment</h1><p>Pick the boundary that matches your architecture. The policy engine and audit model stay the same.</p></div>
+  <h2>Embedded in Rust</h2><p>Use this when authorization is part of an existing Axum service and you want no network hop on the decision path.</p><div class="doc-code">agentguard-core = "0.2"<br />agentguard-server = "0.2"</div>
+  <h2>Sidecar or standalone PDP</h2><p>Run the server next to your agent runtime. HTTP and gRPC endpoints are AuthZEN-compatible, so non-Rust agents can use the same control plane.</p><div class="doc-code">agentguard serve \
+  --listen tcp://0.0.0.0:8443 \
+  --policy-dir .agentguard/policies</div>
+  <h2>Production checklist</h2><div class="checklist"><div>□ Terminate TLS at the edge and keep the PDP private.</div><div>□ Configure OIDC, API keys, or SPIFFE for service identity.</div><div>□ Store signing keys outside the repository and rotate them.</div><div>□ Export decision logs and alert on unexpected deny spikes.</div><div>□ Run policy validation and blast-radius checks in CI.</div></div>
+  <div class="doc-next"><span>Next</span><a href="../api/">Connect your agent →</a></div>
+</Docs>

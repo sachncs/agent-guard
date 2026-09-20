@@ -1,0 +1,11 @@
+---
+import Docs from "@/layouts/docs.astro";
+---
+<Docs title="Core concepts" active="Core concepts">
+  <div class="doc-title"><span class="section-kicker">GUIDE / 02</span><h1>Core concepts</h1><p>A small, explicit model for making powerful agents accountable.</p></div>
+  <h2>Decisions at the tool boundary</h2><p>The model may propose a tool call; agent-guard decides whether that call is allowed. A decision combines a <strong>principal</strong>, <strong>action</strong>, <strong>resource</strong>, and optional <strong>context</strong>. Deny-by-default keeps execution behind a policy boundary.</p>
+  <h2>Policies are the source of truth</h2><p>Policies are written in Cedar and validated against a typed schema. Keep them in version control, review them like code, and use the simulator before rollout. Hot reload updates the running store without restarting the service.</p>
+  <h2>Scoped delegation</h2><p>A parent agent can delegate a subset of its authority to a sub-agent. Delegation claims are JWS-signed, time-bounded, optionally DPoP-bound, and checked against the requested action and resource.</p>
+  <h2>The audit chain</h2><p>Each decision is canonicalized and appended to a hash chain. The chain gives you tamper evidence and a stable decision identifier for traces, exports, and incident review.</p>
+  <h2>Policy operations</h2><div class="docs-table"><div><b>Validate</b><span>Check syntax, schema, and entity references before deployment.</span></div><div><b>Simulate</b><span>Explore allow/deny outcomes for representative requests.</span></div><div><b>Diff</b><span>Review changed policies and estimate blast radius.</span></div><div><b>Observe</b><span>Correlate decisions with OpenTelemetry traces and logs.</span></div></div>
+</Docs>

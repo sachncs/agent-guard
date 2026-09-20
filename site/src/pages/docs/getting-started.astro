@@ -1,0 +1,14 @@
+---
+import Docs from "@/layouts/docs.astro";
+---
+<Docs title="Getting started" active="Getting started" description="Install agent-guard and authorize your first AI agent action.">
+  <div class="doc-title"><span class="section-kicker">GUIDE / 01</span><h1>Getting started</h1><p>Get from zero to a verified authorization decision in five minutes.</p></div>
+  <h2>Install the CLI</h2><p>agent-guard is self-hosted and Apache-2.0 licensed. Install from the repository while the project is in active development:</p><div class="doc-code">cargo install --path crates/agentguard-cli</div>
+  <h2>Create a policy</h2><p>Initialize a project to create a Cedar schema and a starter policy directory.</p><div class="doc-code">agentguard init my-agent<br />cd my-agent<br />agentguard validate</div>
+  <h2>Ask for a decision</h2><p>Every request names a principal, action, and resource. Context carries runtime facts such as environment, tenant, or approval state.</p><div class="doc-code">agentguard authorize \
+  --principal Agent::"support-copilot" \
+  --action Action::"tickets.read" \
+  --resource Ticket::"4420"</div>
+  <h2>Run the policy server</h2><p>For a language-agnostic deployment, run the AuthZEN-compatible server and point your agent middleware at it.</p><div class="doc-code">agentguard serve --listen tcp://127.0.0.1:8443</div>
+  <div class="doc-next"><span>Next</span><a href="../concepts/">Understand the authorization model →</a></div>
+</Docs>
