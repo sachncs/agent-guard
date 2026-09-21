@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /agent-guard/
+Sitemap: https://sachncs.github.io/agent-guard/sitemap-index.xml

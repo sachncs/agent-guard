@@ -45,7 +45,12 @@ struct Cli {
     auth: AuthModeArg,
 
     /// Path to the API-key store (when `--auth apikey`).
-    #[arg(long, env = "AGENTGUARD_AUTH_KEY_FILE", requires = "auth_apikey")]
+    // `into_config` validates that this is present when `--auth apikey`
+    // is selected. A clap `requires` relation cannot express that
+    // value-dependent requirement and previously referenced a missing
+    // argument group, causing every invocation (including `--help`) to
+    // panic during clap's debug assertions.
+    #[arg(long, env = "AGENTGUARD_AUTH_KEY_FILE")]
     auth_key_file: Option<PathBuf>,
 
     /// Optional gRPC listen address (e.g. `0.0.0.0:9443`). When set,

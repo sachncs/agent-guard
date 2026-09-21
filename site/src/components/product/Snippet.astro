@@ -1,0 +1,15 @@
+---
+import { Code } from 'astro:components';
+import type { BundledLanguage } from 'shiki';
+interface Props { code: string; lang?: string; title?: string; }
+const {code, lang = 'bash', title = 'Terminal'} = Astro.props;
+---
+<div class="snippet"><div class="snippet-head"><span>{title}</span><button type="button" class="copy-button" aria-label={`Copy ${title}`}>Copy</button></div><Code code={code} lang={lang as BundledLanguage} theme="github-dark" /></div>
+<script>
+ document.querySelectorAll<HTMLButtonElement>('.copy-button').forEach(button => button.addEventListener('click', async () => {
+  const code = button.closest('.snippet')?.querySelector('code')?.textContent ?? '';
+  try { await navigator.clipboard.writeText(code); button.textContent = 'Copied ✓'; }
+  catch { button.textContent = 'Select to copy'; }
+  setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+ }));
+</script>

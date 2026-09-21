@@ -1,36 +1,22 @@
-import { useState } from "react";
-
+import { useState } from 'react';
+import { policy } from '../data/examples';
 export function PolicyPlayground() {
-  const [agent, setAgent] = useState("support-copilot");
-  const [action, setAction] = useState("tickets.read");
-  const [environment, setEnvironment] = useState("production");
-  const allowed = agent === "support-copilot" && action !== "secrets.read" && environment === "production";
-  const reasons = [
-    [agent === "support-copilot", "Principal is support-copilot"],
-    [action !== "secrets.read", "Action is tickets.read or tickets.update"],
-    [environment === "production", "Environment is production"],
-  ] as const;
-  return (
-    <section className="section container" id="playground">
-      <div className="section-intro">
-        <div><span className="section-kicker">TRY THE BOUNDARY</span><h2>Change the request.<br /><span>See the decision.</span></h2></div>
-        <p>Explore the policy above. This browser illustration evaluates its three conditions locally; it does not run Cedar or contact a policy server.</p>
-      </div>
-      <div className="playground-grid">
-        <div className="playground-controls">
-          <label htmlFor="demo-principal">Principal<select id="demo-principal" value={agent} onChange={e => setAgent(e.target.value)}><option>support-copilot</option><option>research-bot</option></select></label>
-          <label htmlFor="demo-action">Action<select id="demo-action" value={action} onChange={e => setAction(e.target.value)}><option>tickets.read</option><option>tickets.update</option><option>secrets.read</option></select></label>
-          <label htmlFor="demo-environment">Environment<select id="demo-environment" value={environment} onChange={e => setEnvironment(e.target.value)}><option>production</option><option>staging</option></select></label>
-          <button className="button button-ghost" onClick={() => { setAgent("support-copilot"); setAction("tickets.read"); setEnvironment("production"); }}>Reset example</button>
-        </div>
-        <div className="playground-result" aria-live="polite" aria-atomic="true">
-          <span className="section-kicker">ILLUSTRATIVE RESULT</span>
-          <h3>{allowed ? "ALLOW" : "DENY"}</h3>
-          <p>{allowed ? "All permit conditions match. The tool adapter can proceed." : "No permit matches this request. The tool adapter must stop execution."}</p>
-          <ul>{reasons.map(([matches, label]) => <li key={label}>{matches ? "✓" : "×"} {label} — {matches ? "matches" : "does not match"}</li>)}</ul>
-          <a className="inline-link" href={import.meta.env.BASE_URL + "docs/api/"}>Connect a real policy server →</a>
-        </div>
-      </div>
-    </section>
-  );
+ const [principal,setPrincipal] = useState('research');
+ const [action,setAction] = useState('repo_read');
+ const [resource,setResource] = useState('demo');
+ const [mfa,setMfa] = useState('true');
+ const checks = [[principal==='research','Principal is research'],[action==='repo_read','Action is repo_read'],[resource==='demo','Resource is demo'],[mfa==='true','Session has MFA']] as const;
+ const allowed = checks.every(([matches]) => matches);
+ const request = {subject:{type:'Agent',id:principal},action:{type:'Action',id:`ToolCall::${action}`},resource:{type:'Repository',id:resource},context:{args:{repo:resource,...(action==='repo_write'?{branch:'main'}:{})},session:{mfa:mfa==='true'}}};
+ return <section className="section" id="playground"><div className="container">
+ <div className="section-heading"><div><span className="section-kicker">11 / EXPLORE A DECISION</span><h2>A small policy.<br/><span>A visible boundary.</span></h2></div><p>Change a request and inspect the result. This browser simulation checks the four conditions below in JavaScript. It does not execute Cedar, contact a server, or create an audit record.</p></div>
+ <div className="playground-grid"><div><div className="playground-controls">
+ <label>Principal<select value={principal} onChange={e=>setPrincipal(e.target.value)}><option value="research">research</option><option value="summarizer">summarizer</option></select></label>
+ <label>Action<select value={action} onChange={e=>setAction(e.target.value)}><option value="repo_read">repo_read</option><option value="repo_write">repo_write</option></select></label>
+ <label>Resource<select value={resource} onChange={e=>setResource(e.target.value)}><option value="demo">Repository::demo</option><option value="private">Repository::private</option></select></label>
+ <label>MFA state<select value={mfa} onChange={e=>setMfa(e.target.value)}><option value="true">Verified</option><option value="false">Not verified</option></select></label>
+ </div><div className="playground-policy"><span className="caption">The only policy in this simulation</span><pre><code>{policy}</code></pre></div><button className="button small" onClick={()=>{setPrincipal('research');setAction('repo_read');setResource('demo');setMfa('true');}}>Reset request</button></div>
+ <div className="playground-result" data-denied={!allowed}><div aria-live="polite" aria-atomic="true"><span className="caption">Illustrative decision</span><h3>{allowed?'ALLOW':'DENY'}</h3><p>{allowed?'All permit conditions match. The adapter may execute the tool.':'No permit matches. The adapter must stop the tool call.'}</p><ul>{checks.map(([matches,label])=><li key={label}>{matches?'✓':'×'} {label} — {matches?'matches':'does not match'}</li>)}</ul></div>
+ <details><summary>Inspect authorization request</summary><pre>{JSON.stringify(request,null,2)}</pre></details><details><summary>Inspect sample audit fields</summary><p>Illustrative fields only. No signature or chain is generated here.</p><pre>{JSON.stringify({effect:allowed?'allow':'deny',principal,action,resource,policies:allowed?['example-permit']:[],timestamp:'illustrative timestamp'},null,2)}</pre></details>
+ <a className="text-link" href={`${import.meta.env.BASE_URL}docs/getting-started/`}>Run this policy with real Cedar →</a></div></div></div></section>;
 }

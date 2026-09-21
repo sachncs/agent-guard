@@ -1,0 +1,12 @@
+---
+import Snippet from './Snippet.astro';
+import { integrationExamples } from '@/data/examples';
+---
+<div data-tabs><div class="tabs-list" role="tablist" aria-label="Integration language">{integrationExamples.map((item,i) => <button type="button" role="tab" id={`tab-${i}`} aria-controls={`panel-${i}`} aria-selected={i===0} tabindex={i===0?0:-1}>{item.name}</button>)}</div>{integrationExamples.map((item,i) => <div id={`panel-${i}`} role="tabpanel" aria-labelledby={`tab-${i}`} tabindex="0" hidden={i!==0}><Snippet code={item.code} lang={item.lang} title={item.title}/><p class="tab-description">{item.description}</p></div>)}</div>
+<script>
+ document.querySelectorAll<HTMLElement>('[data-tabs]').forEach(root => {
+ const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+ const select = (index:number) => { tabs.forEach((tab,i) => { tab.setAttribute('aria-selected', String(i===index)); tab.tabIndex = i===index?0:-1; const panel = document.getElementById(tab.getAttribute('aria-controls')!); if(panel) panel.hidden=i!==index; }); };
+ tabs.forEach((tab,i) => { tab.addEventListener('click', () => select(i)); tab.addEventListener('keydown',e => { let next=i; if(e.key==='ArrowRight') next=(i+1)%tabs.length; else if(e.key==='ArrowLeft') next=(i+tabs.length-1)%tabs.length; else if(e.key==='Home') next=0; else if(e.key==='End') next=tabs.length-1; else return; e.preventDefault(); select(next); tabs[next].focus(); }); });
+ });
+</script>

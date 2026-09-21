@@ -1,0 +1,6 @@
+---
+import Logo from '@/components/logo.astro';
+const base = import.meta.env.BASE_URL;
+const repo = 'https://github.com/sachncs/agent-guard';
+---
+<footer class="site-footer"><div class="container footer-grid"><div><a class="brand" href={base}><Logo size={30}/>AgentGuard</a><p>Policy between intent<br/>and execution.</p><span class="caption">OPEN SOURCE · APACHE-2.0</span></div><div><h2>Build</h2><a href={`${base}docs/getting-started/`}>Quickstart</a><a href={`${base}docs/api/`}>API & SDKs</a><a href={`${base}docs/deploy/`}>Deployment</a><a href={`${base}docs/configuration/`}>Configuration</a></div><div><h2>Understand</h2><a href={`${base}docs/concepts/`}>Cedar policies</a><a href={`${base}docs/identity/`}>Identity & delegation</a><a href={`${base}docs/audit/`}>Audit & telemetry</a><a href={`${base}docs/security/`}>Security model</a></div><div><h2>Project</h2><a href={repo}>GitHub ↗</a><a href={`${repo}/blob/master/CONTRIBUTING.md`}>Contributing</a><a href={`${repo}/blob/master/CHANGELOG.md`}>Changelog</a><a href={`${repo}/blob/master/SECURITY.md`}>Report a vulnerability</a><a href={`${repo}/blob/master/LICENSE`}>License</a></div></div><div class="container footer-bottom"><span>© 2026 AgentGuard</span><span>Built in the open. Operated by you.</span></div></footer>
