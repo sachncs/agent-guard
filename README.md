@@ -53,7 +53,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
-See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); versioned repository guides cover [production deployment](docs/production.md), [Kubernetes](docs/kubernetes.md), [console operation](docs/console.md), [incident response](docs/incident-response.md), [compatibility](docs/compatibility.md), and [branding](docs/branding.md).
+See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); versioned repository guides cover [local development](docs/local-development.md), [policy authoring](docs/policy-authoring.md), [production deployment](docs/production.md), [Kubernetes](docs/kubernetes.md), [console operation](docs/console.md), [API reference](docs/reference.md), [backups](docs/backups.md), [upgrades](docs/upgrades.md), [troubleshooting](docs/troubleshooting.md), [incident response](docs/incident-response.md), [compatibility](docs/compatibility.md), [OSS governance](docs/oss-governance.md), and [branding](docs/branding.md).
 
 ## Surfaces
 
