@@ -179,7 +179,7 @@ fn lookup<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json:
 /// `*`-delimited segments are matched left-to-right; on any partial
 /// failure we back up the segment pointer to the previous `*` position
 /// and try the next value position.
-pub(crate) fn glob_match(pattern: &str, value: &str) -> bool {
+pub fn glob_match(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
     }

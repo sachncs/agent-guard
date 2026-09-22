@@ -9,6 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 agentguard-core = { path = "../crates/agentguard-core" }
+libfuzzer-sys = "0.4"
+serde_json = "1"
 
 [[bin]]
 name = "hash_chain_append"

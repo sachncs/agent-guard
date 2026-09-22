@@ -37,6 +37,9 @@ rust-spiffe = { version = "0.5", optional = true, package = "spiffe" }
 x509-parser = { version = "0.16", optional = true }
 subtle.workspace = true
 
+[build-dependencies]
+protoc-bin-vendored = "3"
+
 # Workspace lint policy (see /Cargo.toml).
 [lints.rust]
 unsafe_code = "forbid"

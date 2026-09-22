@@ -15,7 +15,7 @@ fuzz_target!(|data: &[u8]| {
     let value = &data[split + 1..data.len().min(split + 257)];
     // Only consider printable ASCII patterns (avoid control chars in the
     // pattern; value can be anything).
-    if !pattern.iter().all(|&b| b.is_ascii_graph() || b == b' ') {
+    if !pattern.iter().all(|&b| b.is_ascii_graphic() || b == b' ') {
         return;
     }
     let pat = match std::str::from_utf8(pattern) {
