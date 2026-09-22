@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: clippy
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo test --workspace
       # Doctests are run separately so a single failing docstring
       # fails CI even when the lib tests pass. Mirrors `cargo test`
@@ -61,7 +61,7 @@ jobs:
           version: 11.22.0
       - uses: actions/setup-node@v4
         with:
-          node-version: "26"
+          node-version: "22.14.0"
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:public
       - run: pnpm check:docs
@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo install cargo-deny --locked
       # Bans + licenses + sources are blocking: we own the surface and
       # can fix violations directly.
@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo install cargo-audit --locked
       # Hard gate: any unignored advisory fails CI.
       # The optional SPIFFE client currently pins jsonwebtoken 8 / tonic 0.11,
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.89.0
       - uses: taiki-e/install-action@cargo-llvm-cov
         with:
           version: latest

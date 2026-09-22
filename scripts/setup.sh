@@ -13,7 +13,7 @@ command -v protoc >/dev/null || {
   exit 1
 }
 
-rustup toolchain install 1.89.0 --profile minimal
+rustup toolchain install 1.89.0 --profile minimal --component rustfmt --component clippy
 corepack prepare pnpm@11.22.0 --activate
 pnpm install --frozen-lockfile
 
