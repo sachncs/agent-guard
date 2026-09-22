@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
-import type { LogRecord } from "@/lib/api_types";
+import type { AuthorizationEffect, LogRecord } from "@/lib/api_types";
+import { decisionPresentation } from "@/lib/decision_presentation";
 import {
   errorResponseSchema,
   logResponseSchema,
@@ -255,9 +256,9 @@ function StatCard({
         <CardTitle
           className={
             tone === "allow"
-              ? "text-brand-700 dark:text-brand-300"
+              ? "text-allow"
               : tone === "deny"
-                ? "text-amber-700 dark:text-amber-300"
+                ? "text-deny"
                 : undefined
           }
         >
@@ -268,16 +269,15 @@ function StatCard({
   );
 }
 
-function EffectBadge({ effect }: { effect: string }) {
-  const allow = effect === "allow";
+function EffectBadge({ effect }: { effect: AuthorizationEffect }) {
+  const presentation = decisionPresentation(effect);
   return (
     <Badge
       variant="outline"
-      className={allow
-        ? "border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-300"
-        : "border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-300"}
+      aria-label={presentation.ariaLabel}
+      className={presentation.className}
     >
-      {effect.toUpperCase()}
+      {presentation.label}
     </Badge>
   );
 }

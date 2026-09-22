@@ -27,4 +27,7 @@
   --ag-color-text: #eef3f0;
   --ag-color-text-muted: #a8b9b1;
   --ag-color-focus: #79dfbf;
+  --ag-color-allow: #79dfbf;
+  --ag-color-deny: #ff8b82;
+  --ag-color-warning: #f3bd68;
 }

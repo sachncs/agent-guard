@@ -40,8 +40,8 @@ The selected mark is shipped in `site/public/` and `frontend/public/`:
 | Soft mint | `#effcf7` | Light brand surfaces |
 | Ink | `#172420` | Wordmark and light text |
 | Allow | `#218263` | Positive authorization state |
-| Deny | `#b42318` | Destructive/error state, never success |
-| Warning | `#a15c00` | Caution and non-terminal state |
+| Deny | `#b42318` (light), `#ff8b82` (dark) | Destructive/error state, never success |
+| Warning | `#a15c00` (light), `#f3bd68` (dark) | Caution and non-terminal state |
 
 The same semantic names are used by the Astro site and Next.js console. Product
 surfaces must not use red/green as the sole status signal; status text and

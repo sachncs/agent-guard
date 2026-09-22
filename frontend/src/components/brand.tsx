@@ -12,7 +12,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         priority
         className="brand-icon"
       />
-      {!compact && <span>AgentGuard</span>}
+      {!compact && <span className="hidden sm:inline">AgentGuard</span>}
     </Link>
   );
 }

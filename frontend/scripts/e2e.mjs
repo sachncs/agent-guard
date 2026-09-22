@@ -371,6 +371,7 @@ async function main() {
     assert.equal(viewerRoot.status, 200);
     const html = await viewerRoot.text();
     assert.match(html, /viewer@example.com/, "nav shows identity");
+    assert.match(html, /aria-label="Mobile console navigation"/, "responsive navigation is present");
     assert.doesNotMatch(html, />admin</, "no admin badge for viewer");
 
     // --- 3. RBAC ---------------------------------------------------------

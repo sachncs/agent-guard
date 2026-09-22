@@ -29,6 +29,21 @@ for (const name of [
   if (!tokens.includes(name)) failures.push(`${tokenFile}: missing ${name}`);
 }
 
+for (const [name, consumers] of [
+  ["--color-allow: var(--ag-color-allow)", ["frontend/src/app/globals.css"]],
+  ["--color-deny: var(--ag-color-deny)", ["frontend/src/app/globals.css"]],
+  ["border-allow text-allow", ["frontend/src/lib/decision_presentation.ts"]],
+  ["border-deny text-deny", ["frontend/src/lib/decision_presentation.ts"]],
+]) {
+  for (const file of consumers) {
+    if (!readFileSync(file, "utf8").includes(name)) failures.push(`${file}: missing semantic token use ${name}`);
+  }
+}
+
+if (!tokens.includes("--ag-color-deny: #ff8b82")) {
+  failures.push(`${tokenFile}: dark mode must define a readable deny color`);
+}
+
 if (failures.length) {
   console.error(failures.join("\n"));
   process.exit(1);

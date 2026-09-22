@@ -10,9 +10,11 @@ export interface AuthorizeRequestBody {
   session?: Record<string, unknown>;
 }
 
+export type AuthorizationEffect = "allow" | "deny";
+
 /** Mirrors `Decision` from the agentguard SDK. */
 export interface DecisionDto {
-  effect: "allow" | "deny";
+  effect: AuthorizationEffect;
   policies: string[];
   reasons: string[];
   request: Record<string, unknown>;
@@ -27,7 +29,7 @@ export interface DecisionDto {
 export interface LogRecord {
   id: string;
   timestamp: string;
-  effect: string;
+  effect: AuthorizationEffect;
   policies: string[];
   principal: string;
   action: string;

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { DecisionDto } from "@/lib/api_types";
+import { decisionPresentation } from "@/lib/decision_presentation";
 import {
   decisionResponseSchema,
   errorResponseSchema,
@@ -230,7 +231,7 @@ export default function SimulatorPage() {
           <CardHeader>
             <CardTitle>Decision</CardTitle>
             {error && !cliMissing && (
-              <CardDescription className="text-red-600 dark:text-red-400">
+              <CardDescription className="text-deny">
                 {error}
               </CardDescription>
             )}
@@ -251,17 +252,16 @@ export default function SimulatorPage() {
 }
 
 function DecisionResult({ decision }: { decision: DecisionDto }) {
-  const allow = decision.effect === "allow";
+  const presentation = decisionPresentation(decision.effect);
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Badge
           variant="outline"
-          className={`text-sm ${allow
-            ? "border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-300"
-            : "border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-300"}`}
+          className={`text-sm ${presentation.className}`}
+          aria-label={presentation.ariaLabel}
         >
-          {allow ? "ALLOW" : "DENY"}
+          {presentation.label}
         </Badge>
         {decision.step_up && (
           <Badge variant="secondary">step-up required</Badge>

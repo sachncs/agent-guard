@@ -78,7 +78,7 @@ export const logResponseSchema = z.object({
     z.object({
       id: z.string(),
       timestamp: z.string(),
-      effect: z.string(),
+      effect: z.enum(["allow", "deny"]),
       policies: z.array(z.string()),
       principal: z.string(),
       action: z.string(),

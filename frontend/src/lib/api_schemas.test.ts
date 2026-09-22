@@ -4,6 +4,7 @@ import {
   authorizeSchema,
   delegateSchema,
   logQuerySchema,
+  logResponseSchema,
   parseJsonBody,
   verifySchema,
 } from "./api_schemas.ts";
@@ -69,6 +70,21 @@ describe("schemas", () => {
   it("clamps log tail size via coercion", () => {
     assert.equal(logQuerySchema.parse({ n: "5" }).n, 5);
     assert.throws(() => logQuerySchema.parse({ n: "1000" }));
+  });
+
+  it("accepts only semantic allow/deny effects in audit records", () => {
+    const record = {
+      id: "record-1",
+      timestamp: "2026-01-01T00:00:00Z",
+      effect: "allow",
+      policies: [],
+      principal: 'User::"alice"',
+      action: 'Action::"read"',
+      resource: 'Document::"one"',
+      reasons: [],
+    };
+    assert.equal(logResponseSchema.parse({ records: [record] }).records[0]?.effect, "allow");
+    assert.throws(() => logResponseSchema.parse({ records: [{ ...record, effect: "warning" }] }));
   });
 
   it("returns 400-style results for bad JSON bodies", async () => {
