@@ -22,6 +22,7 @@ if (failures.length === 0) {
     "path: /healthz",
     "startupProbe",
     "terminationGracePeriodSeconds: 30",
+    "automountServiceAccountToken: false",
     "runAsNonRoot: true",
     "readOnlyRootFilesystem: true",
     "claimName: agentguard-audit",
@@ -53,6 +54,7 @@ if (failures.length === 0) {
     "path: /login",
     "startupProbe",
     "terminationGracePeriodSeconds: 30",
+    "automountServiceAccountToken: false",
     "runAsNonRoot: true",
     "readOnlyRootFilesystem: true",
   ]) if (!console.includes(value)) failures.push(`console.yaml missing ${value}`);

@@ -11,6 +11,7 @@ spec:
     metadata: {labels: {app: agentguard-pdp}}
     spec:
       terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         seccompProfile: {type: RuntimeDefault}

@@ -8,6 +8,7 @@ spec:
     metadata: {labels: {app: agentguard-console}}
     spec:
       terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       affinity:
         podAffinity:
