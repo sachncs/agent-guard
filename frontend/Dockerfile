@@ -3,7 +3,7 @@ WORKDIR /src
 COPY . .
 RUN cargo build --locked --release -p agentguard-cli
 
-FROM node:22-bookworm-slim AS deps
+FROM node:22.14.0-bookworm-slim AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.22.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -18,7 +18,7 @@ COPY . .
 RUN pnpm --filter agentguard build
 RUN pnpm --filter frontend build
 
-FROM node:22-bookworm-slim AS runner
+FROM node:22.14.0-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN groupadd --system --gid 10001 agentguard \
