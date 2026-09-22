@@ -21,7 +21,15 @@ RUN pnpm --filter frontend build
 FROM node:22.19.0-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN groupadd --system --gid 10001 agentguard \
+RUN apt-get update \
+  && apt-get upgrade --yes --no-install-recommends \
+  && rm -rf /var/lib/apt/lists/* \
+  && rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /opt/yarn-v1.22.22 \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm \
+  && groupadd --system --gid 10001 agentguard \
   && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin agentguard
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/standalone ./
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/static ./frontend/.next/static
