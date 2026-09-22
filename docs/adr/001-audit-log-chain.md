@@ -13,18 +13,20 @@ cooperation).
 Every authorization decision is written to a JSONL file. When
 configured with a chain secret, each record carries:
 
-- `prev_hash`: SHA-256(HMAC(root_key, prev_record_canonical_json))
-- `record_hash`: SHA-256(HMAC(root_key, current_record_canonical_json))
-- `chain_id`: UUID v4 (regenerated on file rotation)
+- `prev_hash`: the preceding record's `record_hash` (all zeroes for genesis)
+- `record_hash`: `HMAC-SHA256(root_key, prev_hash || canonical_json(record))`
+- `chain_id`: UUID v4 identifying the logical chain; preserved across file rotation
 
-The chain root is stored in a sidecar file (`.chainid`) so restarts
-continue the same chain identity.
+The chain ID is stored in a sidecar file (`.chainid`) so restarts
+continue the same chain identity. Rotated
+segments remain linked to the preceding segment and are verified together
+with the active file.
 
 ## Consequences
 
 + Records can be verified offline with `agentguard audit verify`.
-+ A single secret is the chain root — easy to rotate (by file
-  rotation, see operations/runbook.md).
++ A single secret is the chain root — simple to operate, but key rotation
+  starts a separate audit chain; see operations/runbook.md.
 + Plain JSONL is also forward-compatible with log shippers (Vector,
   Fluent Bit, etc.).
 - A single secret means the verifier and the signer must share the

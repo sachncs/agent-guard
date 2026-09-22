@@ -96,18 +96,25 @@ agentguard audit verify --audit .audit/decisions.jsonl \
 
 Exit code 0 on a clean chain; non-zero with a per-record error report.
 
-### Roll a chain secret
+### Rotate a chain secret
 
-The chain is single-key. Rotation requires a service-side cache flush
-because old records are signed under the old key:
+The chain is single-key; replacing the secret while reusing the same audit
+path is unsupported. Startup verifies the active file and all matching
+timestamped rotation siblings with the configured key, so keeping old-key
+segments beside the new active path will fail closed. To rotate keys:
 
-1. Start a fresh audit log file with the new key.
-2. Old records remain verifiable with the old key in offline tooling.
-3. New requests land in the new log.
+1. Quiesce audit writes and verify the current chain with the old secret.
+2. Preserve the old active file, its rotation segments, `.chainid` sidecars,
+   and old secret together in a read-only archive directory.
+3. Configure a new audit path and new secret for subsequent records; update
+   the server configuration and restart it.
+4. Verify the new chain with the new secret and retain the old verification
+   command and key under restricted access for the archived evidence.
 
-There is no in-place rotation; this matches tamper-evident audit log
-semantics (you can prove the old chain, but you can't silently edit
-it).
+Keep old-key segments outside the new path's rotation filename pattern.
+Key rotation starts a separate chain; it does not rewrite or re-sign history.
+File-size rotation with the same key preserves one continuous chain and is
+verified across the timestamped segments automatically.
 
 ### Hot reload policy
 
