@@ -15,7 +15,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use cedar_policy::Entities;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 /// Maximum number of evaluations accepted in a single
@@ -100,13 +101,12 @@ pub struct BatchEvaluationResponse {
 /// Shared state for HTTP handlers.
 ///
 /// `authorizer` and `audit` are private with public accessors
-/// (`authorizer()`, `audit()`). The handler closures use
-/// `state.authorizer()` etc. The fields are read-only after the
-/// router is built; the struct is `Clone` so each Axum worker
-/// gets its own `Arc` clones.
+/// (`authorizer()`, `audit()`). The authorizer handle atomically swaps
+/// policy snapshots when the watcher observes a valid change, so in-flight
+/// requests finish against the snapshot they started with.
 #[derive(Clone)]
 pub struct AppState {
-    authorizer: Arc<Authorizer>,
+    authorizer: AuthorizerHandle,
     /// Audit log writer. Every authorization decision is appended
     /// here. `None` only when the operator explicitly opts out (the
     /// CLI `--skip-audit` flag).
@@ -119,9 +119,81 @@ pub struct AppState {
     pub metrics: Arc<Metrics>,
 }
 
+/// Concurrent policy snapshot with an explicit reload boundary.
+///
+/// Requests take an `Arc` snapshot for the duration of one evaluation while
+/// reload builds a complete replacement off to the side. A malformed policy
+/// therefore leaves the last known-good snapshot serving instead of replacing
+/// it with partial state.
+#[derive(Clone)]
+pub struct AuthorizerHandle {
+    current: Arc<RwLock<Arc<Authorizer>>>,
+    store_root: Arc<PathBuf>,
+    cache: Option<CacheConfig>,
+}
+
+impl AuthorizerHandle {
+    fn new(store_root: PathBuf, cache: Option<CacheConfig>) -> Result<Self, String> {
+        let authorizer = Self::load(&store_root, cache.as_ref())?;
+        Ok(Self {
+            current: Arc::new(RwLock::new(Arc::new(authorizer))),
+            store_root: Arc::new(store_root),
+            cache,
+        })
+    }
+
+    fn load(store_root: &PathBuf, cache: Option<&CacheConfig>) -> Result<Authorizer, String> {
+        let store = PolicyStore::open(store_root).map_err(|e| format!("open store: {}", e))?;
+        let mut authorizer = Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?;
+        if let Some(cfg) = cache {
+            authorizer = authorizer.with_cache(cfg.clone());
+        }
+        Ok(authorizer)
+    }
+
+    fn snapshot(&self) -> Arc<Authorizer> {
+        self.current
+            .read()
+            .expect("authorizer snapshot lock poisoned")
+            .clone()
+    }
+
+    /// Replace the serving snapshot only after the complete policy store has
+    /// loaded successfully. The old snapshot remains available on failure.
+    pub fn reload(&self) -> Result<(), String> {
+        let replacement = Arc::new(Self::load(&self.store_root, self.cache.as_ref())?);
+        let mut current = self
+            .current
+            .write()
+            .map_err(|_| "authorizer reload lock poisoned".to_string())?;
+        *current = replacement;
+        Ok(())
+    }
+
+    pub fn authorize(
+        &self,
+        req: &AgentRequest,
+        entities: &Entities,
+    ) -> agentguard_core::Result<agentguard_core::Decision> {
+        self.snapshot().authorize(req, entities)
+    }
+
+    pub fn policy_count(&self) -> usize {
+        self.snapshot().policy_count()
+    }
+
+    pub fn invalidate_cache(&self) {
+        self.snapshot().invalidate_cache();
+    }
+
+    pub fn sweep_stale_cache(&self) -> usize {
+        self.snapshot().sweep_stale_cache()
+    }
+}
+
 impl AppState {
     /// The authorization engine. Cheap to clone (already an `Arc`).
-    pub fn authorizer(&self) -> &Arc<Authorizer> {
+    pub fn authorizer(&self) -> &AuthorizerHandle {
         &self.authorizer
     }
 
@@ -510,12 +582,7 @@ pub async fn build_state_with_cache(
     auth: crate::auth_layer::AuthLayer,
     cache: Option<CacheConfig>,
 ) -> Result<AppState, String> {
-    let store = PolicyStore::open(&store_root).map_err(|e| format!("open store: {}", e))?;
-    let mut authorizer = Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?;
-    if let Some(cfg) = cache {
-        authorizer = authorizer.with_cache(cfg);
-    }
-    let authorizer = Arc::new(authorizer);
+    let authorizer = AuthorizerHandle::new(store_root, cache)?;
     let audit = match audit_log {
         Some(path) => {
             let log = match chain_secret {
@@ -539,6 +606,8 @@ pub async fn build_state_with_cache(
 mod summarize_tests {
     use super::summarize_authorize_error;
     use agentguard_core::Error;
+    use agentguard_core::PolicyStore;
+    use tempfile::tempdir;
 
     #[test]
     fn invalid_context_summary_does_not_leak_message() {
@@ -560,6 +629,30 @@ mod summarize_tests {
             !summary.contains("permit"),
             "summary leaked policy text: {summary}"
         );
+    }
+
+    #[test]
+    fn reload_replaces_snapshot_and_retains_last_good_on_parse_error() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        store
+            .write_policy("initial", "permit(principal, action, resource);")
+            .unwrap();
+
+        let handle = super::AuthorizerHandle::new(dir.path().to_path_buf(), None).unwrap();
+        assert_eq!(handle.policy_count(), 1);
+
+        store
+            .write_policy("second", "forbid(principal, action, resource);")
+            .unwrap();
+        handle.reload().unwrap();
+        assert_eq!(handle.policy_count(), 2);
+
+        store
+            .write_policy("broken", "permit (this is not Cedar")
+            .unwrap();
+        assert!(handle.reload().is_err());
+        assert_eq!(handle.policy_count(), 2);
     }
 
     #[test]

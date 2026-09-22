@@ -237,22 +237,21 @@ pub async fn build_router(
 /// Minimal sink the watcher needs from app state. Implemented by
 /// `AppState` so tests can pass a fake.
 pub trait ReloadSink: Send + Sync + 'static {
-    /// Invalidate the decision cache and bump `policy_reload_total`.
+    /// Replace the policy snapshot and bump `policy_reload_total`.
     fn reload(&self);
 }
 
 impl ReloadSink for crate::authzen::AppState {
     fn reload(&self) {
-        self.authorizer().invalidate_cache();
-        // Drain stale cache entries that the read path no longer
-        // evicts (see DecisionCache::sweep_stale). Cheap when the
-        // cache is empty; bounds the stale-entry accumulation
-        // between policy reloads.
-        let drained = self.authorizer().sweep_stale_cache();
-        if drained > 0 {
-            tracing::debug!(drained, "swept stale cache entries on reload");
+        match self.authorizer().reload() {
+            Ok(()) => {
+                self.metrics().record_policy_reload();
+                tracing::info!("policy snapshot reloaded");
+            }
+            Err(error) => {
+                tracing::error!(%error, "policy reload failed; retaining last known-good snapshot");
+            }
         }
-        self.metrics().record_policy_reload();
     }
 }
 
@@ -295,8 +294,8 @@ pub fn spawn_policy_watcher(
 }
 
 /// Block until SIGINT or SIGTERM is received. SIGHUP is handled
-/// inline: each received SIGHUP triggers an immediate cache
-/// invalidation + reload-counter bump so operators can force a
+/// inline: each received SIGHUP triggers an immediate policy snapshot
+/// reload so operators can force a
 /// refresh without touching the filesystem. The loop is iterative
 /// (no recursion) so multiple SIGHUPs don't grow the stack.
 pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
@@ -343,8 +342,10 @@ pub async fn shutdown_signal_with_sighup(state: Arc<crate::authzen::AppState>) {
                     None => std::future::pending::<()>().await,
                 }
             } => {
-                state.authorizer().invalidate_cache();
-                state.metrics().record_policy_reload();
+                match state.authorizer().reload() {
+                    Ok(()) => state.metrics().record_policy_reload(),
+                    Err(error) => tracing::error!(%error, "policy reload failed after SIGHUP; retaining last known-good snapshot"),
+                }
                 tracing::info!(
                     "SIGHUP received; cache invalidated, awaiting actual shutdown"
                 );
