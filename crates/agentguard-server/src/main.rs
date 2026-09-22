@@ -2,17 +2,8 @@
 
 use agentguard_server::listener::ServerConfig;
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use std::path::PathBuf;
-
-#[derive(Debug, Clone, ValueEnum)]
-#[clap(rename_all = "lower")]
-enum AuthModeArg {
-    /// No authentication (loopback-only deployment).
-    Disabled,
-    /// Bearer-token auth via a JSON API-key store.
-    Apikey,
-}
 
 #[derive(Parser, Debug)]
 #[command(name = "agentguard-server", version, about = "AuthZEN HTTP + gRPC PDP")]
@@ -39,17 +30,12 @@ struct Cli {
 
     /// Authentication mode for `/access/v1/*` endpoints.
     ///
-    /// For `apikey`, also pass `--auth-key-file <path>` to point at
-    /// the JSON API-key store.
-    #[arg(long, env = "AGENTGUARD_AUTH", value_enum, default_value_t = AuthModeArg::Disabled)]
-    auth: AuthModeArg,
+    /// Use `apikey` with `--auth-key-file <path>`, or use the complete
+    /// `apikey:<path>` form through `AGENTGUARD_AUTH`.
+    #[arg(long, env = "AGENTGUARD_AUTH", default_value = "disabled")]
+    auth: String,
 
-    /// Path to the API-key store (when `--auth apikey`).
-    // `into_config` validates that this is present when `--auth apikey`
-    // is selected. A clap `requires` relation cannot express that
-    // value-dependent requirement and previously referenced a missing
-    // argument group, causing every invocation (including `--help`) to
-    // panic during clap's debug assertions.
+    /// Path to the API-key store when `--auth apikey` is used.
     #[arg(long, env = "AGENTGUARD_AUTH_KEY_FILE")]
     auth_key_file: Option<PathBuf>,
 
@@ -60,20 +46,33 @@ struct Cli {
     grpc_listen: String,
 }
 
-impl AuthModeArg {
-    fn into_config(
-        self,
-        key_file: Option<PathBuf>,
-    ) -> anyhow::Result<agentguard_server::AuthConfig> {
-        match self {
-            AuthModeArg::Disabled => Ok(agentguard_server::AuthConfig::Disabled),
-            AuthModeArg::Apikey => {
-                let path = key_file.ok_or_else(|| {
-                    anyhow::anyhow!("--auth apikey requires --auth-key-file <path>")
-                })?;
-                Ok(agentguard_server::AuthConfig::ApiKey { path })
-            }
+fn auth_config(
+    mode: &str,
+    key_file: Option<PathBuf>,
+) -> anyhow::Result<agentguard_server::AuthConfig> {
+    match mode {
+        "disabled" => Ok(agentguard_server::AuthConfig::Disabled),
+        "apikey" => {
+            let path = key_file
+                .ok_or_else(|| anyhow::anyhow!("--auth apikey requires --auth-key-file <path>"))?;
+            Ok(agentguard_server::AuthConfig::ApiKey { path })
         }
+        value if value.starts_with("apikey:") => {
+            if key_file.is_some() {
+                anyhow::bail!("do not combine AGENTGUARD_AUTH=apikey:<path> with --auth-key-file")
+            }
+            let path = value.trim_start_matches("apikey:");
+            if path.is_empty() {
+                anyhow::bail!("AGENTGUARD_AUTH=apikey:<path> requires a non-empty path")
+            }
+            Ok(agentguard_server::AuthConfig::ApiKey {
+                path: PathBuf::from(path),
+            })
+        }
+        value => anyhow::bail!(
+            "--auth must be 'disabled', 'apikey', or 'apikey:<path>'; got {:?}",
+            value
+        ),
     }
 }
 
@@ -90,7 +89,7 @@ async fn main() -> Result<()> {
     let listener = agentguard_server::listener::Listener::parse(&cli.listen)
         .map_err(|e| anyhow::anyhow!("invalid listen '{}': {}", cli.listen, e))?;
 
-    let auth: agentguard_server::AuthConfig = cli.auth.into_config(cli.auth_key_file)?;
+    let auth: agentguard_server::AuthConfig = auth_config(&cli.auth, cli.auth_key_file)?;
 
     let grpc_listener =
         if cli.grpc_listen.is_empty() {
@@ -113,4 +112,34 @@ async fn main() -> Result<()> {
     };
 
     agentguard_server::run(cfg).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auth_config;
+    use agentguard_server::AuthConfig;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn accepts_cli_mode_and_companion_key_file() {
+        assert!(matches!(
+            auth_config("apikey", Some(PathBuf::from("keys.json"))).unwrap(),
+            AuthConfig::ApiKey { path } if path.as_path() == Path::new("keys.json")
+        ));
+    }
+
+    #[test]
+    fn accepts_documented_environment_form() {
+        assert!(matches!(
+            auth_config("apikey:/etc/agentguard/keys.json", None).unwrap(),
+            AuthConfig::ApiKey { path } if path.as_path() == Path::new("/etc/agentguard/keys.json")
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_or_conflicting_key_paths() {
+        assert!(auth_config("apikey", None).is_err());
+        assert!(auth_config("apikey:/keys.json", Some(PathBuf::from("other.json"))).is_err());
+        assert!(auth_config("apikey:", None).is_err());
+    }
 }
