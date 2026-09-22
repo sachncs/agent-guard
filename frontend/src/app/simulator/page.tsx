@@ -33,7 +33,6 @@ import { toast } from "sonner";
 export default function SimulatorPage() {
   const [principalType, setPrincipalType] = useState("user");
   const [uid, setUid] = useState("alice");
-  const [parentUid, setParentUid] = useState("");
   const [tool, setTool] = useState("send_email");
   const [operation, setOperation] = useState("");
   const [resourceType, setResourceType] = useState("Mailbox");
@@ -66,7 +65,6 @@ export default function SimulatorPage() {
         body: JSON.stringify({
           principalType,
           uid,
-          parentUid: parentUid || undefined,
           tool,
           operation: operation || undefined,
           resourceType,
@@ -151,14 +149,14 @@ export default function SimulatorPage() {
               </div>
 
               {principalType === "agent" && (
-                <Field label="Parent UID (optional, marks this a sub-agent)">
-                  <Input
-                    className="font-mono"
-                    placeholder='User::"alice"'
-                    value={parentUid}
-                    onChange={(e) => setParentUid(e.target.value)}
-                  />
-                </Field>
+                <p
+                  role="note"
+                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+                >
+                  The HTTP simulator evaluates a top-level agent only. Parent
+                  relationships are carried by delegation tokens and are
+                  managed in the Delegation workflow.
+                </p>
               )}
 
               <Separator />
