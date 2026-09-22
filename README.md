@@ -96,7 +96,7 @@ pnpm install
 pnpm dev
 ```
 
-**Requirements:** Rust 1.89+, Node.js ≥ 20.9 (26 recommended), pnpm ≥ 9.
+**Requirements:** Rust 1.89+, Node.js ≥ 20.9, and pnpm 11.22.x.
 
 For a pinned clean-checkout setup, run `./scripts/setup.sh`; it also installs
 the separate documentation-site workspace. Console configuration starts from
@@ -332,7 +332,8 @@ node frontend/scripts/e2e.mjs      # Full console e2e (mock IdP/PDP/CLI)
 
 ```bash
 cargo build --workspace --release
-pnpm -r build                      # SDK, frontend, examples
+pnpm check                          # public/docs/site/frontend checks
+pnpm build                          # SDK, frontend, examples, and site
 ```
 
 ## Release
@@ -356,7 +357,7 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 | Crypto | [ed25519-dalek](https://github.com/dalek-cryptography/ed25519-dalek), [hmac](https://github.com/RustCrypto/MACs), [sha2](https://github.com/RustCrypto/hashes) |
 | File watching | [notify](https://github.com/notify-rs/notify) |
 | HTTP client | [reqwest](https://github.com/seanmonstar/reqwest) (rustls) |
-| TypeScript SDK | Node.js ≥ 20.9 (26 recommended), [zod](https://zod.dev), native `fetch` |
+| TypeScript SDK | Node.js ≥ 20.9, [zod](https://zod.dev), native `fetch` |
 | Frontend | Next.js 16, React 19.2, [shadcn/ui](https://ui.shadcn.com), Tailwind CSS v4, [jose](https://github.com/panva/jose) |
 | Build (TypeScript) | [tsc](https://www.typescriptlang.org/), Turbopack |
 
@@ -394,7 +395,7 @@ pnpm build                         # → site/dist/
 pnpm preview                       # local preview
 ```
 
-Local development requires Node.js ≥ 20.9 and pnpm ≥ 10.
+Local development requires Node.js ≥ 20.9 and pnpm 11.22.x.
 
 ## Security
 

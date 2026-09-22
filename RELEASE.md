@@ -10,6 +10,8 @@
       allow, deny, audit append, graceful shutdown, and rollback.
 - [ ] Run `./scripts/k8s-smoke.sh` (or confirm the CI `Kubernetes PDP smoke`
       job) against the exact release image tags.
+- [ ] Run `pnpm check && pnpm build` from the repository root so the SDK,
+      console, examples, and canonical documentation site are checked together.
 - [ ] Review SECURITY.md, CHANGELOG.md, compatibility policy, and migration
       notes.
 - [ ] Tag the release and publish release notes only after all checks pass.
