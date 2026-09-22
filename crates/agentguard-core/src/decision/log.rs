@@ -135,13 +135,12 @@ impl DecisionLog {
                 // subprocess invocation picks up where the last left off.
                 // Corruption is reported (not silently ignored) so the
                 // operator is alerted to tampering or partial writes.
-                if let Err(e) = chain.load_head_from_file(&path) {
-                    tracing::warn!(
-                        error = %e,
-                        path = %path.display(),
-                        "failed to resume audit chain from disk; starting a fresh chain"
-                    );
-                }
+                chain.load_head_from_file(&path).map_err(|e| {
+                    Error::Other(format!(
+                        "refusing to open corrupt chained audit log {}: {e}",
+                        path.display()
+                    ))
+                })?;
                 // Adopt the chain_id from the sidecar file (if present)
                 // BEFORE any append, so that the very first record's
                 // chain_id matches the persisted one and verify_chain
@@ -585,6 +584,21 @@ mod tests {
     }
 
     #[test]
+    fn chained_log_refuses_corrupt_existing_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupt.jsonl");
+        std::fs::write(&path, "{\"not\":\"a chained record\"}\n").unwrap();
+
+        let err = match DecisionLog::open_with_chain(&path, b"root") {
+            Ok(_) => panic!("corrupt chained audit log must be rejected"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("refusing to open corrupt chained audit log"));
+    }
+
+    #[test]
     fn chain_id_persists_across_restart() {
         // Two DecisionLog instances over the same path must observe the
         // same chain id (the persisted id is adopted on the second open).
@@ -651,14 +665,24 @@ mod tests {
             tenant_id: None,
             subject_id: None,
         };
-        // Write 1 plain, 1 chained, 1 plain.
+        // Build one plain and one chained line independently, then combine
+        // them. A chained writer must reject an existing plain tail; mixed
+        // logs remain supported for read-only inspection/export.
         {
             let log = DecisionLog::open(&path).unwrap();
             log.append(&rec).unwrap();
         }
         {
-            let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+            let chained_path = dir.path().join("chained-only.jsonl");
+            let log = DecisionLog::open_with_chain(&chained_path, b"root").unwrap();
             log.append(&rec).unwrap();
+            let chained_line = std::fs::read_to_string(chained_path).unwrap();
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap()
+                .write_all(chained_line.as_bytes())
+                .unwrap();
         }
         {
             let log = DecisionLog::open(&path).unwrap();

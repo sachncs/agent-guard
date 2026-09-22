@@ -43,6 +43,8 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 - /readyz requires a loaded policy store and writable configured audit log.
 - A configured audit append failure returns an error instead of allowing the
   decision to continue silently.
+- A corrupted chained audit tail refuses startup instead of silently beginning
+  a disconnected chain; restore or quarantine the damaged evidence first.
 - The server stops accepting new work on SIGTERM and drains in-flight work;
   the deployment supervisor enforces the hard termination deadline.
 - API-key authentication is required for non-loopback PDP listeners.
