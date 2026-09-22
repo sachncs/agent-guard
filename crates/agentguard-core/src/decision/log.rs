@@ -579,9 +579,9 @@ fn chain_id_sidecar_path(log_path: &Path) -> PathBuf {
     parent.join(format!(".{}.chainid", name))
 }
 
-/// List timestamped rotations for `log_path` in chronological order.
-/// Rotation timestamps are UTC and fixed-width, so lexical ordering is
-/// chronological.
+/// List timestamped rotations for `log_path` in chronological order. Rotation
+/// timestamps are UTC and fixed-width; collision suffixes are sorted
+/// numerically so `-10` follows `-9`, not `-1`.
 fn rotated_logs(log_path: &Path) -> Result<Vec<PathBuf>> {
     let parent = log_path.parent().unwrap_or_else(|| Path::new("."));
     let stem = log_path
@@ -608,8 +608,25 @@ fn rotated_logs(log_path: &Path) -> Result<Vec<PathBuf>> {
             candidates.push(path);
         }
     }
-    candidates.sort();
+    candidates.sort_by_key(|path| rotation_order(path, &prefix));
     Ok(candidates)
+}
+
+fn rotation_order(path: &Path, prefix: &str) -> (String, u32) {
+    let suffix = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.strip_prefix(prefix))
+        .unwrap_or_default();
+    let (timestamp, collision) = suffix
+        .split_once('-')
+        .map_or((suffix, None), |(timestamp, collision)| {
+            (timestamp, Some(collision))
+        });
+    let collision = collision
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
+    (timestamp.to_string(), collision)
 }
 
 fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
@@ -967,6 +984,23 @@ mod tests {
         std::fs::write(&real, b"rotation").unwrap();
 
         assert_eq!(rotated_logs(&active).unwrap(), vec![real]);
+    }
+
+    #[test]
+    fn rotated_log_discovery_orders_collision_suffixes_numerically() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = dir.path().join("decisions.jsonl");
+        let expected = [
+            "decisions-20260923T123456000000Z.jsonl",
+            "decisions-20260923T123456000000Z-2.jsonl",
+            "decisions-20260923T123456000000Z-10.jsonl",
+        ]
+        .map(|name| dir.path().join(name));
+        for path in expected.iter().rev() {
+            std::fs::write(path, b"segment").unwrap();
+        }
+
+        assert_eq!(rotated_logs(&active).unwrap(), expected);
     }
 
     #[test]
