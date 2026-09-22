@@ -258,8 +258,10 @@ function DecisionResult({ decision }: { decision: DecisionDto }) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Badge
-          variant={allow ? "outline" : "destructive"}
-          className={`text-sm ${allow ? "border-green-600 text-green-600 dark:text-green-400" : ""}`}
+          variant="outline"
+          className={`text-sm ${allow
+            ? "border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-300"
+            : "border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-300"}`}
         >
           {allow ? "ALLOW" : "DENY"}
         </Badge>

@@ -2,7 +2,7 @@
  * agentguard guard for Strands Agents (TypeScript).
  *
  * Wraps Strands tools so that every invocation is authorized against an
- * agentguard PDP (`agentguard serve`, OpenID AuthZEN wire format) before
+ * agentguard PDP (`agentguard-server`, OpenID AuthZEN wire format) before
  * the tool callback runs.
  *
  * Semantics are fail-closed: if the PDP cannot be reached, returns a

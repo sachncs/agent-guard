@@ -69,6 +69,8 @@ export default function DashboardPage() {
         setError(null);
         setCliMissing(false);
       } catch {
+        setError("Unable to reach the console backend. Check the PDP and audit configuration.");
+        setCliMissing(false);
         toast.error("Network error while loading the audit log");
       } finally {
         setLoading(false);
@@ -174,12 +176,25 @@ export default function DashboardPage() {
 
       <Card>
         <CardContent className="px-0">
-          {records.length === 0 && !loading && !error ? (
+          {loading && records.length === 0 ? (
+            <p role="status" className="text-muted-foreground px-6 py-10 text-center text-sm">
+              Loading audit decisions…
+            </p>
+          ) : error ? (
+            <div role="alert" className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+              <p className="text-sm font-medium">The audit log is unavailable.</p>
+              {!cliMissing && <p className="max-w-md text-sm text-muted-foreground">{error}</p>}
+              <Button type="button" variant="outline" onClick={() => refetch()} disabled={busy}>
+                Try again
+              </Button>
+            </div>
+          ) : records.length === 0 ? (
             <p className="text-muted-foreground px-6 py-10 text-center text-sm">
               No decisions recorded yet. Run the Policy Simulator to generate
               some.
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -216,6 +231,7 @@ export default function DashboardPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -239,9 +255,9 @@ function StatCard({
         <CardTitle
           className={
             tone === "allow"
-              ? "text-green-600 dark:text-green-400"
+              ? "text-brand-700 dark:text-brand-300"
               : tone === "deny"
-                ? "text-red-600 dark:text-red-400"
+                ? "text-amber-700 dark:text-amber-300"
                 : undefined
           }
         >
@@ -256,8 +272,10 @@ function EffectBadge({ effect }: { effect: string }) {
   const allow = effect === "allow";
   return (
     <Badge
-      variant={allow ? "outline" : "destructive"}
-      className={allow ? "border-green-600 text-green-600 dark:text-green-400" : undefined}
+      variant="outline"
+      className={allow
+        ? "border-brand-600 text-brand-700 dark:border-brand-400 dark:text-brand-300"
+        : "border-amber-600 text-amber-700 dark:border-amber-400 dark:text-amber-300"}
     >
       {effect.toUpperCase()}
     </Badge>

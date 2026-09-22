@@ -23,7 +23,7 @@ cargo install --path crates/agentguard-cli
 agentguard init --name acme
 
 # 2. Start the AuthZEN PDP (default http://127.0.0.1:8443)
-agentguard serve
+agentguard-server
 
 # 3. Give alice permission to search but not to send email
 cat > ~/.config/agentguard/policies/30_strands.cedar <<'EOF'

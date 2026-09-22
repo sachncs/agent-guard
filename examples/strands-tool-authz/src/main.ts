@@ -4,7 +4,7 @@
  *
  * Prereqs (see README.md):
  *   cargo install --path crates/agentguard-cli && agentguard init --name acme
- *   agentguard serve --http 127.0.0.1:8443 &
+ *   agentguard-server --listen tcp://127.0.0.1:8443 &
  *   export AWS_REGION=us-east-1            # Bedrock credentials via your
  *   aws sso login                          # usual AWS credential chain
  *

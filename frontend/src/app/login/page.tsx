@@ -1,5 +1,5 @@
-import { ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Brand } from "@/components/brand";
 
 export default async function LoginPage({
   searchParams,
@@ -13,7 +13,7 @@ export default async function LoginPage({
     <div className="flex min-h-[70vh] items-center justify-center py-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-brand-600 text-white"><ShieldCheck aria-hidden="true" /></div>
+          <Brand compact />
           <CardTitle>Welcome to AgentGuard</CardTitle>
           <CardDescription>Inspect decisions, test policies, and manage scoped delegation.</CardDescription>
         </CardHeader>

@@ -93,8 +93,8 @@ export const adoption = [
   },
   {
     title: "Run as a sidecar",
-    body: "agentguard serve speaks OpenID AuthZEN over HTTP and gRPC. Use it with any language, any gateway, any federation tool that speaks AuthZEN.",
-    cta: "agentguard serve --listen tcp://0.0.0.0:8443",
+    body: "agentguard-server speaks OpenID AuthZEN over HTTP and gRPC. Use it with any language, any gateway, any federation tool that speaks AuthZEN.",
+    cta: "agentguard-server --listen tcp://0.0.0.0:8443",
     href: "https://github.com/sachncs/agent-guard#quick-start",
   },
   {

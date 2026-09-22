@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SessionClaims } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
-import { ShieldCheck } from "lucide-react";
+import { Brand } from "@/components/brand";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -17,10 +17,7 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
   return (
     <header className="console-header border-b">
       <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-5 px-4 sm:px-6">
-        <Link href="/" className="brand-mark shrink-0" aria-label="AgentGuard home">
-          <span className="brand-icon"><ShieldCheck aria-hidden="true" /></span>
-          <span>AgentGuard</span>
-        </Link>
+        <Brand />
         <nav className="flex items-center gap-1 text-sm" aria-label="Console navigation">
           {links.map((link) => {
             const active = pathname === link.href;
@@ -28,6 +25,7 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
               <Link
                 key={link.href}
                 href={link.href}
+                aria-current={active ? "page" : undefined}
                 className={`rounded-md px-3 py-1.5 transition-colors ${
                   active
                     ? "bg-primary text-primary-foreground shadow-sm"

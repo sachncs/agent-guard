@@ -1,4 +1,4 @@
-//! Server entry point: `agentguard serve`.
+//! Server entry point: `agentguard-server`.
 //!
 //! Callers that need to embed the server in their own binary should use
 //! [`run`] directly. The binary in `bin/agentguard-server.rs` parses

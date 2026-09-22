@@ -8,7 +8,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 
 const snippets = {
   typescript: {

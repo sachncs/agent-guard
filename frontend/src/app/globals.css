@@ -138,6 +138,5 @@
 @layer components {
   .console-header { background: color-mix(in srgb, var(--background) 92%, white); backdrop-filter: blur(12px); }
   .brand-mark { @apply flex items-center gap-2.5 text-sm font-semibold tracking-tight; }
-  .brand-icon { @apply flex size-8 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm; }
-  .brand-icon svg { @apply size-4.5; }
+  .brand-icon { @apply size-8 rounded-xl shadow-sm; }
 }

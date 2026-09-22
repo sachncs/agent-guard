@@ -240,7 +240,7 @@ async function main() {
   };
 
   console.log("starting production build…");
-  const build = spawnSync("pnpm", ["exec", "next", "build"], { cwd: process.cwd(), stdio: "inherit" });
+  const build = spawnSync("pnpm", ["exec", "next", "build", "--webpack"], { cwd: process.cwd(), stdio: "inherit" });
   assert.equal(build.status, 0, "next build succeeds");
 
   const app = spawn("pnpm", ["exec", "next", "start", "-p", String(FRONTEND_PORT), "-H", "127.0.0.1"], {

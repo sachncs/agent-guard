@@ -3,7 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 /**
- * HTTP client for the agentguard AuthZEN PDP (`agentguard serve`).
+ * HTTP client for the agentguard AuthZEN PDP (`agentguard-server`).
  *
  * The console evaluates simulator requests here instead of spawning the
  * CLI per request; every decision is audited by the PDP itself.

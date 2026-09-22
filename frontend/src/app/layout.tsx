@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Toaster } from "@/components/ui/sonner";
 import { ConsoleNav } from "@/components/console_nav";
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
   icons: { icon: "/agentguard-mark.svg" },
 };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
   let user: SessionClaims | null = null;
   const cfg = authConfig();
   if (cfg.valid) {

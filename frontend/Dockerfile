@@ -8,6 +8,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS builder
 COPY . .
+# The console's CLI-backed routes import the workspace SDK. Build it in the
+# image so a clean Docker context never depends on a developer's dist/ folder.
+RUN pnpm --filter agentguard build
 RUN pnpm --filter frontend build
 
 FROM node:22-bookworm-slim AS runner

@@ -2,7 +2,9 @@
 
 AgentGuard's supported reference deployment is Docker on Kubernetes. The
 repository ships a server image, a console image, and a minimal Kustomize
-base under deploy/k8s.
+base under deploy/k8s. See the detailed [Kubernetes operations](kubernetes.md),
+[console deployment](console.md), and [incident response](incident-response.md)
+guides alongside this overview.
 
 ## Before deploying
 
@@ -21,17 +23,19 @@ kubectl -n agentguard rollout status deploy/agentguard-console
 
 The supplied manifests intentionally use one PDP and one console replica.
 Audit persistence is a ReadWriteOnce volume. The console uses an in-memory
-limiter in development; production deployments must configure the Redis-
-compatible rate-limit store documented in frontend/README.md before scaling
-the console horizontally. PDP audit storage still requires a coordinated
-append-only service or partitioning strategy for multi-replica operation.
+limiter only when Redis-compatible settings are absent; production deployments
+must configure the shared store documented in frontend/README.md before
+scaling the console horizontally. Multi-replica PDP operation is outside the
+shipped contract until a coordinated append-only audit backend is deployed.
 
 ## Upgrade and rollback
 
 Build and tag both images with the same release version. Apply the manifests,
 wait for readiness, then run an allow, deny, and audit verification smoke
 test. Roll back with kubectl rollout undo if readiness or audit checks fail.
-Keep the policy ConfigMap and audit volume across application upgrades.
+Keep the policy ConfigMap, secrets, and audit volume across application
+upgrades. The full smoke-test, backup, and rollback procedure is in
+[Kubernetes operations](kubernetes.md).
 
 ## Operational guarantees
 
