@@ -112,8 +112,9 @@ it).
 ### Hot reload policy
 
 The watcher polls `AGENTGUARD_STORE` every 500 ms. On any `*.cedar`
-file change, the cache is invalidated and `policy_reload_total`
-incremented. Verify with `agentguard validate --store <path>`.
+file change, a complete replacement authorizer is parsed and atomically
+swapped only when valid; `policy_reload_total` increments on success.
+Verify changes first with `agentguard validate --store <path>`.
 
 `SIGHUP` (Unix only) forces an immediate reload without touching the
 filesystem.
@@ -150,11 +151,11 @@ failure. Investigate immediately; the operator should:
 
 ### Policy reload fails
 
-A bad policy file triggers `tracing::warn!` but the server keeps
-running with the previous policy set. The cache is invalidated on
-each reload attempt; new requests will evaluate against the new
-(possibly failing) policy. If cedar rejects the new policy outright
-every request returns 500; check `agentguard validate --store <path>`.
+A bad policy file triggers a reload error but the server keeps running
+with the previous last-known-good policy snapshot. A valid policy file
+is parsed completely before the snapshot is atomically replaced; in-flight
+requests finish against their existing snapshot. Validate changes with
+`agentguard validate --store <path>` and monitor the policy reload metric.
 
 ### OTLP collector unreachable
 

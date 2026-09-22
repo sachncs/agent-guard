@@ -76,9 +76,10 @@ All `/access/v1/*` endpoints are protected by `auth_layer`:
   JSON `ApiKeyStore`. Argon2id is the verification path.
 
 A `PolicyWatcher` polls `store_root` every 500 ms; on each event the
-decision cache is invalidated and `policy_reload_total` is bumped. The
-server also installs a SIGHUP handler (Unix) so operators can force a
-refresh without touching the filesystem.
+complete authorizer snapshots are atomically replaced and
+`policy_reload_total` is bumped on success. The server also installs a
+SIGHUP handler (Unix) so operators can force a refresh without touching the
+filesystem; malformed edits retain the last-known-good snapshot.
 
 Graceful shutdown is bounded at 30 s (axum's default waits forever for
 in-flight requests). After SIGTERM/SIGINT the server stops accepting new
