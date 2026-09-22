@@ -33,7 +33,7 @@ const web_search = guarded(guard, {
   description: "Search the web and return the top results as text.",
   inputSchema: z.object({ query: z.string().describe("Search query") }),
   callback: async ({ query }) =>
-    `(demo) Top results for "${query}": agent-guard docs, AuthZEN spec.`,
+    `(demo) Top results for "${query}": AgentGuard docs, AuthZEN spec.`,
 });
 
 const send_email = guarded(guard, {

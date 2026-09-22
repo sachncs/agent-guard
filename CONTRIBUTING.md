@@ -1,6 +1,6 @@
-# Contributing to agent-guard
+# Contributing to AgentGuard
 
-Thanks for your interest in agent-guard. This document explains how to set up
+Thanks for your interest in AgentGuard. This document explains how to set up
 the project locally, run the test suite, and submit a pull request.
 
 ## Reporting issues

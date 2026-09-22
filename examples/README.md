@@ -1,6 +1,6 @@
 # Examples
 
-Working examples that exercise agent-guard end-to-end.
+Working examples that exercise AgentGuard end-to-end.
 
 | Example | Language | Demonstrates |
 | ------- | -------- | ------------ |

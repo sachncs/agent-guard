@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 
-const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "BRAND.md", "frontend/README.md"];
+const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "BRAND.md", "frontend/README.md", "examples/README.md", "examples/strands-tool-authz/src/main.ts"];
 const forbidden = ["agentguard_console", "agentguard_ console"];
+const forbiddenProductCopy = ["agent-guard docs", "Contributing to agent-guard", "interest in agent-guard", "agent-guard and its users"];
 const failures = [];
 
 function requireFile(file) {
@@ -17,6 +18,9 @@ for (const file of files) {
   const text = readFileSync(file, "utf8");
   for (const value of forbidden) {
     if (text.includes(value)) failures.push(file + ": stale public string " + value);
+  }
+  for (const value of forbiddenProductCopy) {
+    if (text.includes(value)) failures.push(file + ": stale product copy " + value);
   }
 }
 

@@ -22,4 +22,4 @@ for this repository.
 - Triage and severity assessment within **7 business days**.
 - Fix timeline negotiated based on severity and exploitability.
 
-Thank you for helping keep `agent-guard` and its users safe.
+Thank you for helping keep AgentGuard and its users safe.
