@@ -98,9 +98,9 @@ export const config = {
 function notConfiguredPage(reason: string): string {
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>agentguard console</title></head>
+<head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>AgentGuard Console</title></head>
 <body style="font-family: ui-monospace, monospace; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
-<h1>agentguard_console</h1>
+<h1>AgentGuard Console</h1>
 <p><strong>Console authentication is not configured.</strong></p>
 <p>${reason}</p>
 <p>See frontend/README.md for the environment variable contract.</p>

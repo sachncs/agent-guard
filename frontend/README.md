@@ -1,4 +1,4 @@
-# agentguard console
+# AgentGuard Console
 
 Admin console for [agentguard](../README.md) — Cedar-powered authorization
 for AI agents. Built with **Next.js 16**, **React 19**, **Tailwind CSS v4**
@@ -91,10 +91,11 @@ OIDC round trip (PKCE + nonce), viewer/admin RBAC, PDP-backed simulator
 decisions, validation errors, rate limiting, logout, and the 503 fail-closed
 mode.
 
-## Honest limitations
+## Production boundary
 
-- **Single node**: the rate limiter and session state are in-memory; run one
-  replica behind a reverse proxy or swap in a shared store before scaling.
+- **Single node baseline**: sessions are signed stateless cookies, but the
+  rate limiter is process-local. Run one console replica unless you provide a
+  shared rate-limit adapter at the edge.
 - **Per-request CLI spawns** for log/delegate/verify (no HTTP surface exists
   server-side yet); the simulator already avoids this via the PDP API.
 - **TLS termination** is expected at your reverse proxy; set

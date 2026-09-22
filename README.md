@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">agentguard</h1>
+  <h1 align="center">AgentGuard</h1>
   <p align="center">Cedar-powered authorization for AI agents — per-tool-call decisions, tamper-evident audit, scoped delegation.</p>
   <p align="center">
     <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
@@ -10,9 +10,9 @@
   </p>
 </p>
 
-**agentguard wraps [Cedar](https://www.cedarpolicy.com) — a policy language with formal verification support — and adds the agent-specific, enterprise-specific primitives you need.**
+**AgentGuard wraps [Cedar](https://www.cedarpolicy.com) and puts a verifiable authorization boundary between agent intent and tool execution.**
 
-Every tool call is an explicit authorization decision. Every decision is tamper-evident, traced end-to-end, and bound to a short-lived identity: tokens are JWS-signed, policies are versioned and hot-reloaded, and the engine speaks the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
+Every tool call is an explicit authorization decision. Every decision can be recorded in a tamper-evident audit chain and bound to a short-lived identity. The engine speaks the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
 
 ## How It Works
 
@@ -33,8 +33,8 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 - **Scoped delegation** — parent agent gives a sub-agent a *scoped subset* of permissions, time-boxed, sender-constrained (DPoP), revocable
 - **Schema-validated policies** — security teams write Cedar, not imperative code; validated at authoring time
 - **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE; RFC 8725 BCP crypto, RFC 8693 delegation, no proprietary protocols
-- **OpenTelemetry-native observability** — every decision is a span with `authz.*` attributes and a metric
-- **Hot reload + rollback + blast radius** — push policies without downtime; see what would break before you push
+- **Observable decisions** — Prometheus metrics, trace correlation, and pluggable telemetry sinks
+- **Policy operations** — validate, diff, replay, and analyze blast radius before a restart
 - **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP
 - **Local-first** — files in `.agentguard/` are the source of truth; `git diff` your policies; run in-process or as a sidecar
 - **Admin console** — Next.js dashboard with OIDC sign-in, policy simulator, delegation management, audit browser
@@ -52,7 +52,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` (TypeScript SDK) | In-process bindings via the CLI, JWT/DPoP passthrough, step-up auth |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete change list. The implementation plan lives in [`stages/`](stages/README.md).
+See [CHANGELOG.md](CHANGELOG.md) for the change list. Production deployment is documented in [docs/production.md](docs/production.md), compatibility in [docs/compatibility.md](docs/compatibility.md), and branding in [BRAND.md](BRAND.md).
 
 ## Surfaces
 

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: agentguard-console}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: agentguard-console}}
+  template:
+    metadata: {labels: {app: agentguard-console}}
+    spec:
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: console
+          image: agentguard-console:0.2.0
+          ports: [{name: http, containerPort: 3000}]
+          envFrom: [{secretRef: {name: agentguard-console-env}}]
+          env: [{name: AGENTGUARD_PDP_URL, value: http://agentguard-pdp:8443}]
+          readinessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 20}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agentguard-console}
+spec:
+  selector: {app: agentguard-console}
+  ports: [{name: http, port: 3000, targetPort: http}]

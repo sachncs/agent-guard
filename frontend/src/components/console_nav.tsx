@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { SessionClaims } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
+import { ShieldCheck } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -14,12 +15,13 @@ const links = [
 export function ConsoleNav({ user }: { user: SessionClaims | null }) {
   const pathname = usePathname();
   return (
-    <header className="border-b">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-8 px-6">
-        <Link href="/" className="font-mono text-sm font-bold tracking-tight">
-          agentguard<span className="text-muted-foreground">_console</span>
+    <header className="console-header border-b">
+      <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-5 px-4 sm:px-6">
+        <Link href="/" className="brand-mark shrink-0" aria-label="AgentGuard home">
+          <span className="brand-icon"><ShieldCheck aria-hidden="true" /></span>
+          <span>AgentGuard</span>
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
+        <nav className="flex items-center gap-1 text-sm" aria-label="Console navigation">
           {links.map((link) => {
             const active = pathname === link.href;
             return (
@@ -28,8 +30,8 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
                 href={link.href}
                 className={`rounded-md px-3 py-1.5 transition-colors ${
                   active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
                 {link.label}
@@ -39,10 +41,10 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
         </nav>
         {user && (
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">
+            <span className="hidden text-muted-foreground md:inline">
               {user.email ?? user.name ?? user.sub}
             </span>
-            {user.admin && <Badge variant="default">admin</Badge>}
+            <Badge variant={user.admin ? "default" : "outline"}>{user.admin ? "admin" : "viewer"}</Badge>
             <a
               href="/api/auth/logout"
               className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

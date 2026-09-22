@@ -16,9 +16,15 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "agentguard console",
+  title: {
+    default: "AgentGuard Console",
+    template: "%s · AgentGuard",
+  },
   description:
-    "Cedar-powered authorization for AI agents — dashboard, policy simulator and delegation console",
+    "A guided control plane for inspecting AgentGuard authorization decisions, policies, and delegation.",
+  applicationName: "AgentGuard",
+  generator: "AgentGuard",
+  icons: { icon: "/agentguard-mark.svg" },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

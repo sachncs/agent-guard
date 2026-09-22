@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import Link from "next/link";
 import type { LogRecord } from "@/lib/api_types";
 import {
   errorResponseSchema,
@@ -107,11 +108,19 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-brand-700">Control plane</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Authorization overview</h1>
         <p className="text-muted-foreground text-sm">
-          Hash-chained audit log — every authorization decision, newest first.
+          Review the latest decisions and verify that every tool call crosses a policy boundary.
         </p>
       </div>
+
+      <Card className="border-brand-100 bg-brand-50/70">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="font-medium">New to AgentGuard?</p><p className="mt-1 text-sm text-muted-foreground">Run a safe authorization request in the simulator, then inspect its audit record here.</p></div>
+          <Button asChild><Link href="/simulator">Open simulator</Link></Button>
+        </CardContent>
+      </Card>
 
       {cliMissing && error && <CliAlert message={error} />}
 

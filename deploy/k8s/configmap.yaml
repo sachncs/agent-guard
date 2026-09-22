@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentguard-policies
+data:
+  schema.cedarschema: |
+    // Mount your reviewed schema here before deploying.
+  20_agents.cedar: |
+    // Mount your reviewed policies here before deploying.

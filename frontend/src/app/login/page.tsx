@@ -1,3 +1,4 @@
+import { ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function LoginPage({
@@ -9,13 +10,12 @@ export default async function LoginPage({
   const error = typeof sp.error === "string" ? sp.error : undefined;
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="flex min-h-[70vh] items-center justify-center py-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="font-mono">
-            agentguard<span className="text-muted-foreground">_console</span>
-          </CardTitle>
-          <CardDescription>Sign in to manage agent authorization.</CardDescription>
+          <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-brand-600 text-white"><ShieldCheck aria-hidden="true" /></div>
+          <CardTitle>Welcome to AgentGuard</CardTitle>
+          <CardDescription>Inspect decisions, test policies, and manage scoped delegation.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -29,7 +29,7 @@ export default async function LoginPage({
           >
             Sign in with SSO
           </a>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             Authentication uses OpenID Connect. Admin actions (delegation) require a
             configured admin claim.
           </p>

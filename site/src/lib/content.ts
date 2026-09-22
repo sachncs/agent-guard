@@ -1,6 +1,6 @@
 export const site = {
-  name: "agent-guard",
-  title: "agent-guard — Cedar-powered authorization for AI agents",
+  name: "AgentGuard",
+  title: "AgentGuard — Cedar-powered authorization for AI agents",
   description:
     "Per-tool-call authorization, tamper-evident audit, and scoped delegation for AI agents. Cedar policies, AuthZEN-compatible HTTP PDP, JWS-signed tokens, OTel-native observability.",
   url: "https://sachncs.github.io/agent-guard",

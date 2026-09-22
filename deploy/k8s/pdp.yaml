@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentguard-pdp
+  labels: {app: agentguard-pdp}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: agentguard-pdp}}
+  template:
+    metadata: {labels: {app: agentguard-pdp}}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: pdp
+          image: agentguard-server:0.2.0
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8443}]
+          env:
+            - {name: AGENTGUARD_AUTH, value: apikey}
+            - {name: AGENTGUARD_AUTH_KEY_FILE, value: /etc/agentguard/keys/keys.json}
+            - {name: AGENTGUARD_CHAIN_SECRET, value: /etc/agentguard/secrets/chain-secret}
+          volumeMounts:
+            - {name: policies, mountPath: /var/lib/agentguard/policies, readOnly: true}
+            - {name: audit, mountPath: /var/lib/agentguard/audit}
+            - {name: secrets, mountPath: /etc/agentguard/secrets, readOnly: true}
+            - {name: keys, mountPath: /etc/agentguard/keys, readOnly: true}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 1, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - {name: policies, configMap: {name: agentguard-policies}}
+        - {name: audit, persistentVolumeClaim: {claimName: agentguard-audit}}
+        - {name: secrets, secret: {secretName: agentguard-secrets}}
+        - {name: keys, secret: {secretName: agentguard-api-keys}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agentguard-pdp}
+spec:
+  selector: {app: agentguard-pdp}
+  ports: [{name: http, port: 8443, targetPort: http}]

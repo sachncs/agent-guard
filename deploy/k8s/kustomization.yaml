@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentguard
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pdp.yaml
+  - console.yaml
+  - storage.yaml
