@@ -350,15 +350,21 @@ impl DecisionLog {
         self.rotate_if_needed()?;
         match &self.mode {
             LogMode::Plain(file) => {
-                let line = serde_json::to_string(rec)?;
+                let mut line = serde_json::to_vec(rec)?;
+                line.push(b'\n');
                 let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(f) = guard.as_mut() {
-                    writeln!(f, "{}", line)?;
-                    f.flush()?;
-                    // ponytail: parity with the Chained arm. A power
-                    // loss between flush and the kernel flushing the
-                    // page cache would silently lose records.
-                    f.sync_all()?;
+                let Some(f) = guard.as_mut() else {
+                    return Err(Error::Io(
+                        "audit log is unavailable after a prior storage failure".into(),
+                    ));
+                };
+                let write_result = write_line_durably(f, &line);
+                if let Err(error) = write_result {
+                    // A failed write may have left a partial JSONL record.
+                    // Poison this handle so no later caller can mistake a
+                    // missing or ambiguous record for a successful append.
+                    *guard = None;
+                    return Err(Error::from(error));
                 }
             }
             LogMode::Chained { file, chain } => {
@@ -370,31 +376,34 @@ impl DecisionLog {
                 // use so subsequent restarts adopt the same id.
                 let _ = write_chain_id_sidecar(&self.chain_id_path, chain_id);
                 let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(f) = guard.as_mut() {
-                    // Atomic: chain head advances only on a successful
-                    // write_all + sync_all. On failure, the chain
-                    // stays at the previous head and the next caller
-                    // retries from the same state.
-                    chain.try_append_with_io(
-                        &canonical,
-                        |prev, new_hash| -> std::io::Result<()> {
-                            let chained = ChainedRecord {
-                                prev_hash: hex::encode(prev),
-                                record_hash: hex::encode(new_hash),
-                                chain_id,
-                                record: rec.clone(),
-                            };
-                            let line_with_newline =
-                                format!("{}\n", serde_json::to_string(&chained)?);
-                            // Write directly to the File; the kernel
-                            // page cache is the buffering layer. A
-                            // per-call BufWriter::new allocation was
-                            // dropped (50-80 ns saved per append).
-                            f.write_all(line_with_newline.as_bytes())?;
-                            f.sync_all()?;
-                            Ok(())
-                        },
-                    )?;
+                let Some(f) = guard.as_mut() else {
+                    return Err(Error::Io(
+                        "audit log is unavailable after a prior storage failure".into(),
+                    ));
+                };
+                // Atomic: chain head advances only on a successful
+                // write_all + sync_all. A failed or uncertain write poisons
+                // this handle, preventing later appends from silently
+                // diverging from the on-disk chain.
+                if let Err(error) =
+                    chain.try_append_with_io(&canonical, |prev, new_hash| -> std::io::Result<()> {
+                        let chained = ChainedRecord {
+                            prev_hash: hex::encode(prev),
+                            record_hash: hex::encode(new_hash),
+                            chain_id,
+                            record: rec.clone(),
+                        };
+                        let mut line_with_newline = serde_json::to_vec(&chained)?;
+                        line_with_newline.push(b'\n');
+                        // Write directly to the File; the kernel
+                        // page cache is the buffering layer. A
+                        // per-call BufWriter::new allocation was
+                        // dropped (50-80 ns saved per append).
+                        write_line_durably(f, &line_with_newline)
+                    })
+                {
+                    *guard = None;
+                    return Err(Error::from(error));
                 }
             }
         }
@@ -633,6 +642,24 @@ fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
     Ok(rotated_logs(log_path)?.pop())
 }
 
+/// Append one complete JSONL record and durably persist it. If a write or
+/// sync fails after a partial append, truncate back to the previous boundary
+/// before returning the original error. Callers poison the handle regardless,
+/// since a failed fsync leaves durability uncertain even after rollback.
+fn write_line_durably(file: &mut File, line: &[u8]) -> std::io::Result<()> {
+    let original_len = file.metadata()?.len();
+    if let Err(write_error) = file.write_all(line).and_then(|()| file.sync_all()) {
+        return match file.set_len(original_len).and_then(|()| file.sync_all()) {
+            Ok(()) => Err(write_error),
+            Err(rollback_error) => Err(std::io::Error::new(
+                rollback_error.kind(),
+                format!("audit append failed ({write_error}); rollback failed ({rollback_error})"),
+            )),
+        };
+    }
+    Ok(())
+}
+
 fn is_rotation_filename(suffix: &str) -> bool {
     let timestamp = suffix
         .split_once('-')
@@ -824,6 +851,52 @@ mod tests {
         // Verify the chain end-to-end.
         let id = DecisionLog::verify_chain(&path, b"root").unwrap();
         assert_eq!(id, log.chain_id().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_audit_write_poisoning_is_reported_not_silently_dropped() {
+        let full = Path::new("/dev/full");
+        if !full.exists() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let rec = DecisionRecord {
+            id: "storage-failure".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+
+        for chained in [false, true] {
+            let path = dir.path().join(format!("full-{chained}.jsonl"));
+            std::os::unix::fs::symlink(full, &path).unwrap();
+            let log = if chained {
+                DecisionLog::open_with_chain(&path, b"test-root").unwrap()
+            } else {
+                DecisionLog::open(&path).unwrap()
+            };
+
+            assert!(
+                log.append(&rec).is_err(),
+                "first storage failure must surface"
+            );
+            let retry = log.append(&rec).unwrap_err();
+            assert!(retry
+                .to_string()
+                .contains("unavailable after a prior storage failure"));
+        }
     }
 
     /// T5: read_all handles a mixed-format log (plain + chained
