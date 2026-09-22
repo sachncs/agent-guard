@@ -33,7 +33,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 - **Tamper-evident audit trail** — hash-chained decision log, exportable to your SIEM in CEF/LEEF/ECS/JSONL
 - **Scoped delegation** — parent agent gives a sub-agent a *scoped subset* of permissions, time-boxed, and sender-constrained (DPoP)
 - **Schema-validated policies** — security teams write Cedar, not imperative code; validated at authoring time
-- **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE; RFC 8725 BCP crypto, RFC 8693 delegation, no proprietary protocols
+- **Composable identity primitives** — API-key authentication in the standalone PDP plus library JWT, OIDC, DPoP, and SPIFFE validators; RFC 8725 BCP crypto and RFC 8693-style delegation without proprietary protocols
 - **Observable decisions** — Prometheus metrics, trace correlation, and pluggable telemetry sinks
 - **Policy operations** — validate, diff, replay, analyze blast radius, and atomically reload standalone server snapshots
 - **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP
@@ -47,7 +47,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard-core` (Rust) | Type-safe wrappers, decision cache, hash-chained audit log, TTL primitives |
 | `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `delegate`, `verify`, `audit`, `schema`, `log`, `gen`, `doctor` |
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
-| `agentguard-auth` (Rust) | JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, jti replay protection, RFC 8693 token exchange |
+| `agentguard-auth` (Rust) | Library validators for JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, and jti replay protection; not standalone PDP auth modes |
 | `agentguard-policy` (Rust) | Versioned bundles, policy change notifications, diff, blast radius, dry-run |
 | `agentguard-server` (Rust) | Standalone AuthZEN HTTP PDP, sidecar mode |
 | `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
@@ -279,7 +279,7 @@ agent-guard/
 ├── examples/                    # Working examples (TS + Rust embedder)
 ├── schemas/                     # Cedar schema fragments
 ├── docs/                        # Architecture & API documentation
-└── stages/                      # Stage-by-stage implementation plan
+└── docs/internal/stages/        # Internal stage-by-stage implementation notes
 ```
 
 ## Development

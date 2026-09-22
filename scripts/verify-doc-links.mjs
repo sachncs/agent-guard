@@ -48,10 +48,17 @@ const requiredSiteRoutes = [
   "audit.astro",
   "configuration.astro",
   "operations.astro",
+  "policy-authoring.astro",
+  "local-development.astro",
+  "reference.astro",
+  "backups.astro",
+  "upgrades.astro",
+  "troubleshooting.astro",
   "incident-response.astro",
   "security.astro",
   "compatibility.astro",
   "branding.astro",
+  "oss-governance.astro",
 ];
 for (const route of requiredSiteRoutes) {
   if (!existsSync(resolve(root, "site/src/pages/docs", route))) {
