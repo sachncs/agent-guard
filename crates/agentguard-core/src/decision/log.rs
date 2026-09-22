@@ -135,14 +135,25 @@ impl DecisionLog {
             }),
             Some(key) => {
                 let chain = HashChain::new(&key);
-                // Resume the chain from the file's last record, so each
-                // subprocess invocation picks up where the last left off.
+                // Resume from the active file's last record. A crash can
+                // happen after rotation renamed the old file but before the
+                // next append populated the new active file; in that case,
+                // recover from the newest rotated segment instead of
+                // silently starting a disconnected chain.
+                let head_path = if std::fs::metadata(&path)
+                    .map(|metadata| metadata.len() == 0)
+                    .unwrap_or(true)
+                {
+                    latest_rotated_log(&path)?.unwrap_or_else(|| path.clone())
+                } else {
+                    path.clone()
+                };
                 // Corruption is reported (not silently ignored) so the
                 // operator is alerted to tampering or partial writes.
-                chain.load_head_from_file(&path).map_err(|e| {
+                chain.load_head_from_file(&head_path).map_err(|e| {
                     Error::Other(format!(
                         "refusing to open corrupt chained audit log {}: {e}",
-                        path.display()
+                        head_path.display()
                     ))
                 })?;
                 // Adopt the chain_id from the sidecar file (if present)
@@ -152,7 +163,12 @@ impl DecisionLog {
                 // eagerly persist a freshly generated id so subsequent
                 // restarts converge on the same id even before the
                 // first append lands.
-                if let Some(id) = read_chain_id_sidecar(&chain_id_path) {
+                let prior_sidecar = if head_path == path {
+                    chain_id_path.clone()
+                } else {
+                    chain_id_sidecar_path(&head_path)
+                };
+                if let Some(id) = read_chain_id_sidecar(&prior_sidecar) {
                     chain.adopt_id(id);
                 } else {
                     let id = chain.id();
@@ -528,6 +544,37 @@ fn chain_id_sidecar_path(log_path: &Path) -> PathBuf {
     parent.join(format!(".{}.chainid", name))
 }
 
+/// Find the newest timestamped rotation for `log_path`. Rotation timestamps
+/// are UTC and fixed-width, so lexical ordering is chronological.
+fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
+    let parent = log_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = log_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("decisions");
+    let extension = log_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("jsonl");
+    let prefix = format!("{stem}-");
+    let mut candidates = Vec::new();
+    for entry in std::fs::read_dir(parent)? {
+        let entry = entry?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if name.starts_with(&prefix)
+            && path.extension().and_then(|s| s.to_str()) == Some(extension)
+            && entry.file_type()?.is_file()
+        {
+            candidates.push(path);
+        }
+    }
+    candidates.sort();
+    Ok(candidates.pop())
+}
+
 /// Best-effort read of the persisted chain id. Returns `None` if the
 /// file is missing, malformed, or unreadable; callers treat all three
 /// as "no prior chain" and fall back to a freshly generated id.
@@ -800,6 +847,64 @@ mod tests {
             dir.path().display()
         );
         assert!(path.exists(), "active file must still be open");
+    }
+
+    #[test]
+    fn chained_rotation_recovers_head_after_restart_before_next_append() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chained.jsonl");
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+
+        let first_id = {
+            let log = DecisionLog::open_with_rotation(
+                &path,
+                Some(b"root"),
+                RotationConfig {
+                    max_bytes: u64::MAX,
+                },
+            )
+            .unwrap();
+            log.append(&rec).unwrap();
+            let id = log.chain_id().unwrap();
+            log.rotate().unwrap();
+            id
+        };
+
+        // The process has restarted while the active file is still empty.
+        let log = DecisionLog::open_with_rotation(
+            &path,
+            Some(b"root"),
+            RotationConfig {
+                max_bytes: u64::MAX,
+            },
+        )
+        .unwrap();
+        assert_eq!(log.chain_id().unwrap(), first_id);
+        log.append(&rec).unwrap();
+
+        let rotated = latest_rotated_log(&path).unwrap().unwrap();
+        let before = DecisionLog::read_all_chained(&rotated).unwrap();
+        let after = DecisionLog::read_all_chained(&path).unwrap();
+        assert_eq!(before.len(), 1);
+        assert_eq!(after.len(), 1);
+        assert_eq!(before[0].chain_id, after[0].chain_id);
+        assert_eq!(before[0].record_hash, after[0].prev_hash);
     }
 
     #[test]

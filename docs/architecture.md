@@ -130,11 +130,14 @@ The log is **append-only** with one of two modes:
   `verify_chain` confirms no record was inserted, removed, or
   reordered. Verified offline with `agentguard audit verify`.
 
-On startup the chain head is rehydrated from disk; corruption is
-reported via `tracing::warn!` rather than silently resetting. The
-chain head advance and the file `write_all + sync_all` happen under a
-single lock, so a crash leaves the on-disk file at the exact head
-recorded (no off-by-one).
+On startup the chain head is rehydrated from the active log, or from the
+newest rotated segment if a crash happened after rotation and before the
+first append to the new active file. A malformed tail refuses startup rather
+than silently resetting. Each append serializes the in-process file write and
+chain-head update under locks and calls `write_all + sync_all` before advancing
+the in-memory head. This does not coordinate multiple server processes sharing
+one audit file; the supported Kubernetes deployment keeps a single PDP
+replica.
 
 `fsync` is called on every append in both modes — a power loss
 between flush and the kernel page-cache flush cannot lose records.
