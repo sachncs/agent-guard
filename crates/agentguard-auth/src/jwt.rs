@@ -47,7 +47,7 @@ impl JwtConfig {
     }
 
     /// Replace the accepted-algorithm whitelist. Pass only algorithms
-    /// that [`verify_signature`] actually supports today; the set of
+    /// that the verifier actually supports today; the set of
     /// supported algorithms is exposed via
     /// [`crate::SUPPORTED_ALGORITHMS`].
     ///

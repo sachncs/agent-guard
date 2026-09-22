@@ -2,7 +2,7 @@
 //!
 //! Wraps the `notify` crate to provide a debounced stream of
 //! filesystem events under a watched directory. The caller drains
-//! events via [`Watcher::events`] and decides what to do (typically
+//! events via [`PolicyWatcher::events`] and decides what to do (typically
 //! call `PolicyStore::load_policies` to re-read the disk state).
 //!
 //! # Debouncing

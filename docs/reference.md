@@ -15,14 +15,20 @@ this repository are the compatibility fixtures.
 | gRPC/protobuf | [`agentguard.proto`](../crates/agentguard-server/proto/agentguard.proto) | repository-defined loopback transport |
 | Configuration | [`configuration`](https://sachncs.github.io/agent-guard/docs/configuration/) | binary, library, console, and Kubernetes settings |
 
-Generate local Rust API documentation with:
+Generate and validate the reference surfaces locally with:
 
 ```sh
 cargo doc --workspace --no-deps --open
+pnpm --filter agentguard build
+protoc --descriptor_set_out=/tmp/agentguard.pb \
+  --include_imports \
+  crates/agentguard-server/proto/agentguard.proto
 ```
 
-The TypeScript package is built with `pnpm --filter agentguard build`; its
-declarations are emitted from the package source. HTTP clients should treat
+The release CI runs these generation checks without opening a browser and
+fails if the Rust crates, TypeScript declarations, or checked-in protobuf
+contract stop producing reference artifacts. The TypeScript package emits
+declarations from the package source. HTTP clients should treat
 non-2xx responses, malformed responses, timeouts, and `decision: false` as
 non-execution conditions. The repository-defined gRPC endpoint is plaintext
 unless the embedding deployment supplies a protected network boundary; it is

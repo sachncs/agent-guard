@@ -62,6 +62,13 @@ jobs:
       # fails CI even when the lib tests pass. Mirrors `cargo test`
       # output for the lib crate but only runs the doc-tests.
       - run: cargo test --workspace --doc
+      - name: Generate Rust and protobuf API references
+        run: |
+          RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+          protoc --descriptor_set_out=/tmp/agentguard.pb \
+            --include_imports \
+            crates/agentguard-server/proto/agentguard.proto
+          test -s /tmp/agentguard.pb
       - run: cargo build --workspace --release
       - run: cargo bench --workspace --no-run
 
@@ -86,6 +93,8 @@ jobs:
         run: pnpm config set dangerouslyAllowAllBuilds true && pnpm install --frozen-lockfile && pnpm check && pnpm build
       # Build the SDK first so dependents (frontend, examples) can resolve it.
       - run: pnpm --filter agentguard build
+      - name: Verify TypeScript API declarations
+        run: test -s typescript/agentguard/dist/index.d.ts
       - run: pnpm --filter agentguard test
       - run: pnpm --filter frontend lint
       - run: pnpm --filter frontend typecheck
