@@ -18,6 +18,14 @@ trusted entities and policy inputs. A conflicting caller-supplied
 readable for migration but cannot authorize standalone evaluations. Rotate or
 reissue them as bound keys before enabling this enforcement.
 
+Argon2id verification runs on Tokio's blocking pool and is capped at two
+concurrent verifications per process to bound CPU and memory use. Requests
+with missing or structurally malformed bearer credentials are rejected before
+acquiring a verification slot. If all slots are busy, protected HTTP requests
+receive `503 Service Unavailable` and gRPC requests receive `UNAVAILABLE`; the
+caller should retry with bounded backoff. Put network-level rate limiting at
+the ingress as an additional control against sustained credential guessing.
+
 Create keys through the operator CLI, assigning only the narrow scope and
 identity required by that integration:
 

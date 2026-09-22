@@ -22,6 +22,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   partial JSONL append back to its prior record boundary.
 - Drain the optional gRPC listener on the same shutdown signal as HTTP instead
   of aborting its task after HTTP has drained.
+- Run API-key Argon2id checks on Tokio's blocking pool with bounded concurrent
+  verification; return retryable overload responses rather than blocking async
+  workers or accumulating unbounded hash jobs.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

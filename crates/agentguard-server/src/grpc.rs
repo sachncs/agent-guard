@@ -45,7 +45,7 @@ impl AccessEvaluation for AccessEvaluationService {
         let caller = self
             .state
             .auth
-            .authenticate_bearer(
+            .authenticate_bearer_async(
                 request
                     .metadata()
                     .get("authorization")
@@ -53,9 +53,13 @@ impl AccessEvaluation for AccessEvaluationService {
                 "authorize",
                 true,
             )
+            .await
             .map_err(|failure| match failure {
                 AuthenticationFailure::Unauthenticated => Status::unauthenticated("unauthorized"),
                 AuthenticationFailure::Forbidden => Status::permission_denied("forbidden"),
+                AuthenticationFailure::Unavailable => {
+                    Status::unavailable("authentication capacity exhausted")
+                }
             })?;
         let req = request.into_inner();
         let subject = req
