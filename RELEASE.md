@@ -8,6 +8,8 @@
 - [ ] Build both Docker images and run health/readiness smoke tests.
 - [ ] Apply the Kubernetes manifests in a disposable cluster and verify an
       allow, deny, audit append, graceful shutdown, and rollback.
+- [ ] Run `./scripts/k8s-smoke.sh` (or confirm the CI `Kubernetes PDP smoke`
+      job) against the exact release image tags.
 - [ ] Review SECURITY.md, CHANGELOG.md, compatibility policy, and migration
       notes.
 - [ ] Tag the release and publish release notes only after all checks pass.

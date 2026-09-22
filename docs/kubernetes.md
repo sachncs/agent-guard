@@ -90,6 +90,20 @@ Before routing traffic, verify:
 6. Console login, viewer access, admin access, PDP failure handling, and rate
    limiting behave as expected.
 
+CI runs the PDP portion automatically in a disposable kind cluster. To run the
+same contract locally, start kind and run from the repository root:
+
+```bash
+docker build --tag agentguard-server:smoke .
+docker tag agentguard-server:smoke agentguard-server:smoke-rollback
+kind load docker-image agentguard-server:smoke
+kind load docker-image agentguard-server:smoke-rollback
+./scripts/k8s-smoke.sh
+```
+
+The smoke script uses loopback and disabled authentication only inside the
+disposable test cluster; the production manifest keeps API-key authentication.
+
 ## Backups, upgrades, and rollback
 
 Back up the audit file, its `.chainid` sidecar, the chain secret, the API-key

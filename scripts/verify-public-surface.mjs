@@ -27,6 +27,7 @@ for (const file of [
   "site/public/favicon.svg",
   "site/public/og-image.svg",
   "docs/production.md",
+  "scripts/k8s-smoke.sh",
   "deploy/k8s/kustomization.yaml",
 ]) requireFile(file);
 
