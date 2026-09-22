@@ -10,6 +10,7 @@ import Snippet from '@/components/product/Snippet.astro';
   <h2>Build immutable images</h2>
   <Snippet title="Release images" code={'export VERSION=0.2.0\nexport REGISTRY=registry.example.com/security\ndocker build --pull -t $REGISTRY/agentguard-server:$VERSION .\ndocker build --pull -t $REGISTRY/agentguard-console:$VERSION -f frontend/Dockerfile .\ndocker push $REGISTRY/agentguard-server:$VERSION\ndocker push $REGISTRY/agentguard-console:$VERSION'} />
   <p>Pin both images to the same release tag. Scan them before promotion and do not deploy <code>latest</code>. The images run as non-root users; Kubernetes bounds termination with a 30-second grace period while the server drains in-flight requests.</p>
+  <p>The published PDP image defaults to <code>AGENTGUARD_AUTH=apikey:/etc/agentguard/keys/keys.json</code>. Mount a populated API-key Secret before sending evaluation traffic. Set <code>AGENTGUARD_AUTH=disabled</code> only for isolated local development or trusted smoke tests; the binary's development default does not override this safer container default.</p>
   <h2>Required secrets and policy state</h2>
   <p>Create the chain secret, serialized Argon2 API-key store, and OIDC/session/Redis console settings through the cluster secret manager. Never commit raw credentials or put them in a ConfigMap. The checked-in policy ConfigMap has a valid starter schema and an empty deny-by-default policy; replace both with reviewed schema and policies before rollout.</p>
   <h2>Deploy and verify</h2>
