@@ -21,6 +21,88 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use tokio::sync::Semaphore;
+
+/// Bound blocking audit fsync work so slow persistent volumes cannot fill
+/// Tokio's blocking-task queue without limit.
+const MAX_CONCURRENT_AUDIT_WRITES: usize = 4;
+
+#[derive(Debug)]
+pub(crate) enum AuditPersistError {
+    Saturated,
+    Join(tokio::task::JoinError),
+    Append(agentguard_core::Error),
+}
+
+pub(crate) fn report_audit_failure(
+    state: &AppState,
+    error: AuditPersistError,
+) -> (StatusCode, &'static str) {
+    match error {
+        AuditPersistError::Saturated => {
+            state.metrics().record_pdp_error("audit_overloaded");
+            (StatusCode::SERVICE_UNAVAILABLE, "audit capacity exhausted")
+        }
+        AuditPersistError::Join(error) => {
+            state.metrics().record_pdp_error("audit_worker");
+            tracing::error!(%error, "audit worker failed; refusing decision");
+            (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
+        }
+        AuditPersistError::Append(error) => {
+            state.metrics().record_pdp_error("audit_append");
+            tracing::error!(%error, "audit append failed; refusing decision");
+            (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
+        }
+    }
+}
+
+fn audit_write_slots() -> Arc<Semaphore> {
+    static SLOTS: std::sync::OnceLock<Arc<Semaphore>> = std::sync::OnceLock::new();
+    SLOTS
+        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_AUDIT_WRITES)))
+        .clone()
+}
+
+pub(crate) async fn persist_audit_decision(
+    audit: Arc<Option<DecisionLog>>,
+    decision: agentguard_core::Decision,
+) -> Result<(), AuditPersistError> {
+    persist_audit_decision_with_slots(audit, decision, audit_write_slots()).await
+}
+
+async fn persist_audit_decision_with_slots(
+    audit: Arc<Option<DecisionLog>>,
+    decision: agentguard_core::Decision,
+    slots: Arc<Semaphore>,
+) -> Result<(), AuditPersistError> {
+    if audit.is_none() {
+        return Ok(());
+    }
+    run_bounded_audit(slots, move || match audit.as_ref().as_ref() {
+        Some(audit) => audit.append_decision(&decision),
+        None => Ok(()),
+    })
+    .await
+}
+
+async fn run_bounded_audit<T, F>(
+    slots: Arc<Semaphore>,
+    operation: F,
+) -> Result<T, AuditPersistError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> agentguard_core::Result<T> + Send + 'static,
+{
+    let permit = slots
+        .try_acquire_owned()
+        .map_err(|_| AuditPersistError::Saturated)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        operation().map_err(AuditPersistError::Append)
+    })
+    .await
+    .map_err(AuditPersistError::Join)?
+}
 
 /// Maximum number of evaluations accepted in a single
 /// `/access/v1/evaluations` request. Caps memory + CPU per request;
@@ -204,6 +286,10 @@ impl AppState {
     /// disabled audit logging.
     pub fn audit(&self) -> Option<&DecisionLog> {
         self.audit.as_ref().as_ref()
+    }
+
+    pub(crate) fn audit_handle(&self) -> Arc<Option<DecisionLog>> {
+        self.audit.clone()
     }
 
     /// The metrics registry. The same handle is used by `/metrics`,
@@ -509,17 +595,12 @@ async fn evaluation(
             } else {
                 state.metrics().record_cache_miss();
             }
-            // Audit-log the decision. When audit is configured
-            // (production posture), a write failure MUST surface as
-            // 500 — silently dropping decisions defeats the audit
-            // requirement.
-            if let Some(audit) = state.audit() {
-                if let Err(e) = audit.append_decision(&decision) {
-                    state.metrics().record_pdp_error("audit_append");
-                    tracing::error!(error = %e, "audit append failed; refusing decision");
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
-                        .into_response();
-                }
+            // Persist before returning the decision, but keep blocking fsync
+            // off the async worker. Any saturation or storage error fails closed.
+            if let Err(error) = persist_audit_decision(state.audit.clone(), decision.clone()).await
+            {
+                let (status, message) = report_audit_failure(&state, error);
+                return (status, message).into_response();
             }
             let resp = EvaluationResponse {
                 decision: matches!(decision.effect, Effect::Allow),
@@ -597,13 +678,11 @@ async fn evaluations(
         match authorizer.authorize(&agent_req, &entities) {
             Ok(decision) => {
                 let allow = matches!(decision.effect, Effect::Allow);
-                if let Some(audit) = state.audit() {
-                    if let Err(e) = audit.append_decision(&decision) {
-                        state.metrics().record_pdp_error("audit_append");
-                        tracing::error!(error = %e, "audit append failed; refusing batch response");
-                        return (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
-                            .into_response();
-                    }
+                if let Err(error) =
+                    persist_audit_decision(state.audit.clone(), decision.clone()).await
+                {
+                    let (status, message) = report_audit_failure(&state, error);
+                    return (status, message).into_response();
                 }
                 responses.push(EvaluationResponse {
                     decision: allow,
@@ -696,10 +775,11 @@ pub async fn build_state_with_cache(
 
 #[cfg(test)]
 mod summarize_tests {
-    use super::summarize_authorize_error;
+    use super::{summarize_authorize_error, DecisionLog};
     use agentguard_core::Error;
     use agentguard_core::PolicyStore;
     use tempfile::tempdir;
+    use tokio::sync::Semaphore;
 
     #[test]
     fn invalid_context_summary_does_not_leak_message() {
@@ -747,6 +827,55 @@ mod summarize_tests {
             .unwrap();
         assert!(handle.reload().is_err());
         assert_eq!(handle.policy_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn audit_capacity_saturation_fails_fast_without_dropping_a_decision() {
+        let dir = tempdir().unwrap();
+        let audit = DecisionLog::open(dir.path().join("audit.jsonl")).unwrap();
+        let decision = agentguard_core::Decision {
+            effect: agentguard_core::Effect::Allow,
+            policies: vec!["p0".into()],
+            reasons: vec![],
+            request: serde_json::json!({}),
+            trace: None,
+            from_cache: false,
+        };
+        let result = super::persist_audit_decision_with_slots(
+            std::sync::Arc::new(Some(audit)),
+            decision,
+            std::sync::Arc::new(Semaphore::new(0)),
+        )
+        .await;
+        assert!(matches!(result, Err(super::AuditPersistError::Saturated)));
+    }
+
+    #[tokio::test]
+    async fn slow_audit_work_does_not_stall_async_workers() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Duration;
+
+        let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+        let tick_count = ticks.clone();
+        let ticker = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(10));
+            loop {
+                interval.tick().await;
+                tick_count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        let result = super::run_bounded_audit(std::sync::Arc::new(Semaphore::new(1)), || {
+            std::thread::sleep(Duration::from_millis(80));
+            Ok(())
+        })
+        .await;
+        ticker.abort();
+
+        assert!(result.is_ok());
+        assert!(
+            ticks.load(Ordering::Relaxed) >= 3,
+            "async work should continue while audit fsync is in the blocking pool"
+        );
     }
 
     #[tokio::test]

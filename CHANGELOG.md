@@ -31,6 +31,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   before JSON parsing or policy evaluation.
 - Report readiness as unavailable after a permanent audit writer failure, so
   Kubernetes stops routing decisions to an instance that cannot persist them.
+- Run audit appends and fsync off Tokio workers with four bounded writer slots;
+  return retryable overload responses rather than queueing unbounded storage
+  work.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

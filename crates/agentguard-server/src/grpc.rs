@@ -13,6 +13,7 @@ use crate::proto::agentguard::v1::{
     EvaluationRequest as PbRequest, EvaluationResponse as PbResponse,
 };
 use agentguard_core::Effect;
+use axum::http::StatusCode;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
@@ -174,11 +175,16 @@ impl AccessEvaluation for AccessEvaluationService {
             self.state.metrics().record_cache_miss();
         }
 
-        if let Some(audit) = self.state.audit() {
-            if let Err(e) = audit.append_decision(&decision) {
-                self.state.metrics().record_pdp_error("audit_append");
-                return Err(Status::internal(format!("audit log unavailable: {e}")));
-            }
+        if let Err(error) =
+            crate::authzen::persist_audit_decision(self.state.audit_handle(), decision.clone())
+                .await
+        {
+            let (status, message) = crate::authzen::report_audit_failure(&self.state, error);
+            return Err(if status == StatusCode::SERVICE_UNAVAILABLE {
+                Status::unavailable(message)
+            } else {
+                Status::internal(message)
+            });
         }
 
         Ok(Response::new(PbResponse {

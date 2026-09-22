@@ -50,6 +50,10 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 - /readyz requires a loaded policy store and writable configured audit log.
 - A configured audit append failure returns an error instead of allowing the
   decision to continue silently.
+- Audit append and fsync work runs on a bounded blocking pool. If all four
+  writer slots are occupied, the request fails with HTTP 503 (gRPC
+  `UNAVAILABLE`) instead of accumulating unbounded filesystem work; audit
+  storage failures withdraw readiness until the process is restarted.
 - A corrupted chained audit tail refuses startup instead of silently beginning
   a disconnected chain; restore or quarantine the damaged evidence first.
 - The server stops accepting new work on SIGTERM and drains in-flight work;
