@@ -42,11 +42,16 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `redis` in production; `memory` only for development/e2e |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting |
+| `AGENTGUARD_TRUST_PROXY_HEADERS` | `1` in production, only behind the trusted reverse proxy |
 | `AGENTGUARD_INSECURE_COOKIE` | Local HTTP only; never set in production |
 
-Terminate TLS before the console and preserve `X-Forwarded-Proto`. The
-console uses secure cookies when the request is HTTPS and sends restrictive
-security headers. The production image includes the pinned `agentguard` CLI;
+Terminate TLS before the console and preserve `X-Forwarded-Proto`. In
+production, set `AGENTGUARD_TRUST_PROXY_HEADERS=1` only if the proxy removes any
+client-supplied `X-Forwarded-For` and replaces it with exactly one validated
+client address. The console uses that address for per-client rate limiting;
+otherwise all users behind one ingress share a bucket. The console uses secure
+cookies when the request is HTTPS and sends restrictive security headers. The
+production image includes the pinned `agentguard` CLI;
 mount the policy directory and audit file read-only, as the Kubernetes
 reference does, and keep both paths private to the console runtime.
 

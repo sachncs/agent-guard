@@ -35,6 +35,7 @@ const BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
 const ISSUER = `http://127.0.0.1:${IDP_PORT}`;
 const REDIS_URL = `http://127.0.0.1:${REDIS_PORT}`;
 const REDIS_TOKEN = "e2e-redis-token";
+const TEST_CLIENT_IP = "198.51.100.42";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -263,6 +264,10 @@ class Jar {
 
 async function req(jar, path, init = {}) {
   const headers = { ...(init.headers ?? {}) };
+  if (!Object.keys(headers).some((name) => name.toLowerCase() === "x-forwarded-for")) {
+    // Model the trusted ingress replacing the untrusted incoming header.
+    headers["X-Forwarded-For"] = TEST_CLIENT_IP;
+  }
   if (jar && jar.header()) headers.Cookie = jar.header();
   const url = path.startsWith("http") ? path : `${BASE}${path}`;
   const res = await fetch(url, { ...init, headers, redirect: "manual" });
@@ -322,6 +327,7 @@ async function main() {
     AGENTGUARD_RATE_LIMIT_REDIS_URL: REDIS_URL,
     AGENTGUARD_RATE_LIMIT_REDIS_TOKEN: REDIS_TOKEN,
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
+    AGENTGUARD_TRUST_PROXY_HEADERS: "1",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
     AGENTGUARD_INSECURE_COOKIE: "1",
     AGENTGUARD_BIN: fakeBin,

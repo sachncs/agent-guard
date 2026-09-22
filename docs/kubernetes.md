@@ -52,11 +52,17 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_SESSION_STORE='redis' \
   --from-literal=AGENTGUARD_SESSION_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_SESSION_REDIS_TOKEN='replace-me' \
+  --from-literal=AGENTGUARD_TRUST_PROXY_HEADERS='1' \
   --from-literal=AGENTGUARD_ADMIN_VALUES='security-admins' \
   --from-literal=AGENTGUARD_RATE_LIMIT_STORE='redis' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```
+
+The console production config requires the trusted-proxy flag. The ingress
+must remove any incoming `X-Forwarded-For` value and replace it with exactly
+one validated client address; do not enable the flag when the console can be
+reached directly by untrusted clients.
 
 The delegation key is a persistent Ed25519 private key used by the admin
 console when issuing grants. Rotate it as a credential, publish the matching

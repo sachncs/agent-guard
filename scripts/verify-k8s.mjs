@@ -39,6 +39,17 @@ if (failures.length === 0) {
     failures.push("k8s-smoke.sh must provide the required session record");
   }
 
+  const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
+  for (const value of [
+    "AGENTGUARD_TRUST_PROXY_HEADERS='1'",
+    "remove any incoming `X-Forwarded-For`",
+  ]) if (!operationsGuide.includes(value)) {
+    failures.push(`docs/kubernetes.md missing trusted-proxy requirement: ${value}`);
+  }
+  if (!/exactly\s+one validated client address/.test(operationsGuide)) {
+    failures.push("docs/kubernetes.md must require one validated forwarded client address");
+  }
+
   const console = read("console.yaml");
   for (const value of [
     "secretRef: {name: agentguard-console-env}",

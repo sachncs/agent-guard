@@ -77,6 +77,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `memory` in development, `redis` in production | Shared rate-limit backend mode |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential |
+| `AGENTGUARD_TRUST_PROXY_HEADERS` | `0` in development; `1` required in production | Trust a reverse proxy that overwrites `X-Forwarded-For` with one client IP |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |
 | `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` | AuthZEN PDP base URL (`agentguard-server`) |
@@ -95,8 +96,8 @@ pnpm --filter frontend exec node scripts/e2e.mjs # full auth flow vs prod build
 
 The e2e script asserts the complete security posture: redirects, 401s, the
 OIDC round trip (PKCE + nonce), Redis-backed session and rate-limit commands,
-viewer/admin RBAC, PDP-backed simulator decisions, validation errors, rate
-limiting, logout, and the 503 fail-closed mode.
+viewer/admin RBAC, PDP-backed simulator decisions and fail-closed PDP errors,
+validation errors, rate limiting, logout, and the 503 fail-closed mode.
 
 ## Production boundary
 
@@ -112,6 +113,9 @@ limiting, logout, and the 503 fail-closed mode.
   policy directory and audit file read-only, as the Kubernetes reference does.
 - **TLS termination** is expected at your reverse proxy; set
   `X-Forwarded-Proto` so HSTS and secure cookies engage.
+  In production, set `AGENTGUARD_TRUST_PROXY_HEADERS=1` only when that proxy
+  replaces (does not append to) incoming `X-Forwarded-For` with a single
+  validated client address. Otherwise the console fails closed at startup.
 - CSP allows `'unsafe-inline'` scripts because the App Router hydration
   bootstrap requires it.
 

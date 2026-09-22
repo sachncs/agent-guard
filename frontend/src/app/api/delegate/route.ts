@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const rl = await rateLimit(`delegate:${clientKey(request)}`, 10);
+  const rl = await rateLimit(`delegate:${clientKey(request, cfg.config.trustProxyHeaders)}`, 10);
   if (!rl.allowed) {
     return Response.json(
       { error: "rate limit exceeded", kind: "rate_limited" },

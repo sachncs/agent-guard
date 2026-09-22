@@ -7,6 +7,8 @@
  * fail closed so an unavailable shared store cannot silently remove limits.
  */
 
+import { isIP } from "node:net";
+
 const WINDOW_SECONDS = 60;
 const WINDOW_MS = WINDOW_SECONDS * 1000;
 
@@ -138,10 +140,20 @@ export async function rateLimit(key: string, limitPerMinute: number): Promise<Ra
 }
 
 /**
- * Use only the origin visible to the application. Forwarded client headers
- * are intentionally ignored because direct clients can spoof them unless a
- * trusted proxy is guaranteed to overwrite them.
+ * Use a forwarded client address only when configuration confirms the
+ * reverse proxy overwrites X-Forwarded-For with exactly one validated IP.
+ * Otherwise use the request host; never trust a client-supplied header by
+ * default.
  */
-export function clientKey(request: Request): string {
+export function clientKey(request: Request, trustProxyHeaders = false): string {
+  if (trustProxyHeaders) {
+    const forwardedFor = request.headers.get("x-forwarded-for")?.trim();
+    if (forwardedFor && !forwardedFor.includes(",") && isIP(forwardedFor)) {
+      const canonicalIp = isIP(forwardedFor) === 6
+        ? new URL(`http://[${forwardedFor}]/`).hostname
+        : forwardedFor;
+      return `ip:${canonicalIp}`;
+    }
+  }
   return new URL(request.url).host || "local";
 }

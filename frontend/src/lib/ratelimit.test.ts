@@ -49,6 +49,30 @@ describe("rate limiter", () => {
     assert.equal(clientKey(req), "x");
   });
 
+  it("uses a single validated proxy address only when proxy trust is enabled", () => {
+    const forwarded = new Request("https://console.example/api", {
+      headers: { "x-forwarded-for": "203.0.113.7" },
+    });
+    assert.equal(clientKey(forwarded), "console.example");
+    assert.equal(clientKey(forwarded, true), "ip:203.0.113.7");
+
+    const ipv6 = new Request("https://console.example/api", {
+      headers: { "x-forwarded-for": "2001:0db8:0:0:0:0:0:1" },
+    });
+    assert.equal(clientKey(ipv6, true), "ip:[2001:db8::1]");
+  });
+
+  it("rejects forwarded chains and malformed addresses even with proxy trust", () => {
+    const chained = new Request("https://console.example/api", {
+      headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" },
+    });
+    assert.equal(clientKey(chained, true), "console.example");
+    const malformed = new Request("https://console.example/api", {
+      headers: { "x-forwarded-for": "attacker-controlled" },
+    });
+    assert.equal(clientKey(malformed, true), "console.example");
+  });
+
   it("uses an atomic Redis-compatible request", async () => {
     let request: Request | undefined;
     const store = new RedisRateLimitStore("https://redis.example", "secret", async (_url, init) => {

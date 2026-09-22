@@ -31,6 +31,8 @@ export interface AuthConfig {
   pdpUrl: string;
   /** Bearer token sent with PDP requests, if the PDP requires one. */
   pdpBearer?: string;
+  /** Whether the configured reverse proxy is trusted to overwrite X-Forwarded-For. */
+  trustProxyHeaders: boolean;
   /** Allow cookies without Secure (local/e2e over plain HTTP only). */
   insecureCookie: boolean;
 }
@@ -56,6 +58,7 @@ function readEnv(): AuthConfigResult {
     (process.env.NODE_ENV === "production" ? "redis" : "memory");
   const sessionRedisUrl = process.env.AGENTGUARD_SESSION_REDIS_URL;
   const sessionRedisToken = process.env.AGENTGUARD_SESSION_REDIS_TOKEN;
+  const trustProxyHeaders = process.env.AGENTGUARD_TRUST_PROXY_HEADERS === "1";
   const pdpUrl = stripSlash(process.env.AGENTGUARD_PDP_URL ?? "http://127.0.0.1:8443");
 
   if (missing.length > 0) {
@@ -88,6 +91,23 @@ function readEnv(): AuthConfigResult {
         "production console sessions require AGENTGUARD_SESSION_REDIS_URL and AGENTGUARD_SESSION_REDIS_TOKEN",
     };
   }
+  if (
+    process.env.AGENTGUARD_TRUST_PROXY_HEADERS !== undefined &&
+    process.env.AGENTGUARD_TRUST_PROXY_HEADERS !== "0" &&
+    process.env.AGENTGUARD_TRUST_PROXY_HEADERS !== "1"
+  ) {
+    return {
+      valid: false,
+      reason: "AGENTGUARD_TRUST_PROXY_HEADERS must be 0 or 1",
+    };
+  }
+  if (process.env.NODE_ENV === "production" && !trustProxyHeaders) {
+    return {
+      valid: false,
+      reason:
+        "production console requires AGENTGUARD_TRUST_PROXY_HEADERS=1 behind a proxy that overwrites X-Forwarded-For",
+    };
+  }
 
   const adminClaim = process.env.AGENTGUARD_ADMIN_CLAIM || "groups";
   const adminValues = (process.env.AGENTGUARD_ADMIN_VALUES ?? "")
@@ -111,6 +131,7 @@ function readEnv(): AuthConfigResult {
       adminValues,
       pdpUrl,
       pdpBearer: process.env.AGENTGUARD_PDP_BEARER,
+      trustProxyHeaders,
       // Set only for local/e2e runs over plain HTTP.
       insecureCookie: process.env.AGENTGUARD_INSECURE_COOKIE === "1",
     },

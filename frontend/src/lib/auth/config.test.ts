@@ -55,6 +55,7 @@ describe("auth config", () => {
     assert.deepEqual(cfg.config.adminValues, ["a", "b"]);
     assert.equal(cfg.config.pdpUrl, "http://pdp:8443");
     assert.equal(cfg.config.insecureCookie, false);
+    assert.equal(cfg.config.trustProxyHeaders, false);
   });
 
   it("requires Redis sessions for production mode", () => {
@@ -67,10 +68,43 @@ describe("auth config", () => {
 
     process.env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
     process.env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
+    process.env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
     resetAuthConfigCache();
     cfg = authConfig();
     assert.equal(cfg.valid, true);
     delete (process.env as Record<string, string | undefined>).NODE_ENV;
+  });
+
+  it("requires explicitly trusted proxy headers in production", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_SESSION_STORE = "redis";
+    env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
+    env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
+
+    try {
+      let cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /TRUST_PROXY_HEADERS=1/);
+
+      env.AGENTGUARD_TRUST_PROXY_HEADERS = "true";
+      resetAuthConfigCache();
+      cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /must be 0 or 1/);
+
+      env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
+      resetAuthConfigCache();
+      cfg = authConfig();
+      assert.equal(cfg.valid, true);
+      if (cfg.valid) assert.equal(cfg.config.trustProxyHeaders, true);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      resetAuthConfigCache();
+    }
   });
 
   it("rejects an explicit memory session store in production", () => {
