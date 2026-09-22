@@ -19,8 +19,7 @@ spec:
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8443}]
           env:
-            - {name: AGENTGUARD_AUTH, value: apikey}
-            - {name: AGENTGUARD_AUTH_KEY_FILE, value: /etc/agentguard/keys/keys.json}
+            - {name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"}
             - {name: AGENTGUARD_CHAIN_SECRET, value: /etc/agentguard/secrets/chain-secret}
           volumeMounts:
             - {name: policies, mountPath: /var/lib/agentguard/policies, readOnly: true}
