@@ -9,7 +9,7 @@ Three vector directions were created for review:
 
 | Concept | Asset | Decision |
 | --- | --- | --- |
-| Boundary glyph | [`concept-boundary.svg`](../site/public/brand/concept-boundary.svg) | **Selected.** The split boundary and verification path communicate policy before execution at favicon and navigation sizes. |
+| Boundary glyph | [`concept-boundary.svg`](../site/public/brand/concept-boundary.svg) | **Selected.** The agent and tool nodes are separated by a controlled vertical boundary, communicating policy before execution at favicon and navigation sizes. |
 | Gate | [`concept-gate.svg`](../site/public/brand/concept-gate.svg) | Rejected. It reads as a physical access gate and loses the agent/tool relationship at small sizes. |
 | Agent path | [`concept-agent-path.svg`](../site/public/brand/concept-agent-path.svg) | Rejected. It is useful as an explanatory diagram but is too detailed for a product mark. |
 

@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AgentGuard">
   <rect width="64" height="64" rx="16" fill="#fff" stroke="#172420" stroke-width="3"/>
-  <path d="M16 17h32v30H16z" fill="none" stroke="#172420" stroke-width="4"/>
-  <path d="m22 32 7 7 13-14" fill="none" stroke="#172420" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 17v30" stroke="#fff" stroke-width="8"/>
-  <path d="M32 22v20" stroke="#172420" stroke-width="3" stroke-linecap="round"/>
+  <path d="M18 27V18h10M46 27V18h-10M18 37v9h10M46 37v9h-10" fill="none" stroke="#172420" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 32h12M38 32h12" stroke="#172420" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="12" cy="32" r="3" fill="#172420"/><circle cx="52" cy="32" r="3" fill="#172420"/>
+  <path d="M32 14v36" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+  <path d="M32 18v28" stroke="#172420" stroke-width="3.5" stroke-linecap="round"/>
 </svg>

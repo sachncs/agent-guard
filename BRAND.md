@@ -3,7 +3,7 @@
 AgentGuard is the product name. agent-guard is the GitHub repository slug and
 may remain in package names, URLs, and command paths for compatibility.
 
-The primary mark is the boundary glyph: a white verification path crossing a
+The primary mark is the boundary glyph: agent and tool nodes are connected by a
 controlled vertical boundary. It communicates that agent intent is evaluated
 before execution. The reviewed alternatives and the selection rationale are
 documented in [docs/branding.md](docs/branding.md).

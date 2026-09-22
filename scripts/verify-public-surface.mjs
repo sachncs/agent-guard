@@ -27,6 +27,7 @@ for (const file of files) {
 for (const file of [
   "site/public/agentguard-mark-dark.svg",
   "site/public/agentguard-mark-mono.svg",
+  "site/public/agentguard-mark.svg",
   "site/public/agentguard-wordmark.svg",
   "site/public/favicon.svg",
   "site/public/og-image.svg",
@@ -35,6 +36,24 @@ for (const file of [
   "deploy/k8s/kustomization.yaml",
   ".dockerignore",
 ]) requireFile(file);
+
+const markAssets = [
+  "site/public/favicon.svg",
+  "site/public/agentguard-mark-dark.svg",
+  "site/public/agentguard-mark-mono.svg",
+  "site/public/agentguard-wordmark.svg",
+  "site/public/agentguard-wordmark-dark.svg",
+  "frontend/public/agentguard-mark.svg",
+];
+for (const file of markAssets) {
+  const svg = readFileSync(file, "utf8");
+  if (!svg.includes("AgentGuard")) failures.push(`${file}: missing accessible AgentGuard label`);
+  if (!svg.includes("M32 14v36")) failures.push(`${file}: missing selected agent-boundary glyph`);
+}
+const og = readFileSync("site/public/og-image.svg", "utf8");
+if (!og.includes("A clear boundary between agent intent and execution.")) {
+  failures.push("site/public/og-image.svg: missing canonical product positioning");
+}
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');
 requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard");
