@@ -2,7 +2,7 @@
   <h1 align="center">AgentGuard</h1>
   <p align="center">Cedar-powered authorization for AI agents — per-tool-call decisions, tamper-evident audit, scoped delegation.</p>
   <p align="center">
-    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust"></a>
+    <a href="#installation"><img src="https://img.shields.io/badge/rust-1.89%2B-orange" alt="Rust"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
     <a href="https://github.com/sachncs/agent-guard/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master" alt="CI"></a>
     <a href="https://crates.io/crates/agentguard-core"><img src="https://img.shields.io/crates/v/agentguard-core" alt="crates.io"></a>
@@ -30,11 +30,11 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 
 - **Per-call authorization** — does this user/agent have permission to call this tool on this resource, right now, with this context?
 - **Tamper-evident audit trail** — hash-chained decision log, exportable to your SIEM in CEF/LEEF/ECS/JSONL
-- **Scoped delegation** — parent agent gives a sub-agent a *scoped subset* of permissions, time-boxed, sender-constrained (DPoP), revocable
+- **Scoped delegation** — parent agent gives a sub-agent a *scoped subset* of permissions, time-boxed, and sender-constrained (DPoP)
 - **Schema-validated policies** — security teams write Cedar, not imperative code; validated at authoring time
 - **Standard authn** — JWT, OIDC, API keys, DPoP, SPIFFE; RFC 8725 BCP crypto, RFC 8693 delegation, no proprietary protocols
 - **Observable decisions** — Prometheus metrics, trace correlation, and pluggable telemetry sinks
-- **Policy operations** — validate, diff, replay, and analyze blast radius before a restart
+- **Policy operations** — validate, diff, replay, analyze blast radius, and atomically reload standalone server snapshots
 - **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP
 - **Local-first** — files in `.agentguard/` are the source of truth; `git diff` your policies; run in-process or as a sidecar
 - **Admin console** — Next.js dashboard with OIDC sign-in, policy simulator, delegation management, audit browser
@@ -44,12 +44,12 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | Component | Purpose |
 | --------- | ------- |
 | `agentguard-core` (Rust) | Type-safe wrappers, decision cache, hash-chained audit log, TTL primitives |
-| `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `delegate`, `verify`, `audit`, `policy`, `serve`, `doctor` |
+| `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `delegate`, `verify`, `audit`, `schema`, `log`, `gen`, `doctor` |
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
 | `agentguard-auth` (Rust) | JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, jti replay protection, RFC 8693 token exchange |
 | `agentguard-policy` (Rust) | Versioned bundles, policy change notifications, diff, blast radius, dry-run |
-| `agentguard-server` (Rust) | `agentguard serve` — AuthZEN HTTP PDP, sidecar mode |
-| `agentguard` (TypeScript SDK) | In-process bindings via the CLI, JWT/DPoP passthrough, step-up auth |
+| `agentguard-server` (Rust) | Standalone AuthZEN HTTP PDP, sidecar mode |
+| `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
 See [CHANGELOG.md](CHANGELOG.md) for the change list. Production deployment is documented in [docs/production.md](docs/production.md), compatibility in [docs/compatibility.md](docs/compatibility.md), and branding in [BRAND.md](BRAND.md).
@@ -95,6 +95,10 @@ pnpm dev
 
 **Requirements:** Rust 1.89+, Node.js ≥ 20.9 (26 recommended), pnpm ≥ 9.
 
+For a pinned clean-checkout setup, run `./scripts/setup.sh`; it also installs
+the separate documentation-site workspace. Console configuration starts from
+[`frontend/.env.example`](frontend/.env.example).
+
 ## Quick Start
 
 ### Initialize a project
@@ -136,11 +140,11 @@ agentguard --output json authorize request.json | jq
 ### Start the server (sidecar mode)
 
 ```bash
-agentguard serve \
-    --listen tcp://0.0.0.0:8443 \
-    --tls-cert ./server.pem --tls-key ./server.key \
+agentguard-server \
+    --listen 'tls://0.0.0.0:8443?cert=./server.pem&key=./server.key' \
     --store ./.agentguard \
-    --audit .audit/decisions.jsonl
+    --audit .audit/decisions.jsonl \
+    --auth apikey --auth-key-file ./keys.json
 ```
 
 Server is now speaking [AuthZEN](https://openid.github.io/authzen/):
@@ -355,9 +359,12 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 
 ## Roadmap
 
-- **v0.3.0** — Current: Python SDK removed (TypeScript SDK + AuthZEN PDP are the supported integration paths), hardened Next.js 16 admin console (OIDC + RBAC, fail-closed), Strands Agents example, Google TS style-guide compliance
-- **v0.4.0** — Planned: distributed decision cache (Redis), policy A/B testing, multi-tenant audit namespaces, OpenTelemetry collector integration
-- **v1.0.0** — Stable API, semantic-versioning guarantees, LTS support window
+The current supported baseline is Docker plus Kubernetes with the shipped PDP,
+console, atomic policy reload, persistent audit volume, and Redis-compatible
+console rate limiting. Future work includes policy A/B testing, multi-tenant
+audit namespaces, and a stable API/LTS support window. See
+[CHANGELOG.md](CHANGELOG.md) for shipped changes; no roadmap item is a current
+production guarantee.
 
 ## Contributing
 

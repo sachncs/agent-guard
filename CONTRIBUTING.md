@@ -13,6 +13,11 @@ Discussions if enabled). For security issues, follow
 
 ## Development setup
 
+From a clean checkout, run `./scripts/setup.sh`. It installs the pinned Rust
+and pnpm toolchains, verifies `protoc`, and installs both the root and Astro
+site lockfiles. Copy `frontend/.env.example` to `frontend/.env.local` when
+running the console locally.
+
 ```
 rustup toolchain install stable
 # Required by crates/agentguard-server/build.rs to regenerate gRPC

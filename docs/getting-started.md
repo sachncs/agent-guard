@@ -129,7 +129,7 @@ For Strands Agents (TypeScript), see
 `BeforeToolCallEvent` intervention authorizes every tool call against the
 AuthZEN PDP and cancels denied calls.
 
-Prefer no SDK at all? Run `agentguard serve` and POST to
+Prefer no SDK at all? Run `agentguard-server` and POST to
 `/access/v1/evaluation` from any language — every decision still lands in
 the audit log.
 
