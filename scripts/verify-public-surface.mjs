@@ -59,6 +59,7 @@ requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/a
 requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard");
 requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
 requireText("Dockerfile", "USER 10001:10001");
+requireText("Dockerfile", "AGENTGUARD_AUTH=apikey:/etc/agentguard/keys/keys.json");
 requireText("Dockerfile", "-p agentguard-server -p agentguard");
 requireText("Dockerfile", "/usr/local/bin/agentguard");
 requireText("frontend/Dockerfile", "USER 10001:10001");

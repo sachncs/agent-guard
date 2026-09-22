@@ -19,7 +19,7 @@ USER 10001:10001
 ENV AGENTGUARD_LISTEN=tcp://0.0.0.0:8443 \
     AGENTGUARD_STORE=/var/lib/agentguard/policies \
     AGENTGUARD_AUDIT=/var/lib/agentguard/audit/decisions.jsonl \
-    AGENTGUARD_AUTH=disabled
+    AGENTGUARD_AUTH=apikey:/etc/agentguard/keys/keys.json
 EXPOSE 8443
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/agentguard-server"]

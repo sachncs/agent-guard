@@ -119,7 +119,7 @@ jobs:
       - name: Validate PDP stays live past the graceful-drain boundary
         run: |
           container=$(docker run --detach --publish 8443:8443 \
-            --env AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1 agentguard-server:ci)
+            agentguard-server:ci)
           trap 'docker rm --force "$container" >/dev/null' EXIT
           for attempt in $(seq 1 30); do
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
@@ -130,6 +130,10 @@ jobs:
           sleep 35
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
             http://127.0.0.1:8443/healthz)" = "200"
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request POST --header 'content-type: application/json' \
+            --data '{}' http://127.0.0.1:8443/access/v1/evaluation)
+          test "$status" = "401"
       - name: Build console image
         run: docker build --pull --tag agentguard-console:ci -f frontend/Dockerfile .
       - name: Validate console image entrypoint

@@ -48,6 +48,10 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 - The server stops accepting new work on SIGTERM and drains in-flight work;
   the deployment supervisor enforces the hard termination deadline.
 - API-key authentication is required for non-loopback PDP listeners.
+- The published PDP container defaults to API-key authentication; provide a
+  populated key-store Secret before sending protected requests. Explicitly set
+  `AGENTGUARD_AUTH=disabled` only for isolated local development or a smoke
+  environment that cannot be reached by untrusted clients.
 
 These guarantees depend on the adapter honoring decision == true. AgentGuard
 cannot protect an execution path that bypasses the PDP or ignores a denial.
