@@ -682,6 +682,58 @@ async fn batch_evaluations_rejects_oversized_request() {
 }
 
 #[tokio::test]
+async fn batch_evaluation_uses_each_item_entity_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = PolicyStore::open(dir.path()).unwrap();
+    store
+        .write_policy(
+            "verified_only",
+            r#"permit (principal, action, resource) when { principal.verified == true };"#,
+        )
+        .unwrap();
+    let state = build_state(
+        dir.path().to_path_buf(),
+        Some(dir.path().join("audit.jsonl")),
+        Some(b"test-key".to_vec()),
+        _AuthLayer::Disabled,
+    )
+    .await
+    .unwrap();
+    let app = router(state);
+    let request = |entities: serde_json::Value| {
+        serde_json::json!({
+            "subject": {"type": "User", "id": "carol"},
+            "action": {"type": "Action", "id": "ToolCall::read"},
+            "resource": {"type": "Document", "id": "doc-1"},
+            "context": {},
+            "entities": entities
+        })
+    };
+    let body = serde_json::json!({
+        "evaluations": [
+            request(serde_json::json!([{"uid":{"type":"User","id":"carol"},"attrs":{"verified":true},"parents":[]}])),
+            request(serde_json::json!([]))
+        ]
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluations")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value["evaluations"][0]["decision"], true);
+    assert_eq!(value["evaluations"][1]["decision"], false);
+}
+
+#[tokio::test]
 async fn evaluation_preserves_context_key_named_trace() {
     // Regression: the AuthZEN bridge used to silently drop any
     // context key named "trace". Forward it as a regular argument

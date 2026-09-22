@@ -500,19 +500,20 @@ async fn evaluations(
             .into_response();
     }
     let semantics = req.evaluation_semantics.unwrap_or_default();
-    // Use the top-level request entities for the whole batch. Per-item
-    // entities in nested evaluations are ignored (callers should
-    // submit them at the top level).
-    let entities = match build_request_entities(&[]) {
-        Ok(e) => e,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-    };
     let mut responses = Vec::with_capacity(req.evaluations.len());
 
     for er in req.evaluations {
+        let per_request_entities = er.entities.clone();
         let agent_req = match evaluation_request_to_agent(er) {
             Ok(r) => r,
             Err(e) => {
+                return (StatusCode::BAD_REQUEST, e).into_response();
+            }
+        };
+        let entities = match build_request_entities(&per_request_entities) {
+            Ok(e) => e,
+            Err(e) => {
+                state.metrics().record_pdp_error("entities_build");
                 return (StatusCode::BAD_REQUEST, e).into_response();
             }
         };
@@ -521,7 +522,10 @@ async fn evaluations(
                 let allow = matches!(decision.effect, Effect::Allow);
                 if let Some(audit) = state.audit() {
                     if let Err(e) = audit.append_decision(&decision) {
-                        tracing::error!(error = %e, "audit append failed");
+                        state.metrics().record_pdp_error("audit_append");
+                        tracing::error!(error = %e, "audit append failed; refusing batch response");
+                        return (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
+                            .into_response();
                     }
                 }
                 responses.push(EvaluationResponse {
