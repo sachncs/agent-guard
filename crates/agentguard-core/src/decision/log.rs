@@ -135,6 +135,18 @@ impl DecisionLog {
             }),
             Some(key) => {
                 let chain = HashChain::new(&key);
+                // Authenticate all persisted segments before accepting new
+                // writes. Restoring only the final hash would let a validly
+                // formatted edit survive startup and be extended as if it
+                // were trustworthy.
+                let mut persisted_paths = rotated_logs(&path)?;
+                persisted_paths.push(path.clone());
+                verify_chain_paths(&persisted_paths, &key).map_err(|e| {
+                    Error::Other(format!(
+                        "refusing to open invalid chained audit log {}: {e}",
+                        path.display()
+                    ))
+                })?;
                 // Resume from the active file's last record. A crash can
                 // happen after rotation renamed the old file but before the
                 // next append populated the new active file; in that case,
@@ -471,8 +483,10 @@ impl DecisionLog {
 
     /// Verify the entire audit log against the root key.
     ///
-    /// Reads every record from `path`, checks the HMAC chain, and returns
-    /// the chain head. Returns an error if any record is tampered.
+    /// Reads every record from `path` and its timestamped rotation siblings,
+    /// checks the continuous HMAC chain, and returns the chain id. Returns
+    /// an error if a record is malformed, tampered, or belongs to another
+    /// chain.
     ///
     /// # Errors
     /// Returns `Error::Other` (formatted string) on parse failure, hash
@@ -491,29 +505,43 @@ impl DecisionLog {
     /// let _ = std::fs::remove_file(&path);
     /// ```
     pub fn verify_chain(path: impl AsRef<Path>, root_key: &[u8]) -> Result<ChainId> {
-        let records = Self::read_all_chained(path)?;
-        let mut chain_id = None;
-        let mut entries = Vec::new();
-        for cr in &records {
-            if chain_id.is_none() {
-                chain_id = Some(cr.chain_id);
+        let path = path.as_ref();
+        let mut paths = rotated_logs(path)?;
+        paths.push(path.to_path_buf());
+        verify_chain_paths(&paths, root_key)
+    }
+}
+
+fn verify_chain_paths(paths: &[PathBuf], root_key: &[u8]) -> Result<ChainId> {
+    let mut chain_id = None;
+    let mut entries = Vec::new();
+    for path in paths {
+        for record in DecisionLog::read_all_chained(path)? {
+            if let Some(expected) = chain_id {
+                if record.chain_id != expected {
+                    return Err(Error::Other(format!(
+                        "chain id mismatch in {}: expected {}, got {}",
+                        path.display(),
+                        expected,
+                        record.chain_id
+                    )));
+                }
+            } else {
+                chain_id = Some(record.chain_id);
             }
-            let canonical = canonical_json(&cr.record)?;
-            let prev = parse_hex32(&cr.prev_hash)?;
-            let hash = parse_hex32(&cr.record_hash)?;
+            let canonical = canonical_json(&record.record)?;
+            let prev = parse_hex32(&record.prev_hash)?;
+            let hash = parse_hex32(&record.record_hash)?;
             entries.push((canonical, prev, hash));
         }
-        let chain = HashChain::resume(
-            root_key,
-            entries
-                .last()
-                .map(|(_, _, h)| *h)
-                .unwrap_or([0u8; HASH_LEN]),
-            chain_id.unwrap_or_default(),
-        );
-        chain.verify_chain(&entries)?;
-        Ok(chain_id.unwrap_or_default())
     }
+    let id = chain_id.unwrap_or_default();
+    let head = entries
+        .last()
+        .map(|(_, _, hash)| *hash)
+        .unwrap_or([0u8; HASH_LEN]);
+    HashChain::resume(root_key, head, id).verify_chain(&entries)?;
+    Ok(id)
 }
 
 fn parse_hex32(s: &str) -> Result<[u8; HASH_LEN]> {
@@ -544,9 +572,10 @@ fn chain_id_sidecar_path(log_path: &Path) -> PathBuf {
     parent.join(format!(".{}.chainid", name))
 }
 
-/// Find the newest timestamped rotation for `log_path`. Rotation timestamps
-/// are UTC and fixed-width, so lexical ordering is chronological.
-fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
+/// List timestamped rotations for `log_path` in chronological order.
+/// Rotation timestamps are UTC and fixed-width, so lexical ordering is
+/// chronological.
+fn rotated_logs(log_path: &Path) -> Result<Vec<PathBuf>> {
     let parent = log_path.parent().unwrap_or_else(|| Path::new("."));
     let stem = log_path
         .file_stem()
@@ -572,7 +601,11 @@ fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
         }
     }
     candidates.sort();
-    Ok(candidates.pop())
+    Ok(candidates)
+}
+
+fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
+    Ok(rotated_logs(log_path)?.pop())
 }
 
 /// Best-effort read of the persisted chain id. Returns `None` if the
@@ -659,7 +692,47 @@ mod tests {
         };
         assert!(err
             .to_string()
-            .contains("refusing to open corrupt chained audit log"));
+            .contains("refusing to open invalid chained audit log"));
+    }
+
+    #[test]
+    fn chained_log_refuses_valid_json_tampering_at_startup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tampered.jsonl");
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        {
+            let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+            log.append(&rec).unwrap();
+        }
+
+        let mut line: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        line["principal"] = serde_json::Value::String("mallory".into());
+        std::fs::write(&path, format!("{line}\n")).unwrap();
+
+        let err = match DecisionLog::open_with_chain(&path, b"root") {
+            Ok(_) => panic!("tampered chained audit log must be rejected"),
+            Err(err) => err,
+        };
+        assert!(err
+            .to_string()
+            .contains("refusing to open invalid chained audit log"));
     }
 
     #[test]
@@ -905,6 +978,7 @@ mod tests {
         assert_eq!(after.len(), 1);
         assert_eq!(before[0].chain_id, after[0].chain_id);
         assert_eq!(before[0].record_hash, after[0].prev_hash);
+        assert_eq!(DecisionLog::verify_chain(&path, b"root").unwrap(), first_id);
     }
 
     #[test]

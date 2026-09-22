@@ -130,10 +130,12 @@ The log is **append-only** with one of two modes:
   `verify_chain` confirms no record was inserted, removed, or
   reordered. Verified offline with `agentguard audit verify`.
 
-On startup the chain head is rehydrated from the active log, or from the
-newest rotated segment if a crash happened after rotation and before the
-first append to the new active file. A malformed tail refuses startup rather
-than silently resetting. Each append serializes the in-process file write and
+On startup the complete active log and its timestamped rotation segments are
+verified as one continuous HMAC chain before new writes are accepted. This
+also restores the chain head from the newest rotated segment if a crash
+happened after rotation and before the first append to the new active file.
+Malformed or tampered records refuse startup rather than silently extending
+untrusted history. Each append serializes the in-process file write and
 chain-head update under locks and calls `write_all + sync_all` before advancing
 the in-memory head. This does not coordinate multiple server processes sharing
 one audit file; the supported Kubernetes deployment keeps a single PDP
