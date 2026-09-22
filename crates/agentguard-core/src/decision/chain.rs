@@ -498,7 +498,10 @@ mod tests {
         assert_ne!(a.id(), b.id(), "chain ids should be unique");
     }
 
-    #[cfg(test)]
+    // Keep randomized property testing in the normal test/fuzz jobs. Miri
+    // runs the deterministic chain invariants and should not spend its whole
+    // timeout interpreting generated cases.
+    #[cfg(all(test, not(miri)))]
     mod proptests {
         use super::*;
         use proptest::prelude::*;

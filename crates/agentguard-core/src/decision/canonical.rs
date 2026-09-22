@@ -143,7 +143,11 @@ mod tests {
         }
     }
 
-    #[cfg(test)]
+    // Property tests run in the normal test and fuzz/coverage jobs. They are
+    // intentionally excluded from Miri: the generated input volume makes
+    // interpreter execution exceed the CI safety budget, while the focused
+    // unit tests above still exercise this module under Miri.
+    #[cfg(all(test, not(miri)))]
     mod proptests {
         use super::*;
         use proptest::prelude::*;
