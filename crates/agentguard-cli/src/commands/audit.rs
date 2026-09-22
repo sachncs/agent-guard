@@ -232,4 +232,39 @@ mod tests {
             "expected a rotated sibling, got {entries:?}"
         );
     }
+
+    #[test]
+    fn export_includes_records_from_rotated_segments() {
+        let dir = tempdir().unwrap();
+        let audit_path = dir.path().join("export.jsonl");
+        let output_path = dir.path().join("exported.jsonl");
+        let log = DecisionLog::open_with_chain(&audit_path, b"root").unwrap();
+        let record = |id: &str| DecisionRecord {
+            id: id.into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "read".into(),
+            resource: "document".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        log.append(&record("before-rotation")).unwrap();
+        log.rotate().unwrap();
+        log.append(&record("after-rotation")).unwrap();
+        drop(log);
+
+        export(&audit_path, "jsonl", Some(output_path.as_path()), "pretty").unwrap();
+        let exported = DecisionLog::read_all(&output_path).unwrap();
+        assert_eq!(exported.len(), 2);
+        assert_eq!(exported[0].id, "before-rotation");
+        assert_eq!(exported[1].id, "after-rotation");
+    }
 }

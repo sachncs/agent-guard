@@ -413,15 +413,19 @@ impl DecisionLog {
         self.append(&rec)
     }
 
-    /// Read every record from the audit log, accepting either plain
-    /// or chained records (mixed log files are supported; older
-    /// records may pre-date chain metadata).
+    /// Read every record from the audit log and its timestamped rotation
+    /// siblings in chronological order, accepting either plain or chained
+    /// records (mixed log files are supported; older records may pre-date
+    /// chain metadata).
     ///
     /// # Errors
     /// Returns `Error::Io` if the file cannot be read, `Error::Json`
     /// if a record cannot be parsed.
     pub fn read_all(path: impl AsRef<Path>) -> Result<Vec<DecisionRecord>> {
-        Self::read_all_mixed(path)
+        let path = path.as_ref();
+        let mut paths = rotated_logs(path)?;
+        paths.push(path.to_path_buf());
+        Self::read_all_mixed_paths(&paths)
     }
 
     /// Read every record from the audit log, requiring all records to
@@ -449,34 +453,37 @@ impl DecisionLog {
     /// Read a JSONL audit log that may contain either plain
     /// `DecisionRecord` lines or `ChainedRecord` lines (with the chain
     /// metadata flattened). The format is auto-detected per line.
-    fn read_all_mixed(path: impl AsRef<Path>) -> Result<Vec<DecisionRecord>> {
-        let f = File::open(path.as_ref())?;
-        let r = BufReader::new(f);
+    fn read_all_mixed_paths(paths: &[PathBuf]) -> Result<Vec<DecisionRecord>> {
         let mut out = Vec::new();
-        for (idx, line) in r.lines().enumerate() {
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
+        for path in paths {
+            let f = File::open(path)?;
+            let r = BufReader::new(f);
+            for (idx, line) in r.lines().enumerate() {
+                let line = line?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                // Try as DecisionRecord first; on failure, treat as a
+                // ChainedRecord and extract the embedded record. This order
+                // is correct because ChainedRecord has additional fields
+                // (`prev_hash`, `record_hash`, `chain_id`) that would make
+                // DecisionRecord parsing fail.
+                let rec: DecisionRecord = match serde_json::from_str(&line) {
+                    Ok(r) => r,
+                    Err(plain_err) => match serde_json::from_str::<ChainedRecord>(&line) {
+                        Ok(chained) => chained.record,
+                        Err(chained_err) => {
+                            return Err(Error::Json(format!(
+                                "{} line {}: not a DecisionRecord ({plain_err}); \
+                                 also not a ChainedRecord ({chained_err})",
+                                path.display(),
+                                idx + 1
+                            )));
+                        }
+                    },
+                };
+                out.push(rec);
             }
-            // Try as DecisionRecord first; on failure, treat as a
-            // ChainedRecord and extract the embedded record. This order
-            // is correct because ChainedRecord has additional fields
-            // (`prev_hash`, `record_hash`, `chain_id`) that would make
-            // DecisionRecord parsing fail.
-            let rec: DecisionRecord = match serde_json::from_str(&line) {
-                Ok(r) => r,
-                Err(plain_err) => match serde_json::from_str::<ChainedRecord>(&line) {
-                    Ok(chained) => chained.record,
-                    Err(chained_err) => {
-                        return Err(Error::Json(format!(
-                            "line {}: not a DecisionRecord ({plain_err}); \
-                             also not a ChainedRecord ({chained_err})",
-                            idx + 1
-                        )));
-                    }
-                },
-            };
-            out.push(rec);
         }
         Ok(out)
     }
@@ -1019,6 +1026,7 @@ mod tests {
         assert_eq!(before[0].chain_id, after[0].chain_id);
         assert_eq!(before[0].record_hash, after[0].prev_hash);
         assert_eq!(DecisionLog::verify_chain(&path, b"root").unwrap(), first_id);
+        assert_eq!(DecisionLog::read_all(&path).unwrap().len(), 2);
     }
 
     #[test]

@@ -7,7 +7,9 @@ or disaster-recovery testing.
 ## What to preserve
 
 - Policy files and Cedar schema, including the active version.
-- The audit JSONL file and its chain sidecar.
+- The active audit JSONL file, every timestamped rotation segment, and each
+  matching hidden `.chainid` sidecar. Preserve the original filenames and
+  directory layout as one consistent set.
 - The chain secret, delegation signing key, and their rotation metadata in a
   secret manager (never in Git or an image layer).
 - The deployment manifests, image digests, and configuration export.
@@ -16,12 +18,14 @@ or disaster-recovery testing.
 
 ## Backup procedure
 
-Quiesce or coordinate writes, copy the audit file and sidecar as one consistent
-set, and verify the copied chain before declaring the backup successful:
+Quiesce or coordinate writes, snapshot the complete audit directory (including
+hidden sidecars), and verify the copied chain before declaring the backup
+successful:
 
 ```sh
-agentguard audit verify --store /backup/agentguard
-agentguard audit export --store /backup/agentguard --format jsonl > audit.jsonl
+agentguard audit verify \
+  --audit /backup/agentguard/.audit/decisions.jsonl \
+  --secret-file /backup/agentguard/.chain-secret
 ```
 
 For Kubernetes, snapshot the audit PVC using the storage provider's supported

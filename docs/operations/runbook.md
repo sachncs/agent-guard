@@ -190,25 +190,36 @@ reduce label dimensionality (e.g. drop `tenant_id` from the
 
 ## Audit log archival
 
-The audit log is append-only JSONL. To archive:
+The audit log is append-only JSONL. File-size rotation creates timestamped
+siblings and a hidden `.chainid` sidecar for each segment. Archive the active
+file, every timestamped sibling, and every matching sidecar as one directory
+snapshot; do not rename or gzip individual segments before verification.
 
 ```bash
-gzip .audit/decisions.jsonl.archived
-aws s3 cp .audit/decisions.jsonl.archived.gz \
-    s3://<bucket>/agentguard/$(date +%Y/%m/%d)/decisions.jsonl.gz
+tar -czf /tmp/agentguard-audit.tar.gz .audit
+mkdir -p /tmp/agentguard-audit-restore
+tar -xzf /tmp/agentguard-audit.tar.gz -C /tmp/agentguard-audit-restore
+agentguard audit verify \
+    --audit /tmp/agentguard-audit-restore/.audit/decisions.jsonl \
+    --secret-file .chain-secret
+aws s3 cp /tmp/agentguard-audit.tar.gz \
+    s3://<bucket>/agentguard/$(date +%Y/%m/%d)/audit-set.tar.gz
 ```
 
-The archived file is still verifiable offline with `agentguard audit
-verify`. Don't delete it before your retention period expires.
+The complete extracted set is verifiable offline with `agentguard audit
+verify`. Do not delete it before your retention period expires.
 
 ## Backup / restore
 
 `agentguard` is stateless beyond the audit log + chain secret. To
 restore a deployment:
 
-1. Restore `.audit/decisions.jsonl` + `.audit/decisions.jsonl.chainid`.
-2. Restore the chain secret file.
-3. Restart the server.
+1. Restore the complete `.audit` directory, including the active log, rotated
+   segments, and hidden `.chainid` sidecars, without changing filenames.
+2. Restore the matching chain secret file.
+3. Verify with `agentguard audit verify --audit .audit/decisions.jsonl
+   --secret-file .chain-secret` before starting the server.
+4. Restart the server; readiness must remain false if verification fails.
 
 Cache + metrics are in-memory and lost on restart; this is
 intentional (no stale state across deploys).
