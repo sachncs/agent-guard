@@ -807,3 +807,56 @@ async fn evaluation_preserves_context_key_named_trace() {
     );
     assert_eq!(trace_value.unwrap()["span_id"], "abc-123");
 }
+
+#[test]
+fn bound_tenant_is_trusted_audit_metadata_not_caller_context() {
+    use agentguard_server::auth_layer::AuthenticatedIdentity;
+    use agentguard_server::authzen::{
+        evaluation_request_for_caller, EntityRef, EvaluationMappingError, EvaluationRequest,
+    };
+
+    let caller = AuthenticatedIdentity(
+        agentguard_auth::ApiKeyIdentity::new("User", "alice", Some("tenant-a".into())).unwrap(),
+    );
+    let request = EvaluationRequest {
+        subject: EntityRef {
+            entity_type: "User".into(),
+            id: "alice".into(),
+        },
+        action: EntityRef {
+            entity_type: "Action".into(),
+            id: "read".into(),
+        },
+        resource: EntityRef {
+            entity_type: "Document".into(),
+            id: "doc-1".into(),
+        },
+        context: serde_json::json!({"tenant_id":"tenant-a", "purpose":"review"}),
+        entities: vec![],
+    };
+    let mapped = evaluation_request_for_caller(request, Some(&caller)).unwrap();
+    assert_eq!(mapped.tenant_id.as_deref(), Some("tenant-a"));
+    assert_eq!(mapped.context.args.get("tenant_id"), None);
+    assert_eq!(mapped.context.args["purpose"], "review");
+
+    let conflicting = EvaluationRequest {
+        subject: EntityRef {
+            entity_type: "User".into(),
+            id: "alice".into(),
+        },
+        action: EntityRef {
+            entity_type: "Action".into(),
+            id: "read".into(),
+        },
+        resource: EntityRef {
+            entity_type: "Document".into(),
+            id: "doc-1".into(),
+        },
+        context: serde_json::json!({"tenant_id":"tenant-b"}),
+        entities: vec![],
+    };
+    assert!(matches!(
+        evaluation_request_for_caller(conflicting, Some(&caller)),
+        Err(EvaluationMappingError::IdentityMismatch)
+    ));
+}

@@ -398,8 +398,9 @@ pub enum EvaluationMappingError {
 }
 
 /// Map an HTTP or gRPC request while constraining it to the identity carried
-/// by a verified API key. The bound tenant is stored in the request metadata,
-/// not trusted from caller-controlled Cedar context.
+/// by a verified API key. The bound tenant is stored in request/audit metadata,
+/// not trusted from caller-controlled Cedar context. It is not a Cedar policy
+/// attribute; policy isolation must use trusted entities/context explicitly.
 pub fn evaluation_request_for_caller(
     mut req: EvaluationRequest,
     caller: Option<&crate::auth_layer::AuthenticatedIdentity>,

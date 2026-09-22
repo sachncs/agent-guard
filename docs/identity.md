@@ -11,8 +11,10 @@ bearer validation for decision routes. The persisted `ApiKeyStore` stores
 Argon2id hashes with expiry and revocation state. Protected HTTP and gRPC
 evaluation requires a key bound to one `User` or `Agent` subject and the
 `authorize` scope (or `*`). The submitted subject must match the key. A key's
-optional tenant is injected as trusted request metadata; a conflicting
-caller-supplied `context.tenant_id` is rejected. Unbound legacy keys remain
+optional tenant is injected as trusted request/audit metadata; it is not itself
+a Cedar policy attribute, so tenant isolation must still be encoded using
+trusted entities and policy inputs. A conflicting caller-supplied
+`context.tenant_id` is rejected. Unbound legacy keys remain
 readable for migration but cannot authorize standalone evaluations. Rotate or
 reissue them as bound keys before enabling this enforcement.
 
