@@ -29,7 +29,8 @@ the console answers `503` on every route — there is no open mode.
   route, strips stale cookies and applies security headers (CSP,
   `X-Frame-Options: DENY`, nosniff, referrer policy; HSTS over https).
 - Mutating routes validate bodies with strict zod schemas (identifiers may
-  not look like CLI flags) and rate-limit per client IP.
+  not look like CLI flags) and use a conservative application-host rate-limit
+  key; spoofable forwarded client headers are ignored.
 
 ## Prerequisites
 

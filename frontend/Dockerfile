@@ -1,7 +1,7 @@
 FROM rust:1.89-bookworm AS cli-builder
 WORKDIR /src
 COPY . .
-RUN cargo build --locked --release -p agentguard-cli
+RUN cargo build --locked --release -p agentguard
 
 FROM node:22.14.0-bookworm-slim AS deps
 WORKDIR /app

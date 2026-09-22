@@ -33,7 +33,7 @@ for (const file of [
 ]) requireFile(file);
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');
-requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard-cli");
+requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard");
 requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
 requireText("Dockerfile", "USER 10001:10001");
 requireText("frontend/Dockerfile", "USER 10001:10001");
