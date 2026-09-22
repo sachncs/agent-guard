@@ -46,6 +46,7 @@ requireText(".github/workflows/deploy-site.yml", 'node-version: "22.19.0"');
 requireText("README.md", "embedded library callers");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
+requireText("scripts/k8s-smoke.sh", "agentguard audit verify");
 requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
 requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
 requireText("docs/production.md", "never becomes an implicit production fallback");

@@ -81,6 +81,9 @@ echo "$denied" | grep -q '"decision":false'
 
 pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
 kubectl -n "$namespace" exec "$pod" -- test -s /var/lib/agentguard/audit/decisions.jsonl
+kubectl -n "$namespace" exec "$pod" -- agentguard audit verify \
+  --audit /var/lib/agentguard/audit/decisions.jsonl \
+  --secret-file /etc/agentguard/secrets/chain-secret
 
 # Exercise graceful replacement and a real rollback operation using the same
 # verified image under a new immutable tag.
