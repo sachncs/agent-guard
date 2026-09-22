@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     return Response.json({ error: cfg.reason, kind: "not_configured" }, { status: 503 });
   }
 
-  const session = await requireAdmin(cfg.config.sessionSecret, request);
+  const session = await requireAdmin(cfg.config.sessionSecret, request, cfg.config.sessionStore);
   if (isResponse(session)) return session;
 
   const rl = await rateLimit(`verify:${clientKey(request)}`, 20);

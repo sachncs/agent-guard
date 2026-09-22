@@ -7,6 +7,7 @@ import {
   signSession,
   verifySession,
 } from "./session.ts";
+import { MemorySessionStore } from "./session_store.ts";
 
 const SECRET = new TextEncoder().encode("s".repeat(32));
 
@@ -47,6 +48,14 @@ describe("session tokens", () => {
   it("rejects missing or malformed input", async () => {
     assert.equal((await verifySession(SECRET, undefined)).ok, false);
     assert.equal((await verifySession(SECRET, "garbage")).ok, false);
+  });
+
+  it("requires a live shared record when a session store is configured", async () => {
+    const store = new MemorySessionStore();
+    const token = await signSession(SECRET, { sub: "u", admin: true }, 60, store);
+    assert.equal((await verifySession(SECRET, token, store)).ok, true);
+    await store.reset();
+    assert.equal((await verifySession(SECRET, token, store)).ok, false);
   });
 });
 

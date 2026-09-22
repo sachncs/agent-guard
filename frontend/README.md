@@ -71,6 +71,8 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_OIDC_CLIENT_ID` | *(required)* | Confidential OIDC client id |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | *(required)* | Client secret (`client_secret_post`) |
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |
+| `AGENTGUARD_SESSION_STORE` | `memory` in development, `redis` in production | Shared session backend mode |
+| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |
 | `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` | AuthZEN PDP base URL (`agentguard-server`) |
@@ -94,11 +96,12 @@ mode.
 
 ## Production boundary
 
-- **Shared rate limiting**: sessions are signed stateless cookies. The default
-  development limiter is memory-backed; set
+- **Shared state**: production sessions and rate limits use Redis-compatible
+  stores. Set `AGENTGUARD_SESSION_STORE=redis` plus the session Redis
+  credentials, and set
   `AGENTGUARD_RATE_LIMIT_REDIS_URL` and `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN`
-  for an atomic Redis-compatible limiter before running multiple replicas.
-  Store failures fail closed.
+  before running multiple replicas. The in-memory stores are development-only;
+  store failures fail closed.
 - **Per-request CLI spawns** for log/delegate/verify (no HTTP surface exists
   server-side yet); the simulator already avoids this via the PDP API. The
   production console image includes the pinned `agentguard` CLI. Mount the

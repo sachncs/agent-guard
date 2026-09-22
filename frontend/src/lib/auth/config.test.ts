@@ -56,4 +56,20 @@ describe("auth config", () => {
     assert.equal(cfg.config.pdpUrl, "http://pdp:8443");
     assert.equal(cfg.config.insecureCookie, false);
   });
+
+  it("requires Redis sessions for production mode", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    let cfg = authConfig();
+    assert.equal(cfg.valid, false);
+    if (cfg.valid) return;
+    assert.match(cfg.reason, /SESSION_REDIS/);
+
+    process.env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
+    process.env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
+    resetAuthConfigCache();
+    cfg = authConfig();
+    assert.equal(cfg.valid, true);
+    delete (process.env as Record<string, string | undefined>).NODE_ENV;
+  });
 });

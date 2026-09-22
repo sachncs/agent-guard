@@ -1,12 +1,19 @@
 import { authConfig } from "@/lib/auth/config";
-import { SESSION_COOKIE, serializeSetCookie } from "@/lib/auth/session";
+import { SESSION_COOKIE, parseCookieHeader, revokeSession, serializeSetCookie } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
 /** Clears the console session; redirects to /login. */
-export async function GET() {
+export async function GET(request: Request) {
   const cfg = authConfig();
   const insecure = cfg.valid ? cfg.config.insecureCookie : true;
+  if (cfg.valid) {
+    await revokeSession(
+      cfg.config.sessionSecret,
+      parseCookieHeader(request.headers.get("cookie"))[SESSION_COOKIE],
+      cfg.config.sessionStore,
+    );
+  }
 
   return new Response(null, {
     status: 302,

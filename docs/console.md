@@ -34,6 +34,8 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_OIDC_CLIENT_ID` | Confidential client registered with the issuer |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | Never commit or bake into the image |
 | `AGENTGUARD_SESSION_SECRET` | At least 32 random characters; rotate deliberately |
+| `AGENTGUARD_SESSION_STORE` | `redis` in production; `memory` only for development |
+| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state |
 | `AGENTGUARD_ADMIN_CLAIM` / `AGENTGUARD_ADMIN_VALUES` | Explicit admin mapping; empty values grant viewer only |
 | `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | Private PDP URL and optional bearer credential |
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
@@ -54,9 +56,9 @@ cleared and redirected to login. Missing OIDC configuration, unavailable PDP
 responses, CLI failures, malformed upstream payloads, and audit failures are
 surfaced as errors; they never become an allow decision.
 
-Use Redis-compatible shared rate limiting for horizontally scaled console
-replicas. The in-memory store is development-only and intentionally does not
-provide cross-replica protection. Store session signing keys and Redis
+Use Redis-compatible shared sessions and rate limiting for horizontally scaled
+console replicas. The in-memory stores are development-only and intentionally
+do not provide cross-replica protection. Store session signing keys and Redis
 credentials in the deployment secret manager.
 
 ## Release checks

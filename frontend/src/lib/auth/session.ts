@@ -5,6 +5,7 @@
  */
 
 import { SignJWT, jwtVerify } from "jose";
+import type { SessionStore } from "./session_store";
 
 export const SESSION_COOKIE = "ag_session";
 export const OIDC_STATE_COOKIE = "ag_oidc";
@@ -24,12 +25,16 @@ export interface SessionClaims {
 export async function signSession(
   secret: Uint8Array,
   claims: SessionClaims,
-  ttlSeconds: number = SESSION_TTL_SECONDS
+  ttlSeconds: number = SESSION_TTL_SECONDS,
+  store?: SessionStore,
 ): Promise<string> {
+  const id = crypto.randomUUID();
+  if (store) await store.put(id, claims, ttlSeconds);
   return new SignJWT({ ...claims })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer("agentguard-console")
     .setAudience("agentguard-console")
+    .setJti(id)
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds)
     .sign(secret);
@@ -41,7 +46,8 @@ export type VerifyResult<T> = { ok: true; claims: T } | { ok: false };
 /** Verify a session JWT; returns `{ok: false}` for missing/invalid/expired tokens. */
 export async function verifySession(
   secret: Uint8Array,
-  token: string | undefined
+  token: string | undefined,
+  store?: SessionStore,
 ): Promise<VerifyResult<SessionClaims>> {
   if (!token) return { ok: false };
   try {
@@ -56,17 +62,43 @@ export async function verifySession(
     ) {
       return { ok: false };
     }
+    const claims = {
+      sub: payload.sub,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+      name: typeof payload.name === "string" ? payload.name : undefined,
+      admin: payload.admin,
+    };
+    if (store) {
+      if (typeof payload.jti !== "string") return { ok: false };
+      const stored = await store.get(payload.jti);
+      if (!stored) return { ok: false };
+      return { ok: true, claims: stored };
+    }
     return {
       ok: true,
-      claims: {
-        sub: payload.sub,
-        email: typeof payload.email === "string" ? payload.email : undefined,
-        name: typeof payload.name === "string" ? payload.name : undefined,
-        admin: payload.admin,
-      },
+      claims,
     };
   } catch {
     return { ok: false };
+  }
+}
+
+/** Revoke a server-side session record when a user logs out. */
+export async function revokeSession(
+  secret: Uint8Array,
+  token: string | undefined,
+  store?: SessionStore,
+): Promise<void> {
+  if (!store || !token) return;
+  try {
+    const { payload } = await jwtVerify(token, secret, {
+      issuer: "agentguard-console",
+      audience: "agentguard-console",
+      algorithms: ["HS256"],
+    });
+    if (typeof payload.jti === "string") await store.delete(payload.jti);
+  } catch {
+    // Logout is idempotent; clearing the cookie is sufficient for invalid JWTs.
   }
 }
 

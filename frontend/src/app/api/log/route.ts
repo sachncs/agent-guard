@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     return Response.json({ error: cfg.reason, kind: "not_configured" }, { status: 503 });
   }
 
-  const session = await requireViewer(cfg.config.sessionSecret, request);
+  const session = await requireViewer(cfg.config.sessionSecret, request, cfg.config.sessionStore);
   if (isResponse(session)) return session;
 
   const params = new URL(request.url).searchParams;

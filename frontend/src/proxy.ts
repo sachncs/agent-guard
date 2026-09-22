@@ -63,7 +63,11 @@ export async function proxy(request: NextRequest) {
   }
 
   const cookies = parseCookieHeader(request.headers.get("cookie"));
-  const session = await verifySession(cfg.config.sessionSecret, cookies[SESSION_COOKIE]);
+  const session = await verifySession(
+    cfg.config.sessionSecret,
+    cookies[SESSION_COOKIE],
+    cfg.config.sessionStore,
+  );
 
   if (!session.ok) {
     if (isApi) {

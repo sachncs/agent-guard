@@ -40,6 +40,8 @@ requireText("frontend/Dockerfile", "USER 10001:10001");
 requireText("README.md", "embedded library callers");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
+requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
+requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

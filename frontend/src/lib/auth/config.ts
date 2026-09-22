@@ -1,3 +1,6 @@
+import { RedisSessionStore } from "./session_store.ts";
+import type { SessionStore } from "./session_store.ts";
+
 /**
  * Console authentication configuration.
  *
@@ -18,6 +21,8 @@ export interface AuthConfig {
   oidc: OidcConfig;
   /** Signing key for console-issued session/state JWTs. */
   sessionSecret: Uint8Array;
+  /** Shared session state; memory is development-only. */
+  sessionStore?: SessionStore;
   /** ID-token claim that carries admin group membership. */
   adminClaim: string;
   /** Claim values granting the admin role. Empty => nobody is admin. */
@@ -47,6 +52,10 @@ function readEnv(): AuthConfigResult {
   const clientId = need("AGENTGUARD_OIDC_CLIENT_ID");
   const clientSecret = need("AGENTGUARD_OIDC_CLIENT_SECRET");
   const secret = need("AGENTGUARD_SESSION_SECRET");
+  const sessionStoreMode = process.env.AGENTGUARD_SESSION_STORE ||
+    (process.env.NODE_ENV === "production" ? "redis" : "memory");
+  const sessionRedisUrl = process.env.AGENTGUARD_SESSION_REDIS_URL;
+  const sessionRedisToken = process.env.AGENTGUARD_SESSION_REDIS_TOKEN;
   const pdpUrl = stripSlash(process.env.AGENTGUARD_PDP_URL ?? "http://127.0.0.1:8443");
 
   if (missing.length > 0) {
@@ -63,6 +72,16 @@ function readEnv(): AuthConfigResult {
       reason: "AGENTGUARD_SESSION_SECRET must be at least 32 characters",
     };
   }
+  if (sessionStoreMode !== "memory" && sessionStoreMode !== "redis") {
+    return { valid: false, reason: "AGENTGUARD_SESSION_STORE must be memory or redis" };
+  }
+  if (sessionStoreMode === "redis" && (!sessionRedisUrl || !sessionRedisToken)) {
+    return {
+      valid: false,
+      reason:
+        "production console sessions require AGENTGUARD_SESSION_REDIS_URL and AGENTGUARD_SESSION_REDIS_TOKEN",
+    };
+  }
 
   const adminClaim = process.env.AGENTGUARD_ADMIN_CLAIM || "groups";
   const adminValues = (process.env.AGENTGUARD_ADMIN_VALUES ?? "")
@@ -75,6 +94,13 @@ function readEnv(): AuthConfigResult {
     config: {
       oidc: { issuer, clientId, clientSecret },
       sessionSecret: new TextEncoder().encode(secret),
+      // Next's edge proxy and Node route handlers do not share an in-memory
+      // module instance. Development therefore keeps the signed-cookie
+      // fallback; production is rejected above unless Redis is configured.
+      sessionStore:
+        sessionStoreMode === "redis"
+          ? new RedisSessionStore(sessionRedisUrl!, sessionRedisToken!)
+          : undefined,
       adminClaim,
       adminValues,
       pdpUrl,

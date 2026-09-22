@@ -35,7 +35,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     const cookieStore = await cookies();
     const result = await verifySession(
       cfg.config.sessionSecret,
-      parseCookieHeader(cookieStore.toString())[SESSION_COOKIE]
+      parseCookieHeader(cookieStore.toString())[SESSION_COOKIE],
+      cfg.config.sessionStore,
     );
     user = result.ok ? result.claims : null;
   }

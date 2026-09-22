@@ -5,14 +5,16 @@
 
 import type { SessionClaims } from "./session";
 import { SESSION_COOKIE, parseCookieHeader, verifySession } from "./session";
+import type { SessionStore } from "./session_store";
 
 /** Resolve the session claims for a request, or null if unauthenticated. */
 export function sessionFromRequest(
   secret: Uint8Array,
-  request: Request
+  request: Request,
+  store?: SessionStore,
 ): Promise<SessionClaims | null> {
   const cookies = parseCookieHeader(request.headers.get("cookie"));
-  return verifySession(secret, cookies[SESSION_COOKIE]).then((r) =>
+  return verifySession(secret, cookies[SESSION_COOKIE], store).then((r) =>
     r.ok ? r.claims : null
   );
 }
@@ -36,18 +38,20 @@ export function forbidden(): Response {
 /** Enforce authentication; returns claims or a 401 Response. */
 export async function requireViewer(
   secret: Uint8Array,
-  request: Request
+  request: Request,
+  store?: SessionStore,
 ): Promise<SessionClaims | Response> {
-  const session = await sessionFromRequest(secret, request);
+  const session = await sessionFromRequest(secret, request, store);
   return session ?? unauthorized();
 }
 
 /** Enforce the admin role; returns claims, a 401 or a 403 Response. */
 export async function requireAdmin(
   secret: Uint8Array,
-  request: Request
+  request: Request,
+  store?: SessionStore,
 ): Promise<SessionClaims | Response> {
-  const session = await sessionFromRequest(secret, request);
+  const session = await sessionFromRequest(secret, request, store);
   if (!session) return unauthorized();
   return session.admin ? session : forbidden();
 }

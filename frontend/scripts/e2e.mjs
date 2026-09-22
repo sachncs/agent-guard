@@ -233,6 +233,7 @@ async function main() {
     AGENTGUARD_OIDC_CLIENT_ID: "agentguard-console",
     AGENTGUARD_OIDC_CLIENT_SECRET: "e2e-client-secret",
     AGENTGUARD_SESSION_SECRET: "s".repeat(48),
+    AGENTGUARD_SESSION_STORE: "memory",
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
     AGENTGUARD_INSECURE_COOKIE: "1",
