@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { SessionClaims } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme_toggle";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -51,6 +52,9 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
             </a>
           </div>
         )}
+        <div className={user ? undefined : "ml-auto"}>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

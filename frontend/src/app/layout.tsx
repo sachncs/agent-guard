@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { Toaster } from "@/components/ui/sonner";
 import { ConsoleNav } from "@/components/console_nav";
+import { ThemeProvider } from "@/components/theme_provider";
 import { authConfig } from "@/lib/auth/config";
 import {
   SESSION_COOKIE,
@@ -42,13 +43,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   }
 
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col">
-        <ConsoleNav user={user} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-          {children}
-        </main>
-        <Toaster richColors position="top-right" />
+        <ThemeProvider>
+          <ConsoleNav user={user} />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+            {children}
+          </main>
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   );
