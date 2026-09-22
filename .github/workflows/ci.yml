@@ -78,13 +78,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v3
         with:
           version: 11.22.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22.19.0"
-          package-manager-cache: false
+          runtime: node@22.19.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:public
       - run: pnpm check:docs
