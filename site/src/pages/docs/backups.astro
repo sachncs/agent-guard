@@ -1,0 +1,5 @@
+---
+import Docs from '@/layouts/docs.astro';
+---
+<Docs title="Backups & retention"><div class="doc-title"><span class="section-kicker">OPERATE / EVIDENCE</span><h1>Back up what proves.</h1><p>Hash chaining detects tampering; it does not replace encrypted backups, retention, or restore testing.</p></div><h2>Preserve</h2><p>Back up policy and schema, audit JSONL plus its sidecar, deployment manifests and image digests, and secret-manager metadata. For Kubernetes, snapshot the audit PVC.</p><pre><code>agentguard audit verify --store /backup/agentguard
+agentguard audit export --store /backup/agentguard --format jsonl &gt; audit.jsonl</code></pre><p>Test an isolated restore once per release cycle. Treat <code>audit erase</code> as destructive and preserve pre-operation evidence. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/backups.md">backup guide ↗</a>.</Docs>

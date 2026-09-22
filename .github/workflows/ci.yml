@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -198,8 +199,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
       - uses: taiki-e/install-action@cargo-llvm-cov
-        with:
-          version: latest
       - run: cargo llvm-cov --workspace --lcov --output-path coverage.lcov
       - name: enforce 80% line coverage
         run: |

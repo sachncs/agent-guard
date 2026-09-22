@@ -3,7 +3,7 @@ import Base from '@/layouts/base.astro';
 import Header from '@/components/product/Header.astro';
 import Footer from '@/components/product/Footer.astro';
 const base=import.meta.env.BASE_URL;
-const sections=[['Overview',''],['Getting started','getting-started/'],['Core concepts','concepts/'],['Architecture & deployment','deploy/'],['Production deployment','production/'],['Kubernetes operations','kubernetes/'],['Console deployment','console/'],['API & SDKs','api/'],['Identity & delegation','identity/'],['Audit & observability','audit/'],['Configuration','configuration/'],['Operations','operations/'],['Incident response','incident-response/'],['Security model','security/'],['Compatibility','compatibility/'],['Brand system','branding/']];
+const sections=[['Overview',''],['Getting started','getting-started/'],['Local development','local-development/'],['Core concepts','concepts/'],['Policy authoring','policy-authoring/'],['Architecture & deployment','deploy/'],['Production deployment','production/'],['Kubernetes operations','kubernetes/'],['Console deployment','console/'],['API & SDKs','api/'],['API reference map','reference/'],['Identity & delegation','identity/'],['Audit & observability','audit/'],['Configuration','configuration/'],['Operations','operations/'],['Troubleshooting','troubleshooting/'],['Backups & retention','backups/'],['Upgrades & rollback','upgrades/'],['Incident response','incident-response/'],['Security model','security/'],['Compatibility','compatibility/'],['Brand system','branding/'],['OSS governance','oss-governance/']];
 interface Props {title:string; description?:string; active?:string;}
 const {title,description='AgentGuard documentation: authorization, integration, and operational boundaries.'}=Astro.props;
 ---

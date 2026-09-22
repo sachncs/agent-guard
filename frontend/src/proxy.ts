@@ -36,10 +36,6 @@ export async function proxy(request: NextRequest) {
   const cfg = authConfig();
 
   if (!cfg.valid) {
-    if (isAuthFlow) {
-      // The login page itself renders the configuration error.
-      return applySecurityHeaders(NextResponse.next(), false, https);
-    }
     if (isApi) {
       return applySecurityHeaders(
         Response.json({ error: cfg.reason, kind: "not_configured" }, { status: 503 }),
