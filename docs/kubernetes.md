@@ -52,6 +52,7 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_SESSION_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_SESSION_REDIS_TOKEN='replace-me' \
   --from-literal=AGENTGUARD_ADMIN_VALUES='security-admins' \
+  --from-literal=AGENTGUARD_RATE_LIMIT_STORE='redis' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```

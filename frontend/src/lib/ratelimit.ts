@@ -1,9 +1,9 @@
 /**
  * Pluggable fixed-window rate limiting for console mutation routes.
  *
- * Development defaults to an in-memory store. Production should set
- * AGENTGUARD_RATE_LIMIT_REDIS_URL and AGENTGUARD_RATE_LIMIT_REDIS_TOKEN to
- * use a Redis-compatible REST endpoint (for example, Upstash). Store errors
+ * Development defaults to an in-memory store. Production defaults to Redis
+ * and refuses to fall back to process-local state. Set the Redis-compatible
+ * REST endpoint (for example, Upstash) and token in production. Store errors
  * fail closed so an unavailable shared store cannot silently remove limits.
  */
 
@@ -95,13 +95,17 @@ export function configureRateLimitStore(store: RateLimitStore | undefined): void
 
 function activeStore(): RateLimitStore {
   if (configuredStore) return configuredStore;
+  const mode = process.env.AGENTGUARD_RATE_LIMIT_STORE ||
+    (process.env.NODE_ENV === "production" ? "redis" : "memory");
+  if (mode !== "memory" && mode !== "redis") {
+    throw new Error("AGENTGUARD_RATE_LIMIT_STORE must be memory or redis");
+  }
+  if (mode === "memory") return memoryStore;
   const url = process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
   const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
-  if (url && token) {
-    configuredStore = new RedisRateLimitStore(url, token);
-    return configuredStore;
-  }
-  return memoryStore;
+  if (!url || !token) throw new Error("Redis rate limiting is not configured");
+  configuredStore = new RedisRateLimitStore(url, token);
+  return configuredStore;
 }
 
 /** Test hook: reset the development store and configured store selection. */

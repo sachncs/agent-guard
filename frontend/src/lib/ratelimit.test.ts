@@ -10,6 +10,7 @@ import {
 
 describe("rate limiter", () => {
   beforeEach(() => {
+    process.env.AGENTGUARD_RATE_LIMIT_STORE = "memory";
     resetRateLimiter();
     setClock(() => 0);
   });
@@ -64,5 +65,22 @@ describe("rate limiter", () => {
       throw new Error("offline");
     });
     assert.deepEqual(await store.consume("k", 5).catch(() => ({ allowed: false, remaining: 0 })), { allowed: false, remaining: 0 });
+  });
+
+  it("does not fall back to memory in production", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousMode = process.env.AGENTGUARD_RATE_LIMIT_STORE;
+    delete process.env.AGENTGUARD_RATE_LIMIT_STORE;
+    delete process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
+    delete process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
+    env.NODE_ENV = "production";
+    resetRateLimiter();
+    assert.deepEqual(await rateLimit("production", 5), { allowed: false, remaining: 0 });
+    if (previousNodeEnv === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previousNodeEnv;
+    if (previousMode === undefined) delete process.env.AGENTGUARD_RATE_LIMIT_STORE;
+    else process.env.AGENTGUARD_RATE_LIMIT_STORE = previousMode;
+    resetRateLimiter();
   });
 });
