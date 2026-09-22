@@ -7,6 +7,7 @@ spec:
   template:
     metadata: {labels: {app: agentguard-console}}
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: console
@@ -16,6 +17,7 @@ spec:
           env: [{name: AGENTGUARD_PDP_URL, value: http://agentguard-pdp:8443}]
           readinessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 20}
+          startupProbe: {httpGet: {path: /login, port: http}, failureThreshold: 30, periodSeconds: 2}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

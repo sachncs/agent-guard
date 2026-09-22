@@ -10,6 +10,7 @@ spec:
   template:
     metadata: {labels: {app: agentguard-pdp}}
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         seccompProfile: {type: RuntimeDefault}
@@ -28,6 +29,7 @@ spec:
             - {name: keys, mountPath: /etc/agentguard/keys, readOnly: true}
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 30, periodSeconds: 2}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: 1, memory: 512Mi}
