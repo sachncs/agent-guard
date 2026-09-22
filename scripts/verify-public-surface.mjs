@@ -29,13 +29,17 @@ for (const file of [
   "docs/production.md",
   "scripts/k8s-smoke.sh",
   "deploy/k8s/kustomization.yaml",
+  ".dockerignore",
 ]) requireFile(file);
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');
 requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard-cli");
 requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
+requireText("Dockerfile", "USER 10001:10001");
+requireText("frontend/Dockerfile", "USER 10001:10001");
 requireText("README.md", "embedded library callers");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
+requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

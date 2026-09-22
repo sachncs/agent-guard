@@ -27,7 +27,7 @@ COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/standalone
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/static ./frontend/.next/static
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/public ./frontend/public
 COPY --from=cli-builder --chown=agentguard:agentguard /src/target/release/agentguard /usr/local/bin/agentguard
-USER agentguard
+USER 10001:10001
 ENV AGENTGUARD_BIN=/usr/local/bin/agentguard
 EXPOSE 3000
 STOPSIGNAL SIGTERM

@@ -1,0 +1,31 @@
+# Keep production builds small and reproducible. Dependencies and build output
+# are installed inside the Docker stages from the checked-in lockfiles.
+.git
+.gitignore
+.github
+.agents
+.codex
+
+target
+**/target
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+site/dist
+coverage
+*.lcov
+*.log
+
+# Local credentials and operator state must never enter an image build context.
+.env
+.env.*
+!.env.example
+.agentguard
+.audit
+*.chain-secret
+*.jws
+*.pem
+*.key

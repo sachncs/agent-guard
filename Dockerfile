@@ -12,7 +12,9 @@ RUN groupadd --system --gid 10001 agentguard \
   && mkdir -p /var/lib/agentguard/policies /var/lib/agentguard/audit \
   && chown -R agentguard:agentguard /var/lib/agentguard
 COPY --from=builder /src/target/release/agentguard-server /usr/local/bin/agentguard-server
-USER agentguard
+# Use a numeric identity so Kubernetes can verify runAsNonRoot before the
+# container starts. The named account remains useful for image inspection.
+USER 10001:10001
 ENV AGENTGUARD_LISTEN=tcp://0.0.0.0:8443 \
     AGENTGUARD_STORE=/var/lib/agentguard/policies \
     AGENTGUARD_AUDIT=/var/lib/agentguard/audit/decisions.jsonl \

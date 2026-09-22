@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Run the PDP smoke contract against a disposable kind cluster. This script
-# deliberately uses loopback + disabled auth only inside the isolated test
+# deliberately uses disabled auth only inside the isolated test
 # namespace; production manifests keep API-key auth enabled.
 
 # The checked-in Kustomize base intentionally fixes the namespace to
@@ -12,6 +12,7 @@ namespace=${AGENTGUARD_K8S_NAMESPACE:-agentguard}
 image=${AGENTGUARD_K8S_IMAGE:-agentguard-server:smoke}
 rollback_image=${AGENTGUARD_K8S_ROLLBACK_IMAGE:-agentguard-server:smoke-rollback}
 port=${AGENTGUARD_K8S_PORT:-18443}
+kind_cluster=${AGENTGUARD_KIND_CLUSTER:-kind}
 
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
 command -v kind >/dev/null || { echo "kind is required" >&2; exit 1; }
@@ -52,7 +53,7 @@ kubectl -n "$namespace" create configmap agentguard-policies \
 kubectl -n "$namespace" scale deployment/agentguard-console --replicas=0
 kubectl -n "$namespace" set image deployment/agentguard-pdp pdp="$image"
 kubectl -n "$namespace" set env deployment/agentguard-pdp \
-  AGENTGUARD_LISTEN=tcp://127.0.0.1:8443 \
+  AGENTGUARD_LISTEN=tcp://0.0.0.0:8443 \
   AGENTGUARD_AUTH=disabled \
   AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1
 kubectl -n "$namespace" rollout restart deployment/agentguard-pdp
@@ -83,7 +84,7 @@ kubectl -n "$namespace" exec "$pod" -- test -s /var/lib/agentguard/audit/decisio
 
 # Exercise graceful replacement and a real rollback operation using the same
 # verified image under a new immutable tag.
-kind load docker-image "$rollback_image"
+kind load docker-image --name "$kind_cluster" "$rollback_image"
 kubectl -n "$namespace" set image deployment/agentguard-pdp pdp="$rollback_image"
 kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
 kubectl -n "$namespace" rollout undo deployment/agentguard-pdp
