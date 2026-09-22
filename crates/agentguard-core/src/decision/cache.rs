@@ -3,6 +3,7 @@
 use crate::decision::canonical::{canonical_json, write_canonical_value};
 use crate::request::AgentRequest;
 use crate::ttl::Clock;
+use cedar_policy::Entities;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,8 +15,8 @@ use std::time::Duration;
 pub struct CacheKey(pub [u8; 32]);
 
 impl CacheKey {
-    /// Derive a key from an agent request. Includes `policy_version` so a
-    /// policy reload invalidates all entries.
+    /// Derive a key from an agent request without additional entities.
+    /// Includes `policy_version` so a policy reload invalidates all entries.
     ///
     /// Streams each field's canonical JSON through the hasher, avoiding the
     /// intermediate `String` allocations the previous implementation made.
@@ -34,6 +35,18 @@ impl CacheKey {
     /// let _k = CacheKey::for_request(&req, 0);
     /// ```
     pub fn for_request(req: &AgentRequest, policy_version: u64) -> Self {
+        Self::for_request_with_entities(req, &Entities::empty(), policy_version)
+    }
+
+    /// Derive a key from an agent request and the complete Cedar entity set.
+    /// Entity attributes and parent relationships can change a decision even
+    /// when the visible request is identical, so they are part of the cache
+    /// identity and are canonicalized in deterministic order.
+    pub fn for_request_with_entities(
+        req: &AgentRequest,
+        entities: &Entities,
+        policy_version: u64,
+    ) -> Self {
         let mut hasher = Sha256::new();
         // Reusable buffer for canonical-JSON serialization. Capacity
         // 256 is a heuristic: the principal/action/resource/context
@@ -77,6 +90,21 @@ impl CacheKey {
         let ctx_len = (ctx_bytes.len() as u32).to_be_bytes();
         sha2::Digest::update(&mut hasher, ctx_len);
         sha2::Digest::update(&mut hasher, &ctx_bytes);
+        let mut entity_values: Vec<Vec<u8>> = entities
+            .iter()
+            .map(|entity| {
+                let value = entity
+                    .to_json_value()
+                    .expect("Cedar entities must be serializable for cache keys");
+                canonical_json(&value).expect("Cedar entity JSON must be canonicalizable")
+            })
+            .collect();
+        entity_values.sort();
+        for entity in entity_values {
+            let len = (entity.len() as u32).to_be_bytes();
+            sha2::Digest::update(&mut hasher, len);
+            sha2::Digest::update(&mut hasher, entity);
+        }
         if let Some(t) = &req.trace {
             buf.clear();
             let s = t.to_string();
@@ -442,6 +470,20 @@ mod tests {
         assert_eq!(got.effect, "allow");
         assert_eq!(cache.stats().hits, 1);
         assert_eq!(cache.stats().misses, 1);
+    }
+
+    #[test]
+    fn entity_attributes_change_cache_identity() {
+        let entity = cedar_policy::Entity::from_json_str(
+            r#"{"uid":{"type":"User","id":"alice"},"attrs":{"admin":true},"parents":[]}"#,
+            None,
+        )
+        .unwrap();
+        let entities = cedar_policy::Entities::from_entities([entity], None).unwrap();
+        assert_ne!(
+            CacheKey::for_request(&req(), 0),
+            CacheKey::for_request_with_entities(&req(), &entities, 0)
+        );
     }
 
     #[test]

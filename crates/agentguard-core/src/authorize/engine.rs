@@ -229,7 +229,7 @@ impl Authorizer {
         // from_cache=true; the request payload is stored verbatim so
         // downstream callers see the same trace shape as a fresh eval.
         if let Some(cache) = &self.cache {
-            let key = CacheKey::for_request(req, cache.policy_version());
+            let key = CacheKey::for_request_with_entities(req, entities, cache.policy_version());
             if let Some(cached) = cache.get(&key) {
                 let effect = match cached.effect.as_str() {
                     "allow" => Effect::Allow,
@@ -269,7 +269,7 @@ impl Authorizer {
         // Populate the cache (if enabled) on the slow path so subsequent
         // identical requests hit.
         if let Some(cache) = &self.cache {
-            let key = CacheKey::for_request(req, cache.policy_version());
+            let key = CacheKey::for_request_with_entities(req, entities, cache.policy_version());
             let cached = CachedDecision {
                 effect: match effect {
                     Effect::Allow => "allow".into(),
