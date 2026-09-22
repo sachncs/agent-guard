@@ -6,7 +6,8 @@
 //! `evaluation_request_to_agent` helper to keep principal/action/
 //! resource semantics identical across transports.
 
-use crate::authzen::{build_request_entities, evaluation_request_to_agent, AppState};
+use crate::auth_layer::AuthenticationFailure;
+use crate::authzen::{build_request_entities, evaluation_request_for_caller, AppState};
 use crate::proto::agentguard::v1::{
     access_evaluation_server::{AccessEvaluation, AccessEvaluationServer},
     EvaluationRequest as PbRequest, EvaluationResponse as PbResponse,
@@ -41,14 +42,21 @@ impl AccessEvaluation for AccessEvaluationService {
         &self,
         request: Request<PbRequest>,
     ) -> Result<Response<PbResponse>, Status> {
-        if !self.state.auth.accepts_bearer(
-            request
-                .metadata()
-                .get("authorization")
-                .and_then(|value| value.to_str().ok()),
-        ) {
-            return Err(Status::unauthenticated("unauthorized"));
-        }
+        let caller = self
+            .state
+            .auth
+            .authenticate_bearer(
+                request
+                    .metadata()
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok()),
+                "authorize",
+                true,
+            )
+            .map_err(|failure| match failure {
+                AuthenticationFailure::Unauthenticated => Status::unauthenticated("unauthorized"),
+                AuthenticationFailure::Forbidden => Status::permission_denied("forbidden"),
+            })?;
         let req = request.into_inner();
         let subject = req
             .subject
@@ -95,8 +103,16 @@ impl AccessEvaluation for AccessEvaluationService {
             entities: per_request_entities.clone(),
         };
 
-        let agent_req =
-            evaluation_request_to_agent(http_style).map_err(Status::invalid_argument)?;
+        let agent_req = evaluation_request_for_caller(http_style, caller.as_ref()).map_err(
+            |error| match error {
+                crate::authzen::EvaluationMappingError::IdentityMismatch => {
+                    Status::permission_denied("subject or tenant does not match API key")
+                }
+                crate::authzen::EvaluationMappingError::InvalidRequest(message) => {
+                    Status::invalid_argument(message)
+                }
+            },
+        )?;
         let entities = build_request_entities(&per_request_entities).map_err(Status::internal)?;
 
         // Fill the tracing span fields now that we have the parsed request.

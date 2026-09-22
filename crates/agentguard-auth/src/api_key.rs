@@ -48,10 +48,65 @@ pub struct ApiKey {
     /// Argon2id hash of the secret half.
     pub secret_hash: String,
     pub scopes: Vec<String>,
+    /// Optional request identity binding. Standalone PDP decision routes
+    /// reject unbound keys so the bearer cannot claim arbitrary principals.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<ApiKeyIdentity>,
     pub created_at: i64,
     pub expires_at: Option<i64>,
     pub last_used_at: Option<i64>,
     pub revoked_at: Option<i64>,
+}
+
+/// Cedar identity a standalone API key is allowed to represent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApiKeyIdentity {
+    pub subject_type: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+}
+
+impl ApiKeyIdentity {
+    pub fn new(
+        subject_type: impl Into<String>,
+        subject_id: impl Into<String>,
+        tenant_id: Option<String>,
+    ) -> Result<Self> {
+        let subject_type = subject_type.into();
+        let subject_id = subject_id.into();
+        if !matches!(subject_type.as_str(), "User" | "Agent") || subject_id.trim().is_empty() {
+            return Err(AuthError::Other(
+                "API key identity must use User or Agent with a non-empty subject id".into(),
+            ));
+        }
+        if tenant_id
+            .as_ref()
+            .is_some_and(|tenant| tenant.trim().is_empty())
+        {
+            return Err(AuthError::Other(
+                "API key tenant id must be non-empty when provided".into(),
+            ));
+        }
+        let subject_id = subject_id.trim().to_owned();
+        let tenant_id = tenant_id.map(|tenant| tenant.trim().to_owned());
+        Ok(Self {
+            subject_type,
+            subject_id,
+            tenant_id,
+        })
+    }
+}
+
+impl ApiKey {
+    /// Whether the key grants a named capability. `*` grants all scopes.
+    pub fn has_scope(&self, required: &str) -> bool {
+        required.is_empty()
+            || self
+                .scopes
+                .iter()
+                .any(|scope| scope == "*" || scope == required)
+    }
 }
 
 /// In-memory API key store. Persists to JSON.
@@ -113,7 +168,34 @@ impl ApiKeyStore {
         scopes: Vec<String>,
         ttl: Option<Duration>,
     ) -> Result<(ApiKey, String)> {
-        let prefix = prefix.into();
+        self.create_with_identity(prefix.into(), scopes, ttl, None)
+    }
+
+    /// Create a key bound to one Cedar subject and optional tenant.
+    /// Decision routes accept only identity-bound keys and require the
+    /// `authorize` scope (or `*`).
+    pub fn create_bound(
+        &self,
+        prefix: impl Into<String>,
+        scopes: Vec<String>,
+        ttl: Option<Duration>,
+        identity: ApiKeyIdentity,
+    ) -> Result<(ApiKey, String)> {
+        let identity = ApiKeyIdentity::new(
+            identity.subject_type,
+            identity.subject_id,
+            identity.tenant_id,
+        )?;
+        self.create_with_identity(prefix.into(), scopes, ttl, Some(identity))
+    }
+
+    fn create_with_identity(
+        &self,
+        prefix: String,
+        scopes: Vec<String>,
+        ttl: Option<Duration>,
+        identity: Option<ApiKeyIdentity>,
+    ) -> Result<(ApiKey, String)> {
         let id = uuid::Uuid::new_v4().to_string();
         let secret_bytes: [u8; 32] = {
             use argon2::password_hash::rand_core::RngCore;
@@ -137,6 +219,7 @@ impl ApiKeyStore {
             prefix: prefix.clone(),
             secret_hash,
             scopes,
+            identity,
             created_at: now,
             expires_at,
             last_used_at: None,
@@ -218,6 +301,44 @@ mod tests {
     }
 
     #[test]
+    fn bound_key_persists_identity_and_scope() {
+        let _guard = api_key_test_lock().lock();
+        let store = ApiKeyStore::new();
+        let identity = ApiKeyIdentity::new("Agent", "research", Some("tenant-a".into())).unwrap();
+        let (created, raw) = store
+            .create_bound("ag", vec!["authorize".into()], None, identity.clone())
+            .unwrap();
+        let verified = store.verify(&raw).unwrap();
+        assert_eq!(verified.identity, Some(identity));
+        assert!(verified.has_scope("authorize"));
+        assert!(!verified.has_scope("metrics:read"));
+        assert!(created.has_scope("authorize"));
+    }
+
+    #[test]
+    fn identity_rejects_unknown_subject_type_and_empty_fields() {
+        assert!(ApiKeyIdentity::new("Service", "svc", None).is_err());
+        assert!(ApiKeyIdentity::new("User", "  ", None).is_err());
+        assert!(ApiKeyIdentity::new("Agent", "agent", Some(" ".into())).is_err());
+    }
+
+    #[test]
+    fn legacy_api_key_json_remains_readable_but_unbound() {
+        let legacy = serde_json::json!({
+            "id": "legacy",
+            "prefix": "ag",
+            "secret_hash": "hash",
+            "scopes": [],
+            "created_at": 0,
+            "expires_at": null,
+            "last_used_at": null,
+            "revoked_at": null
+        });
+        let key: ApiKey = serde_json::from_value(legacy).unwrap();
+        assert!(key.identity.is_none());
+    }
+
+    #[test]
     fn wrong_secret_rejected() {
         let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
@@ -257,6 +378,7 @@ mod tests {
             prefix: "ag".into(),
             secret_hash: hash,
             scopes: vec![],
+            identity: None,
             created_at: now - 100,
             expires_at: Some(now - 10),
             last_used_at: None,

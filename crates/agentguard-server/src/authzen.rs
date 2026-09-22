@@ -10,7 +10,7 @@ use agentguard_core::decision::{
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use agentguard_telemetry::Metrics;
-use axum::extract::{Request, State};
+use axum::extract::{Extension, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{from_fn, from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
@@ -391,6 +391,51 @@ pub fn evaluation_request_to_agent(req: EvaluationRequest) -> Result<AgentReques
     Ok(AgentRequest::new(principal, action, resource, context))
 }
 
+#[derive(Debug)]
+pub enum EvaluationMappingError {
+    IdentityMismatch,
+    InvalidRequest(String),
+}
+
+/// Map an HTTP or gRPC request while constraining it to the identity carried
+/// by a verified API key. The bound tenant is stored in the request metadata,
+/// not trusted from caller-controlled Cedar context.
+pub fn evaluation_request_for_caller(
+    mut req: EvaluationRequest,
+    caller: Option<&crate::auth_layer::AuthenticatedIdentity>,
+) -> Result<AgentRequest, EvaluationMappingError> {
+    let tenant_id = if let Some(caller) = caller {
+        let identity = &caller.0;
+        if req.subject.entity_type != identity.subject_type || req.subject.id != identity.subject_id
+        {
+            return Err(EvaluationMappingError::IdentityMismatch);
+        }
+        let supplied_tenant = match req.context.get("tenant_id") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or(EvaluationMappingError::IdentityMismatch)?,
+            ),
+        };
+        if supplied_tenant.is_some_and(|tenant| Some(tenant) != identity.tenant_id.as_deref()) {
+            return Err(EvaluationMappingError::IdentityMismatch);
+        }
+        if let serde_json::Value::Object(context) = &mut req.context {
+            context.remove("tenant_id");
+        }
+        identity.tenant_id.clone()
+    } else {
+        None
+    };
+    let mut mapped =
+        evaluation_request_to_agent(req).map_err(EvaluationMappingError::InvalidRequest)?;
+    if let Some(tenant_id) = tenant_id {
+        mapped = mapped.with_tenant_id(tenant_id);
+    }
+    Ok(mapped)
+}
+
 /// Build a `cedar_policy::Entities` from the request's `entities` array.
 /// Per-request entities are typical for AuthZEN (each PEP sends the
 /// entities relevant to its call); a future enhancement can layer
@@ -403,11 +448,24 @@ pub fn build_request_entities(items: &[serde_json::Value]) -> Result<Entities, S
     skip_all,
     fields(subject = %req.subject.id, action = %req.action.id)
 )]
-async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationRequest>) -> Response {
+async fn evaluation(
+    State(state): State<AppState>,
+    caller: Option<Extension<crate::auth_layer::AuthenticatedIdentity>>,
+    Json(req): Json<EvaluationRequest>,
+) -> Response {
     let per_request_entities = req.entities.clone();
-    let agent_req = match evaluation_request_to_agent(req) {
+    let agent_req = match evaluation_request_for_caller(req, caller.as_ref().map(|c| &c.0)) {
         Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(EvaluationMappingError::IdentityMismatch) => {
+            return (
+                StatusCode::FORBIDDEN,
+                "request identity does not match credential",
+            )
+                .into_response()
+        }
+        Err(EvaluationMappingError::InvalidRequest(e)) => {
+            return (StatusCode::BAD_REQUEST, e).into_response()
+        }
     };
     let entities = match build_request_entities(&per_request_entities) {
         Ok(e) => e,
@@ -487,6 +545,7 @@ async fn evaluation(State(state): State<AppState>, Json(req): Json<EvaluationReq
 
 async fn evaluations(
     State(state): State<AppState>,
+    caller: Option<Extension<crate::auth_layer::AuthenticatedIdentity>>,
     Json(req): Json<BatchEvaluationRequest>,
 ) -> Response {
     // ponytail: cap the batch size here too. Body limit caps total
@@ -507,10 +566,17 @@ async fn evaluations(
 
     for er in req.evaluations {
         let per_request_entities = er.entities.clone();
-        let agent_req = match evaluation_request_to_agent(er) {
+        let agent_req = match evaluation_request_for_caller(er, caller.as_ref().map(|c| &c.0)) {
             Ok(r) => r,
-            Err(e) => {
-                return (StatusCode::BAD_REQUEST, e).into_response();
+            Err(EvaluationMappingError::IdentityMismatch) => {
+                return (
+                    StatusCode::FORBIDDEN,
+                    "request identity does not match credential",
+                )
+                    .into_response()
+            }
+            Err(EvaluationMappingError::InvalidRequest(e)) => {
+                return (StatusCode::BAD_REQUEST, e).into_response()
             }
         };
         let entities = match build_request_entities(&per_request_entities) {

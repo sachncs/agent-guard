@@ -380,7 +380,10 @@ async fn auth_apikey_rejects_missing_header() {
 async fn auth_apikey_accepts_valid_bearer() {
     let dir = tempfile::tempdir().unwrap();
     let store = agentguard_auth::ApiKeyStore::new();
-    let (key, raw) = store.create("ag_test", vec![], None).unwrap();
+    let identity = agentguard_auth::ApiKeyIdentity::new("User", "alice", None).unwrap();
+    let (_key, raw) = store
+        .create_bound("ag_test", vec!["authorize".into()], None, identity)
+        .unwrap();
     store.save_to_file(dir.path().join("keys.json")).unwrap();
     let auth = _AuthLayer::ApiKey(Arc::new(
         agentguard_auth::ApiKeyStore::load_from_file(dir.path().join("keys.json")).unwrap(),
@@ -400,7 +403,52 @@ async fn auth_apikey_accepts_valid_bearer() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let _ = key; // ensure key returned was valid (unused but keeps the API exercised)
+}
+
+#[tokio::test]
+async fn auth_apikey_rejects_subject_impersonation_and_missing_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = agentguard_auth::ApiKeyStore::new();
+    let identity = agentguard_auth::ApiKeyIdentity::new("User", "alice", None).unwrap();
+    let (_, raw) = store
+        .create_bound("ag_test", vec!["metrics:read".into()], None, identity)
+        .unwrap();
+    store.save_to_file(dir.path().join("keys.json")).unwrap();
+    let auth = _AuthLayer::ApiKey(Arc::new(
+        agentguard_auth::ApiKeyStore::load_from_file(dir.path().join("keys.json")).unwrap(),
+    ));
+    let app = make_app_with_auth(auth).await;
+    let body = api_key_payload();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluation")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {raw}"))
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let mut impersonated = api_key_payload();
+    impersonated["subject"]["id"] = serde_json::json!("mallory");
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluation")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {raw}"))
+                .body(Body::from(serde_json::to_vec(&impersonated).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

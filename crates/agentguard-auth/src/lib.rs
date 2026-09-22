@@ -17,7 +17,7 @@ pub mod oidc;
 pub mod spiffe;
 
 pub use agentguard_core::auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
-pub use api_key::{ApiKey, ApiKeyStore};
+pub use api_key::{ApiKey, ApiKeyIdentity, ApiKeyStore};
 pub use dpop::DpopVerifier;
 pub use error::AuthError;
 pub use jti::JtiTracker;

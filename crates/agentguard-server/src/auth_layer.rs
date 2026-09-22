@@ -14,7 +14,7 @@
 
 use crate::authzen::AppState;
 use crate::listener::AuthConfig;
-use agentguard_auth::ApiKeyStore;
+use agentguard_auth::{ApiKeyIdentity, ApiKeyStore};
 use axum::{
     extract::{Request, State},
     http::StatusCode,
@@ -22,6 +22,16 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use std::sync::Arc;
+
+/// Authenticated identity and tenant asserted by a verified, bound API key.
+#[derive(Debug, Clone)]
+pub struct AuthenticatedIdentity(pub ApiKeyIdentity);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthenticationFailure {
+    Unauthenticated,
+    Forbidden,
+}
 
 /// What the auth layer needs to validate requests. Built once at
 /// startup and shared across Axum workers.
@@ -51,18 +61,41 @@ impl AuthLayer {
         Ok(layer)
     }
 
-    /// Validate a bearer credential for transports that do not use Axum's
-    /// HTTP middleware (currently the optional gRPC listener).
-    pub fn accepts_bearer(&self, authorization: Option<&str>) -> bool {
+    /// Authenticate non-HTTP transports using the same scope and identity
+    /// requirements as the AuthZEN HTTP endpoints.
+    pub fn authenticate_bearer(
+        &self,
+        authorization: Option<&str>,
+        required_scope: &str,
+        require_identity: bool,
+    ) -> Result<Option<AuthenticatedIdentity>, AuthenticationFailure> {
         match self {
-            Self::Disabled => true,
-            Self::ApiKey(store) => authorization
-                .and_then(|value| {
-                    value
-                        .strip_prefix("Bearer ")
-                        .or_else(|| value.strip_prefix("bearer "))
-                })
-                .is_some_and(|token| store.verify(token).is_ok()),
+            Self::Disabled => Ok(None),
+            Self::ApiKey(store) => {
+                let token = authorization
+                    .and_then(|value| {
+                        value
+                            .strip_prefix("Bearer ")
+                            .or_else(|| value.strip_prefix("bearer "))
+                    })
+                    .ok_or(AuthenticationFailure::Unauthenticated)?;
+                let key = store
+                    .verify(token)
+                    .map_err(|_| AuthenticationFailure::Unauthenticated)?;
+                if !key.has_scope(required_scope) {
+                    return Err(AuthenticationFailure::Forbidden);
+                }
+                let identity = key.identity.ok_or(if require_identity {
+                    AuthenticationFailure::Forbidden
+                } else {
+                    AuthenticationFailure::Unauthenticated
+                });
+                match identity {
+                    Ok(identity) => Ok(Some(AuthenticatedIdentity(identity))),
+                    Err(AuthenticationFailure::Unauthenticated) if !require_identity => Ok(None),
+                    Err(err) => Err(err),
+                }
+            }
         }
     }
 }
@@ -74,25 +107,29 @@ pub async fn auth_layer_fn(State(state): State<AppState>, req: Request, next: Ne
     if path == "/healthz" || path == "/readyz" {
         return next.run(req).await;
     }
+    let method = req.method();
+    let (required_scope, require_identity) = match (method.as_str(), path) {
+        ("POST", "/access/v1/evaluation" | "/access/v1/evaluations") => ("authorize", true),
+        ("GET", "/metrics") => ("metrics:read", false),
+        _ => ("", false),
+    };
     match &state.auth {
         AuthLayer::Disabled => next.run(req).await,
-        AuthLayer::ApiKey(store) => {
-            let token = match req
-                .headers()
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| {
-                    s.strip_prefix("Bearer ")
-                        .or_else(|| s.strip_prefix("bearer "))
-                }) {
-                Some(t) => t.to_string(),
-                None => return unauthorized(),
+        AuthLayer::ApiKey(_) => {
+            let identity = match state.auth.authenticate_bearer(
+                req.headers()
+                    .get(axum::http::header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok()),
+                required_scope,
+                require_identity,
+            ) {
+                Ok(identity) => identity,
+                Err(AuthenticationFailure::Unauthenticated) => return unauthorized(),
+                Err(AuthenticationFailure::Forbidden) => return forbidden(),
             };
-            // ponytail: surface 401 with a generic body so the error
-            // message doesn't distinguish "no such key" from "wrong
-            // secret" — defeats enumeration.
-            if store.verify(&token).is_err() {
-                return unauthorized();
+            let mut req = req;
+            if let Some(identity) = identity {
+                req.extensions_mut().insert(identity);
             }
             next.run(req).await
         }
@@ -101,4 +138,8 @@ pub async fn auth_layer_fn(State(state): State<AppState>, req: Request, next: Ne
 
 fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, "unauthorized\n").into_response()
+}
+
+fn forbidden() -> Response {
+    (StatusCode::FORBIDDEN, "forbidden\n").into_response()
 }

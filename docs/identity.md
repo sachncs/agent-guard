@@ -7,11 +7,21 @@ choose a stronger identity or security context.
 ## Standalone PDP authentication
 
 The server supports disabled authentication for local development and API-key
-bearer validation for the decision routes. The persisted `ApiKeyStore` stores
-Argon2id hashes with expiry and revocation state. API-key middleware validates
-the bearer credential but does not bind the submitted Cedar subject to that key
-or derive its security-sensitive context. Trusted application code must create
-the subject, MFA facts, tenant, and resource attributes.
+bearer validation for decision routes. The persisted `ApiKeyStore` stores
+Argon2id hashes with expiry and revocation state. Protected HTTP and gRPC
+evaluation requires a key bound to one `User` or `Agent` subject and the
+`authorize` scope (or `*`). The submitted subject must match the key. A key's
+optional tenant is injected as trusted request metadata; a conflicting
+caller-supplied `context.tenant_id` is rejected. Unbound legacy keys remain
+readable for migration but cannot authorize standalone evaluations. Rotate or
+reissue them as bound keys before enabling this enforcement.
+
+Create keys through `ApiKeyStore::create_bound`, assigning only the narrow
+scope and identity required by that integration. Keys should be provisioned
+through a trusted administrative path; never let an untrusted caller choose
+the identity bound to its own credential. `metrics:read` gates the metrics
+endpoint. API-key scopes gate endpoint capabilities; Cedar policies still make
+the resource/action authorization decision.
 
 Do not expose a listener with disabled authentication. For a non-loopback
 listener, configure `AGENTGUARD_AUTH=apikey:<path>` or the equivalent CLI flags,
