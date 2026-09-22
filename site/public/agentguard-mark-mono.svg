@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AgentGuard">
+  <rect width="64" height="64" rx="16" fill="#fff" stroke="#172420" stroke-width="3"/>
+  <path d="M16 17h32v30H16z" fill="none" stroke="#172420" stroke-width="4"/>
+  <path d="m22 32 7 7 13-14" fill="none" stroke="#172420" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 17v30" stroke="#fff" stroke-width="8"/>
+  <path d="M32 22v20" stroke="#172420" stroke-width="3" stroke-linecap="round"/>
+</svg>

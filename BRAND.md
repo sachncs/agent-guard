@@ -16,6 +16,9 @@ before execution.
 - Deny: #b42318
 - Warning: #a15c00
 
-Use the mark as an SVG wherever possible. Keep at least one mark-height of
-clear space, do not rotate or distort it, and use the monochrome version when
-the surrounding surface cannot guarantee contrast.
+Use the mark as an SVG wherever possible. The shipped assets are
+agentguard-mark.svg (primary), agentguard-mark-dark.svg (dark surfaces),
+agentguard-mark-mono.svg (single-color surfaces), and agentguard-wordmark.svg.
+Keep at least one mark-height of clear space, do not rotate or distort it, and
+use the monochrome version when the surrounding surface cannot guarantee
+contrast.

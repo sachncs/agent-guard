@@ -2,7 +2,7 @@ export const site = {
   name: "AgentGuard",
   title: "AgentGuard — Cedar-powered authorization for AI agents",
   description:
-    "Per-tool-call authorization, tamper-evident audit, and scoped delegation for AI agents. Cedar policies, AuthZEN-compatible HTTP PDP, JWS-signed tokens, OTel-native observability.",
+    "Per-tool-call authorization, tamper-evident audit, and scoped delegation for AI agents. Cedar policies, an AuthZEN-compatible HTTP PDP, and observable decisions.",
   url: "https://sachncs.github.io/agent-guard",
   repo: "https://github.com/sachncs/agent-guard",
   version: "0.2.0",
@@ -14,7 +14,7 @@ export const nav = [
   { label: "How it works", href: "#how" },
   { label: "Standards", href: "#standards" },
   { label: "Adoption", href: "#adoption" },
-  { label: "Docs", href: "https://github.com/sachncs/agent-guard#readme" },
+  { label: "Docs", href: "/agent-guard/docs/" },
 ];
 
 export const pillars = [
@@ -44,8 +44,8 @@ export const pillars = [
     icon: "key-round",
   },
   {
-    title: "Hot reload + blast radius",
-    body: "Push policies without downtime. See what would break before you push, roll back instantly, observe decisions as OTel spans.",
+    title: "Policy operations",
+    body: "Validate policy changes, inspect their blast radius, and restart deliberately after reviewed updates.",
     icon: "refresh-cw",
   },
 ];
