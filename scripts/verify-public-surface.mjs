@@ -41,8 +41,8 @@ requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentg
 requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
 requireText("Dockerfile", "USER 10001:10001");
 requireText("frontend/Dockerfile", "USER 10001:10001");
-requireText("frontend/Dockerfile", "node:22.14.0-bookworm-slim");
-requireText(".github/workflows/deploy-site.yml", 'node-version: "22.14.0"');
+requireText("frontend/Dockerfile", "node:22.19.0-bookworm-slim");
+requireText(".github/workflows/deploy-site.yml", 'node-version: "22.19.0"');
 requireText("README.md", "embedded library callers");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");

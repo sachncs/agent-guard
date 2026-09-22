@@ -1,7 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
 ---
-<Docs title="Local development"><div class="doc-title"><span class="section-kicker">CONTRIBUTE / SETUP</span><h1>One clean checkout.</h1><p>Use the same pinned Rust, Node, pnpm, protobuf, and container workflow as CI.</p></div><h2>Bootstrap</h2><p>Install Rust 1.89, Node.js 22.14.0, pnpm 11.22.x, and <code>protoc</code>, then run:</p><pre><code>./scripts/setup.sh
+<Docs title="Local development"><div class="doc-title"><span class="section-kicker">CONTRIBUTE / SETUP</span><h1>One clean checkout.</h1><p>Use the same pinned Rust, Node, pnpm, protobuf, and container workflow as CI.</p></div><h2>Bootstrap</h2><p>Install Rust 1.89, Node.js 22.19.0, pnpm 11.22.x, and <code>protoc</code>, then run:</p><pre><code>./scripts/setup.sh
 pnpm install --frozen-lockfile</code></pre><h2>Daily checks</h2><pre><code>cargo test --workspace
 pnpm check
 pnpm build</code></pre><p>Keep credentials, chain secrets, delegation keys, and audit data out of Git. The <a href="https://github.com/sachncs/agent-guard/blob/master/docs/local-development.md">repository guide ↗</a> documents the clean architecture boundaries.</Docs>

@@ -7,7 +7,7 @@ same pinned toolchain used by CI.
 ## Prerequisites
 
 - Rust 1.89, with `rustfmt` and `clippy`
-- Node.js 22.14.0 or a compatible Node.js 20.9+ runtime
+- Node.js 22.19.0 or a compatible Node.js 20.9+ runtime
 - pnpm 11.22.x through Corepack
 - Protocol Buffers compiler (`protoc`) for the optional SPIFFE feature
 - Docker for image and Kubernetes smoke tests

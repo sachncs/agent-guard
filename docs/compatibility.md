@@ -5,7 +5,7 @@
 | Surface | Supported baseline |
 | --- | --- |
 | Rust | 1.89 MSRV; stable toolchain recommended |
-| Node.js | 20.9+; CI and release images use Node 22.14.0 |
+| Node.js | 20.9+; CI and release images use Node 22.19.0 |
 | pnpm | 11.22.x |
 | Kubernetes | 1.28+ recommended; Kustomize v5 |
 | License | Apache-2.0 |
