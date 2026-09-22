@@ -60,6 +60,9 @@ pub struct DecisionLog {
     /// Optional rotation policy. When `Some`, append() rotates the
     /// active file once its size exceeds `max_bytes`.
     rotation: Option<RotationConfig>,
+    /// Serializes threshold checks and renames so concurrent appenders cannot
+    /// both attempt to rotate the same active file.
+    rotation_lock: Mutex<()>,
 }
 
 enum LogMode {
@@ -128,6 +131,7 @@ impl DecisionLog {
                 path,
                 chain_id_path,
                 rotation,
+                rotation_lock: Mutex::new(()),
             }),
             Some(key) => {
                 let chain = HashChain::new(&key);
@@ -162,6 +166,7 @@ impl DecisionLog {
                     path,
                     chain_id_path,
                     rotation,
+                    rotation_lock: Mutex::new(()),
                 })
             }
         }
@@ -175,6 +180,7 @@ impl DecisionLog {
     /// Cheap no-op when rotation is disabled or the threshold has not
     /// been reached. Called at the top of [`Self::append`].
     fn rotate_if_needed(&self) -> Result<()> {
+        let _rotation_guard = self.rotation_lock.lock().unwrap_or_else(|e| e.into_inner());
         let rotation = match &self.rotation {
             Some(r) => r,
             None => return Ok(()),
@@ -183,7 +189,7 @@ impl DecisionLog {
         if size < rotation.max_bytes {
             return Ok(());
         }
-        self.rotate()
+        self.rotate_inner()
     }
 
     /// Force a rotation: rename the active file to a timestamped
@@ -191,7 +197,17 @@ impl DecisionLog {
     /// chain id sidecar is moved alongside so the rotated file's
     /// chain id is preserved.
     pub fn rotate(&self) -> Result<()> {
-        let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let _rotation_guard = self.rotation_lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.rotate_inner()
+    }
+
+    fn rotate_inner(&self) -> Result<()> {
+        let now = chrono::Utc::now();
+        let ts = format!(
+            "{}{:06}Z",
+            now.format("%Y%m%dT%H%M%S"),
+            now.timestamp_subsec_micros()
+        );
         let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
         let stem = self
             .path
@@ -203,7 +219,12 @@ impl DecisionLog {
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("jsonl");
-        let rotated = parent.join(format!("{stem}-{ts}.{ext}"));
+        let mut rotated = parent.join(format!("{stem}-{ts}.{ext}"));
+        let mut suffix = 1u32;
+        while rotated.exists() {
+            rotated = parent.join(format!("{stem}-{ts}-{suffix}.{ext}"));
+            suffix = suffix.saturating_add(1);
+        }
 
         // Close + rename + reopen. Drop the inner file before the
         // rename so the OS isn't holding the source handle across
@@ -281,10 +302,9 @@ impl DecisionLog {
     /// The file lock is held for the entire critical section:
     /// 1. Compute the chained payload (prev + new hash).
     /// 2. `write_all` + `flush` + `sync_all` the JSON line to the log
-    ///    file. A single `write_all` of a small JSON line is atomic on
-    ///    POSIX (PIPE_BUF-guaranteed for records <= 4 KiB); a torn
-    ///    write is impossible because we never split across multiple
-    ///    `write()` calls.
+    ///    file. The next startup validates the complete tail before
+    ///    accepting new writes, so a torn or malformed final record fails
+    ///    closed instead of silently starting a disconnected chain.
     /// 3. The chain head advances only after step 2 succeeds. On
     ///    failure, the chain stays at the previous head and the next
     ///    caller retries from the same state.
@@ -783,5 +803,59 @@ mod tests {
             dir.path().display()
         );
         assert!(path.exists(), "active file must still be open");
+    }
+
+    #[test]
+    fn concurrent_rotation_does_not_lose_appends() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("concurrent.jsonl");
+        let log = std::sync::Arc::new(
+            DecisionLog::open_with_rotation(&path, None::<&[u8]>, RotationConfig { max_bytes: 64 })
+                .unwrap(),
+        );
+        let rec = DecisionRecord {
+            id: "concurrent".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+        let mut workers = Vec::new();
+        for _ in 0..4 {
+            let log = std::sync::Arc::clone(&log);
+            let rec = rec.clone();
+            workers.push(std::thread::spawn(move || {
+                for _ in 0..25 {
+                    log.append(&rec).unwrap();
+                }
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+
+        let total_records: usize = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".jsonl"))
+            .map(|entry| {
+                std::fs::read_to_string(entry.path())
+                    .unwrap()
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .count()
+            })
+            .sum();
+        assert_eq!(total_records, 100);
     }
 }
