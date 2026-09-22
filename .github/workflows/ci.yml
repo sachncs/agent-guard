@@ -24,7 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: clippy
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   msrv:
     # Enforce the workspace MSRV declared in `[workspace.package]
@@ -44,6 +44,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo test --workspace
+      - run: cargo test --workspace --all-features
       # Doctests are run separately so a single failing docstring
       # fails CI even when the lib tests pass. Mirrors `cargo test`
       # output for the lib crate but only runs the doc-tests.

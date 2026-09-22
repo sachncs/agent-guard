@@ -37,6 +37,7 @@ and add a CHANGELOG entry.
 
 ```
 cargo test --workspace
+cargo test --workspace --all-features
 ```
 
 ## Lint / format
