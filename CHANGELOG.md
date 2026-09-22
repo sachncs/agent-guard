@@ -25,6 +25,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Run API-key Argon2id checks on Tokio's blocking pool with bounded concurrent
   verification; return retryable overload responses rather than blocking async
   workers or accumulating unbounded hash jobs.
+- Evaluate each AuthZEN batch against one pinned policy snapshot so concurrent
+  policy reloads cannot mix policy generations within a single response.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

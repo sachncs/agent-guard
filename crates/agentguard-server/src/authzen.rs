@@ -564,6 +564,10 @@ async fn evaluations(
     }
     let semantics = req.evaluation_semantics.unwrap_or_default();
     let mut responses = Vec::with_capacity(req.evaluations.len());
+    // A batch is one logical evaluation operation. Pin a single immutable
+    // policy generation so a concurrent reload cannot mix decisions from
+    // different snapshots inside the same response.
+    let authorizer = state.authorizer.snapshot();
 
     for er in req.evaluations {
         let per_request_entities = er.entities.clone();
@@ -587,7 +591,7 @@ async fn evaluations(
                 return (StatusCode::BAD_REQUEST, e).into_response();
             }
         };
-        match state.authorizer.authorize(&agent_req, &entities) {
+        match authorizer.authorize(&agent_req, &entities) {
             Ok(decision) => {
                 let allow = matches!(decision.effect, Effect::Allow);
                 if let Some(audit) = state.audit() {
@@ -726,12 +730,14 @@ mod summarize_tests {
 
         let handle = super::AuthorizerHandle::new(dir.path().to_path_buf(), None).unwrap();
         assert_eq!(handle.policy_count(), 1);
+        let initial_snapshot = handle.snapshot();
 
         store
             .write_policy("second", "forbid(principal, action, resource);")
             .unwrap();
         handle.reload().unwrap();
         assert_eq!(handle.policy_count(), 2);
+        assert_eq!(initial_snapshot.policy_count(), 1);
 
         store
             .write_policy("broken", "permit (this is not Cedar")
