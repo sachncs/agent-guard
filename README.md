@@ -47,7 +47,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `delegate`, `verify`, `audit`, `policy`, `serve`, `doctor` |
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
 | `agentguard-auth` (Rust) | JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, jti replay protection, RFC 8693 token exchange |
-| `agentguard-policy` (Rust) | Versioned bundles, file watcher, hot reload, diff, blast radius, dry-run |
+| `agentguard-policy` (Rust) | Versioned bundles, policy change notifications, diff, blast radius, dry-run |
 | `agentguard-server` (Rust) | `agentguard serve` — AuthZEN HTTP PDP, sidecar mode |
 | `agentguard` (TypeScript SDK) | In-process bindings via the CLI, JWT/DPoP passthrough, step-up auth |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
@@ -263,7 +263,7 @@ agent-guard/
 │   ├── agentguard-cli/          # `agentguard` CLI binary
 │   ├── agentguard-telemetry/    # OTel/OTLP sink trait + Prometheus metrics
 │   ├── agentguard-auth/         # JWT/OIDC/API-key/DPoP/SPIFFE
-│   ├── agentguard-policy/       # Versioned bundles, hot reload, blast radius
+│   ├── agentguard-policy/       # Versioned bundles, policy operations, blast radius
 │   └── agentguard-server/       # AuthZEN HTTP PDP
 ├── typescript/
 │   └── agentguard/              # TypeScript SDK

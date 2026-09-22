@@ -93,9 +93,11 @@ mode.
 
 ## Production boundary
 
-- **Single node baseline**: sessions are signed stateless cookies, but the
-  rate limiter is process-local. Run one console replica unless you provide a
-  shared rate-limit adapter at the edge.
+- **Shared rate limiting**: sessions are signed stateless cookies. The default
+  development limiter is memory-backed; set
+  `AGENTGUARD_RATE_LIMIT_REDIS_URL` and `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN`
+  for an atomic Redis-compatible limiter before running multiple replicas.
+  Store failures fail closed.
 - **Per-request CLI spawns** for log/delegate/verify (no HTTP surface exists
   server-side yet); the simulator already avoids this via the PDP API.
 - **TLS termination** is expected at your reverse proxy; set

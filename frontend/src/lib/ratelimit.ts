@@ -1,49 +1,127 @@
 /**
- * In-memory fixed-window rate limiter. Single-node only: counts reset on
- * restart and are not shared across replicas. Sufficient to blunt abuse
- * of expensive routes; swap for a shared store before horizontal scaling.
+ * Pluggable fixed-window rate limiting for console mutation routes.
+ *
+ * Development defaults to an in-memory store. Production should set
+ * AGENTGUARD_RATE_LIMIT_REDIS_URL and AGENTGUARD_RATE_LIMIT_REDIS_TOKEN to
+ * use a Redis-compatible REST endpoint (for example, Upstash). Store errors
+ * fail closed so an unavailable shared store cannot silently remove limits.
  */
 
-const WINDOW_MS = 60_000;
+const WINDOW_SECONDS = 60;
+const WINDOW_MS = WINDOW_SECONDS * 1000;
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+}
+
+export interface RateLimitStore {
+  consume(key: string, limitPerMinute: number): Promise<RateLimitResult>;
+}
 
 interface Bucket {
   count: number;
   windowStart: number;
 }
 
-const buckets = new Map<string, Bucket>();
+export class MemoryRateLimitStore implements RateLimitStore {
+  private readonly buckets = new Map<string, Bucket>();
+  private nowMs: () => number;
 
-let nowMs: () => number = () => Date.now();
-
-/** Test hook. */
-export function setClock(fn: () => number): void {
-  nowMs = fn;
-}
-
-/** Test hook: drop all buckets. */
-export function resetRateLimiter(): void {
-  buckets.clear();
-}
-
-/** Outcome of a rate-limit check. */
-export interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-}
-
-/** Consume one slot for `key`; returns whether the request may proceed. */
-export function rateLimit(key: string, limitPerMinute: number): RateLimitResult {
-  const now = nowMs();
-  const bucket = buckets.get(key);
-  if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
-    buckets.set(key, { count: 1, windowStart: now });
-    return { allowed: true, remaining: limitPerMinute - 1 };
+  constructor(now: () => number = () => Date.now()) {
+    this.nowMs = now;
   }
-  if (bucket.count >= limitPerMinute) {
+
+  setClock(fn: () => number): void {
+    this.nowMs = fn;
+  }
+
+  reset(): void {
+    this.buckets.clear();
+  }
+
+  async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
+    const now = this.nowMs();
+    const bucket = this.buckets.get(key);
+    if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
+      this.buckets.set(key, { count: 1, windowStart: now });
+      return { allowed: true, remaining: Math.max(0, limitPerMinute - 1) };
+    }
+    if (bucket.count >= limitPerMinute) return { allowed: false, remaining: 0 };
+    bucket.count += 1;
+    return { allowed: true, remaining: Math.max(0, limitPerMinute - bucket.count) };
+  }
+}
+
+/** Redis-compatible REST store using an atomic INCR + EXPIRE script. */
+export class RedisRateLimitStore implements RateLimitStore {
+  private readonly url: string;
+  private readonly token: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(
+    url: string,
+    token: string,
+    fetchImpl: typeof fetch = fetch,
+  ) {
+    this.url = url;
+    this.token = token;
+    this.fetchImpl = fetchImpl;
+  }
+
+  async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
+    const script = "local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return count";
+    const response = await this.fetchImpl(this.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(["EVAL", script, "1", key, String(WINDOW_SECONDS)]),
+    });
+    if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
+    const payload = (await response.json()) as { result?: number };
+    if (typeof payload.result !== "number") throw new Error("rate-limit store returned an invalid count");
+    return {
+      allowed: payload.result <= limitPerMinute,
+      remaining: Math.max(0, limitPerMinute - payload.result),
+    };
+  }
+}
+
+const memoryStore = new MemoryRateLimitStore();
+let configuredStore: RateLimitStore | undefined;
+
+export function configureRateLimitStore(store: RateLimitStore | undefined): void {
+  configuredStore = store;
+}
+
+function activeStore(): RateLimitStore {
+  if (configuredStore) return configuredStore;
+  const url = process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
+  const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
+  if (url && token) {
+    configuredStore = new RedisRateLimitStore(url, token);
+    return configuredStore;
+  }
+  return memoryStore;
+}
+
+/** Test hook: reset the development store and configured store selection. */
+export function resetRateLimiter(): void {
+  memoryStore.reset();
+  configuredStore = undefined;
+}
+
+/** Test hook for deterministic memory-store windows. */
+export function setClock(fn: () => number): void {
+  memoryStore.setClock(fn);
+}
+
+/** Consume one slot. Store failures fail closed. */
+export async function rateLimit(key: string, limitPerMinute: number): Promise<RateLimitResult> {
+  try {
+    return await activeStore().consume(key, limitPerMinute);
+  } catch {
     return { allowed: false, remaining: 0 };
   }
-  bucket.count += 1;
-  return { allowed: true, remaining: limitPerMinute - bucket.count };
 }
 
 /**

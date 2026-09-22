@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     return Response.json({ error: cfg.reason, kind: "not_configured" }, { status: 503 });
   }
 
-  const rl = rateLimit(`login:${clientKey(request)}`, 10);
+  const rl = await rateLimit(`login:${clientKey(request)}`, 10);
   if (!rl.allowed) {
     return Response.json(
       { error: "too many login attempts, retry later", kind: "rate_limited" },

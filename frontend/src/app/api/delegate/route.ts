@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const session = await requireAdmin(cfg.config.sessionSecret, request);
   if (isResponse(session)) return session;
 
-  const rl = rateLimit(`delegate:${clientKey(request)}`, 10);
+  const rl = await rateLimit(`delegate:${clientKey(request)}`, 10);
   if (!rl.allowed) {
     return Response.json(
       { error: "rate limit exceeded", kind: "rate_limited" },

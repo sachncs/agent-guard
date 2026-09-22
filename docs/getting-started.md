@@ -179,7 +179,7 @@ export AGENTGUARD_URL=http://localhost:8443/access/v1/evaluation
 agentguard authorize request.json
 ```
 
-### 9. Caching + hot reload
+### 9. Caching + policy changes
 
 `AGENTGUARD_CACHE_TTL=60s AGENTGUARD_CACHE_CAPACITY=10000` turn on
 the decision cache (default 60 s / 10 k entries). The server

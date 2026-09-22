@@ -20,10 +20,11 @@ kubectl -n agentguard rollout status deploy/agentguard-pdp
 kubectl -n agentguard rollout status deploy/agentguard-console
 
 The supplied manifests intentionally use one PDP and one console replica.
-Audit persistence is a ReadWriteOnce volume and the console's rate limiter
-is process-local. Do not scale either deployment horizontally until a shared
-rate-limit/session adapter is configured and audit storage is replaced with a
-coordinated append-only service or partitioning strategy.
+Audit persistence is a ReadWriteOnce volume. The console uses an in-memory
+limiter in development; production deployments must configure the Redis-
+compatible rate-limit store documented in frontend/README.md before scaling
+the console horizontally. PDP audit storage still requires a coordinated
+append-only service or partitioning strategy for multi-replica operation.
 
 ## Upgrade and rollback
 
