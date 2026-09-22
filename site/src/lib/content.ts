@@ -30,7 +30,7 @@ export const pillars = [
   },
   {
     title: "Scoped delegation",
-    body: "A parent agent gives a sub-agent a scoped subset of permissions, time-boxed, sender-constrained (DPoP), and revocable.",
+    body: "A parent agent can mint a scoped, time-boxed JWS grant. Integrations must verify the token and enforce parent authority; the current release has no revocation endpoint.",
     icon: "git-branch",
   },
   {
@@ -69,7 +69,7 @@ export const integrations = [
   },
   {
     name: "LangChain / Custom Loops",
-    body: "Spawn the CLI in-process from any Node.js agent. DPoP-bound bearer tokens, JWS-signed delegation.",
+    body: "Use the CLI-backed Node.js SDK from custom loops. JWS delegation primitives are available separately; the SDK does not currently mint DPoP proofs.",
     href: "https://github.com/sachncs/agent-guard/tree/master/typescript/agentguard",
   },
   {

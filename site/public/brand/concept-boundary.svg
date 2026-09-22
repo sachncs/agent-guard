@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGuard boundary glyph</title>
+  <desc id="desc">A verification path crossing a controlled vertical boundary.</desc>
+  <rect width="320" height="180" rx="24" fill="#172420"/>
+  <path d="M92 48h136v84H92z" fill="none" stroke="#b9f3df" stroke-width="10" stroke-linejoin="round"/>
+  <path d="m110 91 22 22 42-45" fill="none" stroke="#b9f3df" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M160 42v96" stroke="#172420" stroke-width="20"/>
+  <path d="M160 56v68" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+</svg>

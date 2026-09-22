@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="site/public/agentguard-wordmark.svg" alt="AgentGuard" width="360">
   <h1 align="center">AgentGuard</h1>
   <p align="center">Cedar-powered authorization for AI agents — per-tool-call decisions, tamper-evident audit, scoped delegation.</p>
   <p align="center">
@@ -52,7 +53,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
-See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); versioned repository guides cover [production deployment](docs/production.md), [Kubernetes](docs/kubernetes.md), [console operation](docs/console.md), [incident response](docs/incident-response.md), compatibility, and branding.
+See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); versioned repository guides cover [production deployment](docs/production.md), [Kubernetes](docs/kubernetes.md), [console operation](docs/console.md), [incident response](docs/incident-response.md), [compatibility](docs/compatibility.md), and [branding](docs/branding.md).
 
 ## Surfaces
 

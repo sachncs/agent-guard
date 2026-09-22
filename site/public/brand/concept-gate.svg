@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGuard gate concept</title>
+  <desc id="desc">Two guarded pillars and a permitted path represent an authorization gate.</desc>
+  <rect width="320" height="180" rx="24" fill="#effcf7"/>
+  <path d="M88 132V63c0-20 16-36 36-36h72c20 0 36 16 36 36v69" fill="none" stroke="#17664f" stroke-width="16" stroke-linecap="round"/>
+  <path d="M86 132h148" stroke="#218263" stroke-width="12" stroke-linecap="round"/>
+  <path d="m116 94 25 25 62-62" fill="none" stroke="#218263" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

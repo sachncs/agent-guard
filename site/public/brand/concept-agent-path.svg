@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGuard path concept</title>
+  <desc id="desc">An agent node passes through a policy checkpoint before reaching a tool.</desc>
+  <rect width="320" height="180" rx="24" fill="#101716"/>
+  <circle cx="67" cy="90" r="28" fill="#218263"/>
+  <path d="M55 90h24M67 78v24" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M95 90h43" stroke="#79dfbf" stroke-width="6" stroke-linecap="round"/>
+  <rect x="138" y="52" width="44" height="76" rx="10" fill="#172420" stroke="#b9f3df" stroke-width="6"/>
+  <path d="m148 91 9 9 18-20" fill="none" stroke="#b9f3df" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M182 90h43" stroke="#79dfbf" stroke-width="6" stroke-linecap="round"/>
+  <rect x="225" y="62" width="42" height="56" rx="8" fill="none" stroke="#b9f3df" stroke-width="6"/>
+</svg>
