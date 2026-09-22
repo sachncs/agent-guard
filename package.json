@@ -6,7 +6,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "check:public": "node scripts/verify-public-surface.mjs"
+    "check:public": "node scripts/verify-public-surface.mjs",
+    "check:docs": "node scripts/verify-doc-links.mjs"
   },
   "engines": {
     "node": ">=20.9"

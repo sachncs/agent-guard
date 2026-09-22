@@ -64,6 +64,7 @@ jobs:
           node-version: "26"
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:public
+      - run: pnpm check:docs
       - run: node scripts/verify-k8s.mjs
       - name: Check documentation site
         working-directory: site
