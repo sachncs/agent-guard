@@ -45,6 +45,7 @@ if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FI
 }
 
 for (const [file, stale] of [
+  ["docs/kubernetes.md", "uses loopback and disabled authentication"],
   ["site/src/pages/index.astro", "Workspace packages declare 0.2.0"],
   ["site/src/pages/docs/deploy.astro", "invalid clap requires"],
   ["site/src/pages/docs/configuration.astro", "invalid clap requires"],

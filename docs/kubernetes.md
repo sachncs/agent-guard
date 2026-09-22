@@ -103,8 +103,10 @@ kind load docker-image agentguard-server:smoke-rollback
 ./scripts/k8s-smoke.sh
 ```
 
-The smoke script uses loopback and disabled authentication only inside the
-disposable test cluster; the production manifest keeps API-key authentication.
+The smoke script binds the disposable PDP to the pod network and disables
+authentication only inside the isolated test namespace; the production
+manifest keeps API-key authentication and must remain behind TLS/network
+controls.
 
 ## Backups, upgrades, and rollback
 
