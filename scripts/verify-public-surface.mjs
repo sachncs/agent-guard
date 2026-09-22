@@ -44,6 +44,7 @@ requireText("docs/architecture.md", "Embedded `Authorizer` calls return decision
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
 requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
 requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
+requireText("docs/production.md", "never becomes an implicit production fallback");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }
