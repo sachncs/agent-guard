@@ -73,7 +73,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |
-| `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` | AuthZEN PDP base URL (`agentguard serve`) |
+| `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` | AuthZEN PDP base URL (`agentguard-server`) |
 | `AGENTGUARD_PDP_BEARER` | *(unset)* | Bearer token when the PDP requires auth |
 | `AGENTGUARD_STORE` | `.agentguard` | Cedar schema + policies (CLI-backed routes) |
 | `AGENTGUARD_AUDIT` | `.audit/decisions.jsonl` | Audit log destination (CLI-backed routes) |

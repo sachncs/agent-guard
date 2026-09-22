@@ -79,6 +79,31 @@ jobs:
       # The Strands example needs LLM credentials to run; CI only typechecks it.
       - run: pnpm --filter strands-tool-authz exec tsc --noEmit
 
+  containers:
+    name: production container builds
+    runs-on: ubuntu-latest
+    needs: [test, ts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build PDP image
+        run: docker build --pull --tag agentguard-server:ci .
+      - name: Validate PDP image entrypoint
+        run: docker run --rm agentguard-server:ci --help
+      - name: Build console image
+        run: docker build --pull --tag agentguard-console:ci -f frontend/Dockerfile .
+      - name: Validate console image entrypoint
+        run: |
+          container=$(docker run --detach --publish 3000:3000 agentguard-console:ci)
+          trap 'docker rm --force "$container" >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/login || true)
+            if [ "$status" = "503" ]; then exit 0; fi
+            sleep 2
+          done
+          echo "console did not reach its fail-closed readiness state"
+          docker logs "$container"
+          exit 1
+
   deny:
     name: cargo-deny
     runs-on: ubuntu-latest

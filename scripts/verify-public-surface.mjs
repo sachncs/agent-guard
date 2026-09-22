@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 
-const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "BRAND.md"];
+const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "BRAND.md", "frontend/README.md"];
 const forbidden = ["agentguard_console", "agentguard_ console"];
 const failures = [];
 
