@@ -215,7 +215,7 @@ agentguard doctor
 | Chain secret | `--secret-file` | `./.chain-secret` | HMAC key for the audit chain |
 | Listen address | `--listen` | `tcp://127.0.0.1:8443` | Server listen address |
 | Store path | `--store` | `./.agentguard` | Cedar schema and policy directory |
-| gRPC listen | `--grpc-listen` / `AGENTGUARD_GRPC_LISTEN` | *(unset)* | Optional gRPC PDP endpoint (AuthZEN-compatible `AccessEvaluation`) |
+| gRPC listen | `--grpc-listen` / `AGENTGUARD_GRPC_LISTEN` | *(unset)* | Optional repository-defined plaintext `AccessEvaluation` mirror; not standardized AuthZEN gRPC |
 | Auth mode | `AGENTGUARD_AUTH` | `disabled` | `apikey:<path>` enables bearer-token auth on `/access/v1/*` |
 | Allow loopback bypass | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | `0` | Set `1` to allow auth-disabled on a public bind |
 | Decision cache TTL | `AGENTGUARD_CACHE_TTL` | `60s` | TTL for in-memory decision cache (humantime) |

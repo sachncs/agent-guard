@@ -6,7 +6,11 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "agentguard-server", version, about = "AuthZEN HTTP + gRPC PDP")]
+#[command(
+    name = "agentguard-server",
+    version,
+    about = "AuthZEN HTTP PDP with an optional repository-defined gRPC mirror"
+)]
 struct Cli {
     /// Listen address: tcp:// or tls://
     #[arg(
@@ -40,8 +44,9 @@ struct Cli {
     auth_key_file: Option<PathBuf>,
 
     /// Optional gRPC listen address (e.g. `0.0.0.0:9443`). When set,
-    /// the server also serves the AuthZEN-compatible `AccessEvaluation`
-    /// gRPC service on this port. Empty disables gRPC.
+    /// the server also serves the repository-defined `AccessEvaluation`
+    /// gRPC mirror on this port. It is plaintext and not standardized AuthZEN
+    /// gRPC. Empty disables gRPC.
     #[arg(long, env = "AGENTGUARD_GRPC_LISTEN", default_value = "")]
     grpc_listen: String,
 }

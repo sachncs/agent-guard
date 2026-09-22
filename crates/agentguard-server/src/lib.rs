@@ -1,4 +1,5 @@
-//! `agentguard-server` — AuthZEN HTTP + gRPC PDP.
+//! `agentguard-server` — AuthZEN HTTP PDP with an optional repository-defined
+//! gRPC mirror.
 //!
 //! Embedders can mount the AuthZEN HTTP surface inside an existing axum
 //! app via [`build_router`], or run it as a standalone service via

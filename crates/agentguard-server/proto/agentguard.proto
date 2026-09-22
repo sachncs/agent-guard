@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package agentguard.v1;
 
-// AuthZEN-compatible gRPC PDP endpoint. Mirrors the HTTP
-// /access/v1/evaluation surface so a PEP can pick its transport.
+// Repository-defined gRPC PDP mirror. It mirrors the HTTP
+// /access/v1/evaluation surface; it is not a standardized AuthZEN protocol.
 service AccessEvaluation {
   // Evaluate a single authorization request.
   rpc Evaluation (EvaluationRequest) returns (EvaluationResponse);

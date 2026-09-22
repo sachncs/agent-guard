@@ -53,6 +53,9 @@ requireText("docs/production.md", "never becomes an implicit production fallback
 requireText("frontend/src/components/theme_provider.tsx", "enableSystem");
 requireText("frontend/src/components/theme_toggle.tsx", "aria-label");
 requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
+requireText("README.md", "not standardized AuthZEN gRPC");
+requireText("docs/architecture.md", "repository-defined gRPC mirror");
+requireText("site/src/lib/content.ts", "repository-defined plaintext gRPC mirror");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

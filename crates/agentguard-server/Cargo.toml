@@ -3,7 +3,7 @@ name = "agentguard-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "AuthZEN HTTP + gRPC PDP server (sidecar mode)"
+description = "AuthZEN HTTP PDP with an optional repository-defined gRPC mirror (sidecar mode)"
 
 [[bin]]
 name = "agentguard-server"

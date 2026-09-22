@@ -31,20 +31,15 @@
                                        │   │   │
                 ┌──────────────────────┘   │   └──────────────────────┐
                 │                          │                          │
-        ┌───────┴────────┐         ┌───────┴────────┐         ┌───────┴────────┐
-        │  CLI (Rust)    │         │ Python SDK     │         │ TypeScript SDK │
-        │  agentguard    │         │  (subprocess)  │         │  (subprocess)  │
-        └────────────────┘         └────────────────┘         └────────────────┘
-                                          │                            │
-                                  ┌───────┴────────┐           ┌───────┴────────┐
-                                  │ LangChain      │           │ Vercel AI SDK  │
-                                  │ middleware     │           │ middleware     │
-                                  └────────────────┘           └────────────────┘
+        ┌───────┴────────┐                         ┌───────┴────────┐
+        │  CLI (Rust)    │                         │ TypeScript SDK │
+        │  agentguard    │                         │  (subprocess)  │
+        └────────────────┘                         └────────────────┘
 
                 ┌───────────────────────────────────────────────┐
                 │            agentguard-server                  │
                 │                                                │
-                │   AuthZEN HTTP + gRPC PDP                       │
+                │   AuthZEN HTTP + repository gRPC mirror         │
                 │   - /access/v1/evaluation (single)             │
                 │   - /access/v1/evaluations  (batch ≤ 100)      │
                 │   - /healthz, /readyz, /metrics                  │
@@ -58,7 +53,8 @@
 
 ## The server
 
-`agentguard-server` is the AuthZEN-compatible HTTP + gRPC PDP. It exposes:
+`agentguard-server` is an AuthZEN-compatible HTTP PDP with an optional
+repository-defined gRPC mirror. It exposes:
 
 - `POST /access/v1/evaluation` — single decision (AuthZEN draft).
 - `POST /access/v1/evaluations` — batch (cap 100 per call).
@@ -66,7 +62,8 @@
   readyz requires policies loaded + audit log open).
 - `GET /metrics` — Prometheus text snapshot.
 - gRPC: `agentguard.v1.AccessEvaluation` (enable with
-  `AGENTGUARD_GRPC_LISTEN`).
+  `AGENTGUARD_GRPC_LISTEN`). The listener is plaintext and is not a
+  standardized AuthZEN gRPC protocol.
 
 All `/access/v1/*` endpoints are protected by `auth_layer`:
 

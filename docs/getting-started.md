@@ -14,7 +14,7 @@ which agentguard
 The `agentguard` CLI is a self-contained PDP (it loads policies and
 authorizes decisions in-process). For multi-process or networked
 deployments, run the `agentguard-server` binary which exposes the
-same engine over AuthZEN HTTP + gRPC:
+same engine over AuthZEN HTTP plus an optional repository-defined gRPC mirror:
 
 ```bash
 # Server-side prerequisite: build.rs shells out to protoc to
@@ -37,8 +37,9 @@ Available endpoints:
 - `POST /access/v1/evaluations` — batch (cap 100 per call).
 - `GET /healthz` / `/readyz` — Kubernetes probes.
 - `GET /metrics` — Prometheus-text snapshot.
-- gRPC: `agentguard.v1.AccessEvaluation` (enable with
-  `AGENTGUARD_GRPC_LISTEN=0.0.0.0:9443`).
+- gRPC: repository-defined `agentguard.v1.AccessEvaluation` (enable with
+  `AGENTGUARD_GRPC_LISTEN=127.0.0.1:9443`). It is plaintext and is not a
+  standardized AuthZEN gRPC protocol.
 
 ### 2. Create a project
 
