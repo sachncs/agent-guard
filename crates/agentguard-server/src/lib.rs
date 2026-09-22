@@ -8,9 +8,9 @@
 //! are re-exported for downstream consumers that want to keep request
 //! shaping aligned with the PDP's expectations.
 //!
-//! See `docs/internal/stages/STAGE-7-server.md` for the full
-//! implementation plan and `docs/architecture.md` for the canonical
-//! embedder-surface documentation.
+//! See `docs/architecture.md` for the standalone-versus-embedded
+//! configuration boundary and `docs/production.md` for the supported
+//! deployment contract.
 
 pub mod auth_layer;
 pub mod authzen;

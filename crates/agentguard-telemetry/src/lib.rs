@@ -1,8 +1,9 @@
 //! Pluggable observability layer for agentguard.
 //!
-//! See `stages/STAGE-1-telemetry.md` for the implementation plan and
-//! `stages/STAGE-2-decision-log-hash-chain.md` for the tamper-evident
-//! audit log that this crate's [`JsonlSink`] integrates with.
+//! [`Sink`] implementations provide JSONL and stdout event outputs, while
+//! [`Metrics`] exposes the in-process counters and histograms used by the
+//! server's Prometheus endpoint. The audit record chain is owned by the core
+//! decision-log implementation.
 
 pub mod metrics;
 pub mod sink;

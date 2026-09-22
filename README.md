@@ -282,8 +282,7 @@ agent-guard/
 ├── site/                        # Astro 5 product landing page (GitHub Pages)
 ├── examples/                    # Working examples (TS + Rust embedder)
 ├── schemas/                     # Cedar schema fragments
-├── docs/                        # Architecture & API documentation
-└── docs/internal/stages/        # Internal stage-by-stage implementation notes
+└── docs/                        # Guides, architecture, API, and operations documentation
 ```
 
 ## Development
