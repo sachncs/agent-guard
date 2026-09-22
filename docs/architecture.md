@@ -104,7 +104,9 @@ Every tool call is normalized into a Cedar `(Principal, Action, Resource, Contex
 
 ## The decision log
 
-Every authorization call writes a `DecisionRecord` to `.audit/decisions.jsonl`:
+The configured standalone server and CLI write `DecisionRecord` values to
+`.audit/decisions.jsonl`. Embedded `Authorizer` calls return decisions without
+writing audit automatically; the embedding application owns that wiring:
 
 ```json
 {

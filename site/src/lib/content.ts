@@ -99,7 +99,7 @@ export const adoption = [
   },
   {
     title: "Embedded in-process",
-    body: "Mount the agentguard-server router inside your existing axum app. The same Cedar engine, the same audit chain — without an extra hop on the data path.",
+    body: "Mount the agentguard-server router inside your existing axum app. Use the same Cedar engine without an extra network hop; audit wiring remains owned by the embedding service.",
     cta: "use agentguard_server::build_router",
     href: "https://github.com/sachncs/agent-guard/tree/master/examples/rust-embedder",
   },

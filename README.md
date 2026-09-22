@@ -57,7 +57,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey
 
 ## Surfaces
 
-All four integration surfaces converge on the same Cedar engine and the same audit log:
+All four integration surfaces use the same Cedar request model. Audit records
+are written by the configured server or CLI surface; embedded library callers
+own audit wiring and do not share a physical log automatically:
 
 | Surface | Integration | Best for |
 | ------- | ----------- | -------- |
