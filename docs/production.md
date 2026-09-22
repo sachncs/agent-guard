@@ -17,10 +17,12 @@ guides alongside this overview.
 4. Put TLS at the ingress or service mesh. The PDP must not be exposed on a
    public network without authentication and encrypted transport.
 
-The standalone PDP watches the API-key Secret mount and reloads valid
-rotations/revocations without a process restart. Invalid intermediate store
-content retains the last-known-good key set and is logged; check the server
-logs after credential updates.
+The standalone PDP polls the API-key Secret content and reloads valid
+rotations/revocations without a process restart. After an update is visible at
+the mounted path it is checked every 250 ms; Kubernetes Secret projection
+itself is eventually consistent and depends on kubelet sync/cache settings.
+Invalid intermediate store content retains the last-known-good key set and is
+logged; check the server logs after credential updates.
 
 kubectl apply -k deploy/k8s
 kubectl -n agentguard rollout status deploy/agentguard-pdp

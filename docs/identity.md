@@ -36,11 +36,15 @@ identity bound to its own credential. `metrics:read` gates the metrics
 endpoint. API-key scopes gate endpoint capabilities; Cedar policies still make
 the resource/action authorization decision.
 
-The standalone server watches the key-store directory and applies valid file
+The standalone server polls the key-store content and applies valid file
 updates (including Kubernetes projected Secret updates) without a restart.
-Allow about one second for a rotation or revocation to take effect. Invalid or
-partially projected JSON is logged and the last-known-good key set remains
-active; correct the file and let the next update trigger another reload.
+Once new bytes are visible at the mounted path, the server checks them every
+250 ms. Kubernetes projection itself is eventually consistent and depends on
+the kubelet's sync/cache configuration; do not promise an end-to-end one-second
+revocation bound. Mount the Secret as a directory, not with `subPath`, so
+projected updates can become visible. Invalid or partially projected JSON is
+logged and the last-known-good key set remains active; correct the file and
+let the next content update trigger another reload.
 
 Do not expose a listener with disabled authentication. For a non-loopback
 listener, configure `AGENTGUARD_AUTH=apikey:<path>` or the equivalent CLI flags,

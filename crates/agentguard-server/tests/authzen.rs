@@ -434,7 +434,7 @@ async fn standalone_auth_watcher_applies_key_revocation_without_restart() {
         .unwrap();
 
     let (watched_path, watched_store) = auth.reloadable_key_store().unwrap();
-    let watcher = spawn_api_key_watcher(watched_path, watched_store).unwrap();
+    let watcher = spawn_api_key_watcher(watched_path, watched_store);
     let updated = agentguard_auth::ApiKeyStore::load_from_file(&key_path).unwrap();
     updated.revoke(&key.id).unwrap();
     updated.save_to_file(&key_path).unwrap();

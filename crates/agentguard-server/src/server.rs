@@ -114,9 +114,8 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         .await
         .map_err(|e| anyhow!("build state: {}", e))?,
     );
-    let key_watcher_handle = key_watcher_target
-        .map(|(path, store)| spawn_api_key_watcher(path, store))
-        .transpose()?;
+    let key_watcher_handle =
+        key_watcher_target.map(|(path, store)| spawn_api_key_watcher(path, store));
     let watcher_handle =
         spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>);
     let app = router((*state).clone());
@@ -283,41 +282,82 @@ pub fn spawn_policy_watcher(
     })
 }
 
-/// Watch the parent directory of a mounted API-key file and reload the
-/// complete key set after projected-secret updates or atomic CLI writes.
-/// Invalid snapshots retain the current key set and are reported loudly;
-/// the next filesystem event retries the load.
+/// Poll the API-key file contents and reload complete snapshots after
+/// projected-secret updates or atomic CLI writes. Kubernetes updates Secret
+/// volumes by swapping symlinks, which is not consistently reported by
+/// directory watchers across filesystems. Invalid snapshots retain the
+/// current key set; a later distinct file snapshot is retried.
 pub fn spawn_api_key_watcher(
     path: std::path::PathBuf,
     store: Arc<agentguard_auth::ApiKeyStore>,
-) -> Result<tokio::task::JoinHandle<()>> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut watcher = policy_watch(parent, Duration::from_millis(250)).map_err(|error| {
-        anyhow!(
-            "watch API-key store directory {:?}: {error}",
-            parent.display()
-        )
-    })?;
-    Ok(tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_millis(500));
+) -> tokio::task::JoinHandle<()> {
+    // Capture the baseline before spawning so an update immediately after
+    // this function returns cannot be mistaken for the initial snapshot.
+    let mut last_attempted_snapshot = std::fs::read(&path).ok();
+    if let Err(error) = store.reload_from_file(&path) {
+        tracing::error!(
+            key_store = %path.display(),
+            %error,
+            "initial API-key store refresh failed; retaining last known-good key set"
+        );
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_read_error_log = None;
         loop {
             interval.tick().await;
-            if watcher.events().is_empty() {
-                continue;
-            }
-            match store.reload_from_file(&path) {
-                Ok(()) => tracing::info!(key_store = %path.display(), "API-key store reloaded"),
-                Err(error) => tracing::error!(
-                    key_store = %path.display(),
-                    %error,
-                    "API-key store reload failed; retaining last known-good key set"
-                ),
+            match std::fs::read(&path) {
+                Ok(snapshot) => {
+                    last_read_error_log = None;
+                    if last_attempted_snapshot.as_ref() != Some(&snapshot) {
+                        match store.reload_from_file(&path) {
+                            Ok(()) => tracing::info!(
+                                key_store = %path.display(),
+                                "API-key store reloaded"
+                            ),
+                            Err(error) => tracing::error!(
+                                key_store = %path.display(),
+                                %error,
+                                "API-key store reload failed; retaining last known-good key set"
+                            ),
+                        }
+                        // Suppress repeated errors for an unchanged invalid
+                        // projection; a new byte snapshot automatically retries.
+                        last_attempted_snapshot = Some(snapshot);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    if last_attempted_snapshot.take().is_some() {
+                        match store.reload_from_file(&path) {
+                            Ok(()) => tracing::info!(
+                                key_store = %path.display(),
+                                "API-key store removed; active keys cleared"
+                            ),
+                            Err(error) => tracing::error!(
+                                key_store = %path.display(),
+                                %error,
+                                "API-key store removal reload failed; retaining last known-good key set"
+                            ),
+                        }
+                    }
+                }
+                Err(error) => {
+                    let should_log = last_read_error_log
+                        .map(|last: std::time::Instant| last.elapsed() >= Duration::from_secs(30))
+                        .unwrap_or(true);
+                    if should_log {
+                        tracing::error!(
+                            key_store = %path.display(),
+                            %error,
+                            "API-key store read failed; retaining last known-good key set"
+                        );
+                        last_read_error_log = Some(std::time::Instant::now());
+                    }
+                }
             }
         }
-    }))
+    })
 }
 
 /// Block until SIGINT or SIGTERM is received. SIGHUP is handled

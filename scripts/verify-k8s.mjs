@@ -38,6 +38,22 @@ if (failures.length === 0) {
   if (!smoke.includes('"session":{"ip":"127.0.0.1"}')) {
     failures.push("k8s-smoke.sh must provide the required session record");
   }
+  for (const value of [
+    "api-key create",
+    'AGENTGUARD_AUTH=disabled',
+    'authorization: Bearer $raw_key',
+    'api-key revoke',
+    '[[ "$status" == 401 ]]',
+  ]) {
+    const present = smoke.includes(value);
+    if (value === 'AGENTGUARD_AUTH=disabled' ? present : !present) {
+      failures.push(`k8s-smoke.sh must verify production key auth and live revocation (${value})`);
+    }
+  }
+  const revocationSmoke = smoke.slice(smoke.indexOf("api-key revoke"));
+  if (!revocationSmoke.includes("seq 1 120")) {
+    failures.push("k8s-smoke.sh must allow for eventual Kubernetes Secret projection during revocation");
+  }
 
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   for (const value of [

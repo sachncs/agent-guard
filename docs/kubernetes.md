@@ -59,10 +59,14 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```
 
-The PDP watches the projected API-key Secret directory and applies a valid
-rotation or revocation without a process restart (typically within about one
-second). Invalid intermediate JSON is logged and the last-known-good key set
-remains active until a valid snapshot is detected.
+The PDP polls the projected API-key Secret contents and applies a valid
+rotation or revocation without a process restart. Once the updated bytes are
+visible in the container, they are checked every 250 ms. Kubelet projection is
+eventually consistent and its delay depends on the node's sync/cache settings,
+so do not assume a one-second end-to-end revocation bound. Mount the Secret as
+a directory (as in the base manifest), not with `subPath`. Invalid
+intermediate JSON is logged and the last-known-good key set remains active
+until a valid snapshot is detected.
 
 The console production config requires the trusted-proxy flag. The ingress
 must remove any incoming `X-Forwarded-For` value and replace it with exactly

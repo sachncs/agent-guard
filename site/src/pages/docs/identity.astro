@@ -16,7 +16,7 @@ import Docs from '@/layouts/docs.astro';
 agentguard api-key list --key-store ./keys.json
 agentguard api-key revoke --key-store ./keys.json KEY_ID</code></pre>
   <p>The CLI prints the raw secret once, after persisting its hash. Listing omits both raw secrets and hashes. Protect the file as a secret and mount it read-only into the PDP.</p>
-  <p>The standalone server watches the key-store directory and applies valid rotations or revocations without a restart, usually within about one second. Invalid intermediate JSON is logged and the last-known-good key set remains active until a valid update arrives.</p>
+  <p>The standalone server polls key-store content and applies valid rotations or revocations without a restart. Once new bytes are visible at the mounted path, they are checked every 250 ms; Kubernetes projection itself is eventually consistent and depends on kubelet sync/cache settings. Mount Secret volumes as directories, not with <code>subPath</code>. Invalid intermediate JSON is logged and the last-known-good key set remains active until a valid update arrives.</p>
   <h2>JWT and OIDC libraries</h2>
   <p><code>agentguard-auth</code> provides JWT/JWKS validation and OIDC discovery as library APIs, not standalone server authentication modes. Applications must map validated claims into a User or Agent identity. The JWT implementation supports EdDSA verification; it does not imply support for every algorithm named in data types.</p>
   <h2>DPoP and workload identity</h2>
