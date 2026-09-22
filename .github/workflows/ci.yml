@@ -24,6 +24,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: clippy
+      - name: Install protobuf compiler for optional SPIFFE support
+        run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   msrv:
@@ -43,6 +45,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
+      - name: Install protobuf compiler for optional SPIFFE support
+        run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo test --workspace
       - run: cargo test --workspace --all-features
       # Doctests are run separately so a single failing docstring
