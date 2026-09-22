@@ -54,17 +54,20 @@ export class RedisSessionStore implements SessionStore {
   private readonly token: string;
   private readonly prefix: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(
     url: string,
     token: string,
     fetchImpl: typeof fetch = fetch,
     prefix = "agentguard:session:",
+    timeoutMs = 3_000,
   ) {
     this.url = url;
     this.token = token;
     this.fetchImpl = fetchImpl;
     this.prefix = prefix;
+    this.timeoutMs = timeoutMs;
   }
 
   private async command(command: string[]): Promise<unknown> {
@@ -75,6 +78,7 @@ export class RedisSessionStore implements SessionStore {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(command),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) throw new Error(`session store returned ${response.status}`);
     const payload = (await response.json()) as { result?: unknown };

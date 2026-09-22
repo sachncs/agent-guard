@@ -58,15 +58,18 @@ export class RedisRateLimitStore implements RateLimitStore {
   private readonly url: string;
   private readonly token: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(
     url: string,
     token: string,
     fetchImpl: typeof fetch = fetch,
+    timeoutMs = 3_000,
   ) {
     this.url = url;
     this.token = token;
     this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
   }
 
   async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
@@ -75,6 +78,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       method: "POST",
       headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
       body: JSON.stringify(["EVAL", script, "1", key, String(WINDOW_SECONDS)]),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
     const payload = (await response.json()) as { result?: number };

@@ -19,10 +19,12 @@ describe("session stores", () => {
 
   it("uses Redis-compatible SET/GET/DEL commands", async () => {
     const commands: string[][] = [];
+    let signal: AbortSignal | undefined;
     const store = new RedisSessionStore(
       "https://redis.example",
       "secret",
       async (_url, init) => {
+        signal = init?.signal as AbortSignal;
         const command = JSON.parse(String(init?.body)) as string[];
         commands.push(command);
         const result = command[0] === "GET" ? JSON.stringify(claims) : "OK";
@@ -38,5 +40,20 @@ describe("session stores", () => {
     await store.delete("sid");
     assert.deepEqual(commands.map(([command]) => command), ["SET", "GET", "DEL"]);
     assert.equal(commands[0][4], "600");
+    assert.ok(signal, "shared-store requests have a bounded timeout");
+  });
+
+  it("bounds a stalled Redis request", async () => {
+    const store = new RedisSessionStore(
+      "https://redis.example",
+      "secret",
+      async (_url, init) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("timed out")));
+        }),
+      "agentguard:test:",
+      1,
+    );
+    await assert.rejects(store.get("sid"), /timed out|aborted/i);
   });
 });
