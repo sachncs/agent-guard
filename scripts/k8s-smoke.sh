@@ -71,12 +71,12 @@ curl --silent --fail "http://127.0.0.1:$port/readyz" >/dev/null
 
 response=$(curl --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
   -H 'content-type: application/json' \
-  -d '{"subject":{"type":"Agent","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{}}}')
+  -d '{"subject":{"type":"Agent","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}')
 echo "$response" | grep -q '"decision":true'
 
 denied=$(curl --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
   -H 'content-type: application/json' \
-  -d '{"subject":{"type":"User","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{}}}')
+  -d '{"subject":{"type":"User","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}')
 echo "$denied" | grep -q '"decision":false'
 
 pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
@@ -89,6 +89,7 @@ kubectl -n "$namespace" set image deployment/agentguard-pdp pdp="$rollback_image
 kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
 kubectl -n "$namespace" rollout undo deployment/agentguard-pdp
 kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
+pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
 kubectl -n "$namespace" delete pod "$pod" --wait=false
 kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
 

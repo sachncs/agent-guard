@@ -146,20 +146,13 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         Listener::Tcp(addr) => {
             let listener = TcpListener::bind(addr).await?;
             tracing::info!("agentguard listening on tcp://{}", addr);
-            // ponytail: bounded drain. axum's default shutdown waits
-            // forever for in-flight requests; cap at 30 s so a
-            // stuck client can't keep the process alive past its
-            // pod's terminationGracePeriodSeconds.
-            let shutdown_fut = shutdown_signal_with_sighup(state.clone());
-            let drain_fut = async {
-                tokio::time::timeout(std::time::Duration::from_secs(30), shutdown_fut)
-                    .await
-                    .map_err(|_| anyhow!("drain timeout exceeded"))
-            };
             serve(listener, app.into_make_service())
-                .with_graceful_shutdown(async move {
-                    let _ = drain_fut.await;
-                })
+                // The orchestrator owns the hard termination deadline
+                // (terminationGracePeriodSeconds in the Kubernetes base).
+                // Do not timeout the signal future itself: doing so asks
+                // Axum to shut down after 30 seconds even when no signal was
+                // received.
+                .with_graceful_shutdown(shutdown_signal_with_sighup(state.clone()))
                 .await?;
         }
         Listener::Tls { addr, cert, key } => {
@@ -167,22 +160,13 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             let cfg = RustlsConfig::from_pem_file(cert, key).await?;
             tracing::info!("agentguard listening on tls://{}", addr);
             // axum_server::Handle exposes shutdown; use it to coordinate
-            // with our signal handler. Bound the drain at 30 s so a
-            // stuck client can't keep the process alive past its
-            // pod's terminationGracePeriodSeconds.
+            // with our signal handler. The orchestrator owns the hard
+            // termination deadline.
             let handle = axum_server::Handle::new();
             let signal_handle = handle.clone();
             let state_for_signal = state.clone();
             tokio::spawn(async move {
-                if tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    shutdown_signal_with_sighup(state_for_signal),
-                )
-                .await
-                .is_err()
-                {
-                    tracing::warn!("drain timeout exceeded");
-                }
+                shutdown_signal_with_sighup(state_for_signal).await;
                 signal_handle.shutdown();
             });
             axum_server::bind_rustls(addr, cfg)

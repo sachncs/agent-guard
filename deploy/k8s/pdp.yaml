@@ -38,7 +38,12 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
       volumes:
-        - {name: policies, configMap: {name: agentguard-policies}}
+        - name: policies
+          configMap:
+            name: agentguard-policies
+            items:
+              - {key: schema.cedarschema, path: schema.cedarschema}
+              - {key: 20_agents.cedar, path: policies/20_agents.cedar}
         - {name: audit, persistentVolumeClaim: {claimName: agentguard-audit}}
         - {name: secrets, secret: {secretName: agentguard-secrets}}
         - {name: keys, secret: {secretName: agentguard-api-keys}}

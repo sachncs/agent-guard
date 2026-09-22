@@ -43,7 +43,8 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 - /readyz requires a loaded policy store and writable configured audit log.
 - A configured audit append failure returns an error instead of allowing the
   decision to continue silently.
-- The server exits on SIGTERM after a bounded drain period.
+- The server stops accepting new work on SIGTERM and drains in-flight work;
+  the deployment supervisor enforces the hard termination deadline.
 - API-key authentication is required for non-loopback PDP listeners.
 
 These guarantees depend on the adapter honoring decision == true. AgentGuard

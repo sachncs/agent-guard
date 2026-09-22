@@ -38,7 +38,12 @@ spec:
             limits: {cpu: 500m, memory: 512Mi}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
       volumes:
-        - {name: policies, configMap: {name: agentguard-policies}}
+        - name: policies
+          configMap:
+            name: agentguard-policies
+            items:
+              - {key: schema.cedarschema, path: schema.cedarschema}
+              - {key: 20_agents.cedar, path: policies/20_agents.cedar}
         - {name: audit, persistentVolumeClaim: {claimName: agentguard-audit}}
         - {name: delegation, secret: {secretName: agentguard-delegation-key}}
 ---

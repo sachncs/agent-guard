@@ -52,7 +52,7 @@
                 │                                                │
                 │   auth_layer (ApiKey | Disabled)                │
                 │   policy watcher + SIGHUP reload                │
-                │   bounded graceful-shutdown drain (30 s)        │
+                │   graceful shutdown; supervisor bounds drain     │
                 └───────────────────────────────────────────────┘
 ```
 
@@ -81,9 +81,10 @@ complete authorizer snapshots are atomically replaced and
 SIGHUP handler (Unix) so operators can force a refresh without touching the
 filesystem; malformed edits retain the last-known-good snapshot.
 
-Graceful shutdown is bounded at 30 s (axum's default waits forever for
-in-flight requests). After SIGTERM/SIGINT the server stops accepting new
-connections, drains in-flight requests for at most 30 s, then exits.
+On SIGTERM/SIGINT the server stops accepting new connections and lets
+in-flight requests drain. The process supervisor must enforce the hard
+termination deadline; the Kubernetes reference deployment uses a 30-second
+`terminationGracePeriodSeconds`.
 
 ## The request model
 

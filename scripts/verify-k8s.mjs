@@ -25,11 +25,17 @@ if (failures.length === 0) {
     "runAsNonRoot: true",
     "readOnlyRootFilesystem: true",
     "claimName: agentguard-audit",
+    "key: 20_agents.cedar, path: policies/20_agents.cedar",
   ]) if (!pdp.includes(value)) failures.push(`pdp.yaml missing ${value}`);
 
   const configmap = read("configmap.yaml");
   for (const value of ["schema.cedarschema:", "entity User;", "entity Agent", "20_agents.cedar:"]) {
     if (!configmap.includes(value)) failures.push(`configmap.yaml missing ${value}`);
+  }
+
+  const smoke = readFileSync("scripts/k8s-smoke.sh", "utf8");
+  if (!smoke.includes('"session":{"ip":"127.0.0.1"}')) {
+    failures.push("k8s-smoke.sh must provide the required session record");
   }
 
   const console = read("console.yaml");
@@ -42,6 +48,7 @@ if (failures.length === 0) {
     "mountPath: /etc/agentguard/delegation, readOnly: true",
     "claimName: agentguard-audit",
     "secretName: agentguard-delegation-key",
+    "key: 20_agents.cedar, path: policies/20_agents.cedar",
     "podAffinity",
     "path: /login",
     "startupProbe",

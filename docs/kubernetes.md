@@ -27,8 +27,9 @@ docker push "$REGISTRY/agentguard-server:$VERSION"
 docker push "$REGISTRY/agentguard-console:$VERSION"
 ```
 
-The images run as non-root users, expose `/healthz` and `/readyz` on the PDP,
-and use bounded termination. Scan both images before promotion.
+The images run as non-root users and expose `/healthz` and `/readyz` on the
+PDP. Kubernetes enforces a 30-second termination grace period while the
+server drains in-flight requests. Scan both images before promotion.
 
 ## Secrets and policy state
 

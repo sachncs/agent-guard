@@ -129,9 +129,10 @@ keys (graceful degradation).
 
 ### Drain on shutdown
 
-`SIGTERM` triggers graceful shutdown with a 30 s drain timeout —
-in-flight requests are allowed up to 30 s to complete, then the
-process exits. `SIGINT` (Ctrl-C) does the same.
+`SIGTERM` triggers graceful shutdown — the server stops accepting new work
+and waits for in-flight requests. The process supervisor must enforce the
+hard drain deadline; the Kubernetes reference deployment uses a 30 s
+termination grace period. `SIGINT` (Ctrl-C) does the same.
 
 ## Failure modes
 
