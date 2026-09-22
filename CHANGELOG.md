@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   silently disabling the configured gRPC listener.
 - Fail closed after audit-log write or sync errors; attempt to truncate a
   partial JSONL append back to its prior record boundary.
+- Drain the optional gRPC listener on the same shutdown signal as HTTP instead
+  of aborting its task after HTTP has drained.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

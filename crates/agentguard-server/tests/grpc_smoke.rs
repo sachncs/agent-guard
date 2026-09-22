@@ -31,10 +31,13 @@ async fn grpc_evaluation_returns_decision() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-    tokio::spawn(async move {
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
         tonic::transport::Server::builder()
             .add_service(svc)
-            .serve_with_incoming(incoming)
+            .serve_with_incoming_shutdown(incoming, async {
+                let _ = shutdown_rx.await;
+            })
             .await
             .unwrap();
     });
@@ -59,4 +62,10 @@ async fn grpc_evaluation_returns_decision() {
     };
     let resp = client.evaluation(req).await.unwrap();
     assert!(resp.into_inner().decision);
+
+    shutdown_tx.send(()).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(2), server)
+        .await
+        .expect("gRPC server should complete graceful shutdown")
+        .unwrap();
 }

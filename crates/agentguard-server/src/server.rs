@@ -119,6 +119,7 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     let watcher_handle =
         spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>);
     let app = router((*state).clone());
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Optional gRPC sidecar: when AGENTGUARD_GRPC_LISTEN is set,
     // spawn a tonic server on the given address alongside the HTTP
@@ -133,9 +134,14 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         let svc = crate::grpc::service(state.clone());
         tracing::info!("agentguard gRPC listening on tcp://{}", addr);
         Some(tokio::spawn(async move {
+            let mut shutdown_rx = shutdown_rx;
             let res = tonic::transport::Server::builder()
                 .add_service(svc)
-                .serve(addr)
+                .serve_with_shutdown(addr, async move {
+                    if !*shutdown_rx.borrow() {
+                        let _ = shutdown_rx.changed().await;
+                    }
+                })
                 .await;
             if let Err(e) = res {
                 tracing::error!(error = %e, "gRPC server exited with error");
@@ -155,7 +161,10 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
                 // Do not timeout the signal future itself: doing so asks
                 // Axum to shut down after 30 seconds even when no signal was
                 // received.
-                .with_graceful_shutdown(shutdown_signal_with_sighup(state.clone()))
+                .with_graceful_shutdown(async move {
+                    shutdown_signal_with_sighup(state.clone()).await;
+                    let _ = shutdown_tx.send(true);
+                })
                 .await?;
         }
         Listener::Tls { addr, cert, key } => {
@@ -168,8 +177,10 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             let handle = axum_server::Handle::new();
             let signal_handle = handle.clone();
             let state_for_signal = state.clone();
+            let grpc_shutdown_tx = shutdown_tx.clone();
             tokio::spawn(async move {
                 shutdown_signal_with_sighup(state_for_signal).await;
+                let _ = grpc_shutdown_tx.send(true);
                 signal_handle.shutdown();
             });
             axum_server::bind_rustls(addr, cfg)
@@ -184,7 +195,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         handle.abort();
     }
     if let Some(h) = grpc_handle {
-        h.abort();
+        if let Err(error) = h.await {
+            tracing::error!(%error, "gRPC shutdown task failed");
+        }
     }
     tracing::info!("agentguard stopped cleanly");
     Ok(())
