@@ -41,12 +41,17 @@ const requiredSiteRoutes = [
   "concepts.astro",
   "deploy.astro",
   "production.astro",
+  "kubernetes.astro",
+  "console.astro",
   "api.astro",
   "identity.astro",
   "audit.astro",
   "configuration.astro",
   "operations.astro",
+  "incident-response.astro",
   "security.astro",
+  "compatibility.astro",
+  "branding.astro",
 ];
 for (const route of requiredSiteRoutes) {
   if (!existsSync(resolve(root, "site/src/pages/docs", route))) {

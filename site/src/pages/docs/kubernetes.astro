@@ -1,0 +1,13 @@
+---
+import Docs from '@/layouts/docs.astro';
+---
+<Docs title="Kubernetes operations" description="Operate the AgentGuard Docker and Kubernetes reference deployment.">
+  <div class="doc-title"><span class="section-kicker">OPERATE / KUBERNETES</span><h1>Run the reference topology.</h1><p>Use the checked-in Kustomize base for a non-root PDP and console with probes, managed secrets, persistent audit state, and explicit scaling limits.</p></div>
+  <h2>Deployment contract</h2><div class="docs-table"><div><b>Images</b><span>Build immutable server and console tags from the same release; scan them before promotion.</span></div><div><b>State</b><span>Keep reviewed schema/policies, the API-key store, delegation key, chain secret, and audit PVC outside the image.</span></div><div><b>Network</b><span>Terminate TLS at a trusted ingress or service mesh. The PDP Service is internal and its optional gRPC listener is plaintext loopback only.</span></div><div><b>Scale</b><span>One PDP replica is supported with the file-backed audit writer. Scale the console only after configuring its Redis-compatible limiter.</span></div></div>
+  <h2>Apply and verify</h2><pre><code>kubectl apply -k deploy/k8s
+kubectl -n agentguard rollout status deploy/agentguard-pdp
+kubectl -n agentguard rollout status deploy/agentguard-console</code></pre>
+  <p>The base ships a valid starter schema and an empty deny-by-default policy. Replace both before enabling traffic, then run authenticated allow, deny, audit verification, restart, and rollback checks.</p>
+  <h2>State and recovery</h2><p>Back up the audit file, <code>.chainid</code> sidecar, chain secret, API-key store, and exact policy bundle together. Test restore in an isolated namespace. Keep these objects across image rollbacks.</p>
+  <p>Read the complete <a href="https://github.com/sachncs/agent-guard/blob/master/docs/kubernetes.md">Kubernetes operations runbook ↗</a>.</p>
+</Docs>
