@@ -13,7 +13,11 @@
 
 **AgentGuard wraps [Cedar](https://www.cedarpolicy.com) and puts a verifiable authorization boundary between agent intent and tool execution.**
 
-Every tool call is an explicit authorization decision. Every decision can be recorded in a tamper-evident audit chain and bound to a short-lived identity. The engine speaks the [OpenID AuthZEN](https://openid.github.io/authzen/) interop standard.
+Every tool call is an explicit authorization decision. Every decision can be
+recorded in a tamper-evident audit chain and bound to a short-lived identity.
+The standalone HTTP PDP follows the [OpenID AuthZEN](https://openid.github.io/authzen/)
+evaluation request model; the embedded engine and CLI remain separate local
+integration surfaces.
 
 ## How It Works
 
@@ -36,7 +40,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 - **Composable identity primitives** — API-key authentication in the standalone PDP plus library JWT, OIDC, DPoP, and SPIFFE validators; RFC 8725 BCP crypto and RFC 8693-style delegation without proprietary protocols
 - **Observable decisions** — Prometheus metrics, trace correlation, and pluggable telemetry sinks
 - **Policy operations** — validate, diff, replay, analyze blast radius, and atomically reload standalone server snapshots
-- **AuthZEN-compatible PDP** — works with every AuthZEN-aware gateway, federation tool, and replacement PDP
+- **AuthZEN-compatible HTTP PDP** — use the documented evaluation endpoints with AuthZEN-aware clients; the repository-defined gRPC mirror is a separate plaintext transport
 - **Local-first** — files in `.agentguard/` are the source of truth; `git diff` your policies; run in-process or as a sidecar
 - **Admin console** — Next.js dashboard with OIDC sign-in, policy simulator, delegation management, audit browser
 
@@ -53,7 +57,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
 | `frontend` (Next.js 16 console) | Dashboard, policy simulator, delegation console (shadcn/ui) |
 
-See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); versioned repository guides cover [local development](docs/local-development.md), [policy authoring](docs/policy-authoring.md), [production deployment](docs/production.md), [Kubernetes](docs/kubernetes.md), [console operation](docs/console.md), [API reference](docs/reference.md), [backups](docs/backups.md), [upgrades](docs/upgrades.md), [troubleshooting](docs/troubleshooting.md), [incident response](docs/incident-response.md), [compatibility](docs/compatibility.md), [OSS governance](docs/oss-governance.md), and [branding](docs/branding.md).
+See [CHANGELOG.md](CHANGELOG.md) for the change list. The canonical user journey is the [documentation site](https://sachncs.github.io/agent-guard/); the versioned repository guide index is [`docs/README.md`](docs/README.md).
 
 ## Surfaces
 
