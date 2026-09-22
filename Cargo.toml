@@ -57,9 +57,13 @@ codegen-units = 1
 strip = true
 
 # Benchmarks keep debug info so flamegraphs and profilers resolve
-# symbols; release optimizations otherwise (per the profile above).
+# symbols and use thin LTO/parallel codegen so CI and contributor builds do
+# not pay the production binary's whole-program link cost. Production
+# artifacts continue to use the stricter release profile above.
 [profile.bench]
 debug = true
+lto = "thin"
+codegen-units = 16
 
 # Workspace lint policy (applied to every member crate). Each crate
 # inherits these by default; a crate can opt out by re-declaring
