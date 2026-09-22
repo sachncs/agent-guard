@@ -89,6 +89,8 @@ jobs:
       - name: Check documentation site
         working-directory: site
         run: pnpm config set dangerouslyAllowAllBuilds true && pnpm install --frozen-lockfile && pnpm check && pnpm build
+      - name: Verify built documentation links
+        run: node scripts/verify-site-links.mjs site/dist
       # Build the SDK first so dependents (frontend, examples) can resolve it.
       - run: pnpm --filter agentguard build
       - name: Verify TypeScript API declarations
