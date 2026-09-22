@@ -50,25 +50,21 @@ or environment variables. The full table:
    export AGENTGUARD_AUTH="apikey:/etc/agentguard/keys.json"
    export AGENTGUARD_GRPC_LISTEN="0.0.0.0:9443"
    ```
-3. Generate API keys for callers. There is no `agentguard keygen`
-   subcommand today; the key store is a JSON file holding a
-   top-level array of `ApiKey` records (the shape produced by
-   `agentguard_auth::ApiKeyStore`). Each entry is the result of
-   calling `ApiKeyStore::create(prefix, scopes, ttl)`:
+3. Provision a caller-specific key. The CLI persists an Argon2id hash, binds
+   the key to one User or Agent, defaults to a 30-day expiry, and prints the
+   raw secret once after saving:
 
-   ```rust
-   // In a one-off `cargo run --example` against the workspace:
-   let store = agentguard_auth::ApiKeyStore::new();
-   let (_key, raw) = store.create("ag_live", vec![], None)?;
-   store.save_to_file("/etc/agentguard/keys.json")?;
-   // Surface `raw` (format: `<prefix>:<id>:<base64url>`) to the
-   // caller exactly once. Only the Argon2id hash of the secret is
-   // persisted in the JSON file.
+   ```bash
+   agentguard api-key create --key-store /etc/agentguard/keys.json \
+     --subject-type Agent --subject-id research --tenant-id tenant-a \
+     --scope authorize --ttl-seconds 2592000
+   agentguard api-key list --key-store /etc/agentguard/keys.json
+   agentguard api-key revoke --key-store /etc/agentguard/keys.json KEY_ID
    ```
 
-   Manually-constructed files must satisfy the same `Vec<ApiKey>`
-   shape: every `secret_hash` is a PHC-formatted Argon2id hash,
-   not raw SHA-256.
+   Store the JSON file in a protected location, rotate/update the Kubernetes
+   Secret after changes, and distribute the raw secret only to its intended
+   caller. Listing never prints hashes or raw secrets.
 4. Start the server. The watcher auto-reloads the policy directory on
    file change.
 

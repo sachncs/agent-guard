@@ -49,7 +49,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | Component | Purpose |
 | --------- | ------- |
 | `agentguard-core` (Rust) | Type-safe wrappers, decision cache, hash-chained audit log, TTL primitives |
-| `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `delegate`, `verify`, `audit`, `schema`, `log`, `gen`, `doctor` |
+| `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `api-key`, `delegate`, `verify`, `audit`, `schema`, `log`, `gen`, `doctor` |
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
 | `agentguard-auth` (Rust) | Library validators for JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, and jti replay protection; not standalone PDP auth modes |
 | `agentguard-policy` (Rust) | Versioned bundles, policy change notifications, diff, blast radius, dry-run |

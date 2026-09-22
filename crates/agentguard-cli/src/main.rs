@@ -95,6 +95,11 @@ enum Cmd {
         #[arg(long)]
         keys: String,
     },
+    /// Manage standalone PDP API keys.
+    ApiKey {
+        #[command(subcommand)]
+        action: ApiKeyCmd,
+    },
     /// Inspect the schema.
     Schema,
     /// Tail/query the audit log.
@@ -131,6 +136,41 @@ enum Cmd {
     },
     /// Diagnose a deployment: schema, policies, audit log, chain, authorizer.
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum ApiKeyCmd {
+    /// Create an identity-bound key; the raw secret is printed once.
+    Create {
+        /// JSON key-store file used by the PDP.
+        #[arg(long)]
+        key_store: String,
+        #[arg(long, default_value = "ag_live")]
+        prefix: String,
+        #[arg(long, value_parser = ["User", "Agent"])]
+        subject_type: String,
+        #[arg(long)]
+        subject_id: String,
+        #[arg(long)]
+        tenant_id: Option<String>,
+        /// Capability scope; may be repeated. Defaults to authorize.
+        #[arg(long = "scope", default_value = "authorize")]
+        scopes: Vec<String>,
+        /// Expiry in seconds (must be positive; default 30 days).
+        #[arg(long, default_value_t = 2_592_000)]
+        ttl_seconds: u64,
+    },
+    /// List key metadata without hashes or raw secrets.
+    List {
+        #[arg(long)]
+        key_store: String,
+    },
+    /// Revoke a key by id.
+    Revoke {
+        #[arg(long)]
+        key_store: String,
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -288,6 +328,30 @@ async fn run() -> i32 {
             out,
         ),
         Cmd::Verify { token, keys } => commands::delegate::verify(&token, &keys, out),
+        Cmd::ApiKey { action } => match action {
+            ApiKeyCmd::Create {
+                key_store,
+                prefix,
+                subject_type,
+                subject_id,
+                tenant_id,
+                scopes,
+                ttl_seconds,
+            } => commands::apikey::create(
+                commands::apikey::CreateKeyOptions {
+                    path: std::path::Path::new(&key_store),
+                    prefix: &prefix,
+                    subject_type: &subject_type,
+                    subject_id: &subject_id,
+                    tenant_id: tenant_id.as_deref(),
+                    scopes,
+                    ttl_seconds,
+                },
+                out,
+            ),
+            ApiKeyCmd::List { key_store } => commands::apikey::list(&key_store, out),
+            ApiKeyCmd::Revoke { key_store, id } => commands::apikey::revoke(&key_store, &id, out),
+        },
         Cmd::Schema => commands::schema::run(&cli.store, out),
         Cmd::Log { action } => match action {
             LogCmd::Tail {

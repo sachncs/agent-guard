@@ -18,10 +18,21 @@ trusted entities and policy inputs. A conflicting caller-supplied
 readable for migration but cannot authorize standalone evaluations. Rotate or
 reissue them as bound keys before enabling this enforcement.
 
-Create keys through `ApiKeyStore::create_bound`, assigning only the narrow
-scope and identity required by that integration. Keys should be provisioned
-through a trusted administrative path; never let an untrusted caller choose
-the identity bound to its own credential. `metrics:read` gates the metrics
+Create keys through the operator CLI, assigning only the narrow scope and
+identity required by that integration:
+
+```sh
+agentguard api-key create --key-store ./keys.json \
+  --subject-type Agent --subject-id research --tenant-id tenant-a \
+  --scope authorize --ttl-seconds 2592000
+agentguard api-key list --key-store ./keys.json
+agentguard api-key revoke --key-store ./keys.json KEY_ID
+```
+
+Creation prints the raw secret once, after the hashed record has been saved;
+listing omits secret hashes and raw secrets. Protect the store as a secret and
+mount it read-only into the PDP. Never let an untrusted caller choose the
+identity bound to its own credential. `metrics:read` gates the metrics
 endpoint. API-key scopes gate endpoint capabilities; Cedar policies still make
 the resource/action authorization decision.
 

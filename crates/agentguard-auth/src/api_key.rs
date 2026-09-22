@@ -137,12 +137,56 @@ impl ApiKeyStore {
 
     /// Save to a JSON file.
     pub fn save_to_file(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        use std::io::Write;
+
+        let path = path.as_ref();
         let guard = self.keys.read();
-        let keys: Vec<ApiKey> = guard.values().cloned().collect();
+        let mut keys: Vec<ApiKey> = guard.values().cloned().collect();
         drop(guard);
+        keys.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then(left.id.cmp(&right.id))
+        });
         let text = serde_json::to_string_pretty(&keys)
             .map_err(|e| AuthError::Other(format!("serialize: {}", e)))?;
-        std::fs::write(path, text).map_err(|e| AuthError::Other(format!("write: {}", e)))?;
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let name = path
+            .file_name()
+            .ok_or_else(|| AuthError::Other("API-key store path has no filename".into()))?;
+        let temporary = parent.join(format!(
+            ".{}.{}.tmp",
+            name.to_string_lossy(),
+            uuid::Uuid::new_v4()
+        ));
+
+        let write_result = (|| -> std::io::Result<()> {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&temporary)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()?;
+            #[cfg(windows)]
+            if path.exists() {
+                std::fs::remove_file(path)?;
+            }
+            std::fs::rename(&temporary, path)?;
+            #[cfg(unix)]
+            std::fs::File::open(parent)?.sync_all()?;
+            Ok(())
+        })();
+        if let Err(error) = write_result {
+            let _ = std::fs::remove_file(&temporary);
+            return Err(AuthError::Other(format!("write: {}", error)));
+        }
         Ok(())
     }
 
@@ -196,6 +240,11 @@ impl ApiKeyStore {
         ttl: Option<Duration>,
         identity: Option<ApiKeyIdentity>,
     ) -> Result<(ApiKey, String)> {
+        if prefix.is_empty() || prefix.contains(':') {
+            return Err(AuthError::Other(
+                "API key prefix must be non-empty and must not contain ':'".into(),
+            ));
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let secret_bytes: [u8; 32] = {
             use argon2::password_hash::rand_core::RngCore;
@@ -212,7 +261,17 @@ impl ApiKeyStore {
             .to_string();
 
         let now = chrono::Utc::now().timestamp();
-        let expires_at = ttl.map(|d| now + d.as_secs() as i64);
+        let expires_at = match ttl {
+            Some(duration) => {
+                let seconds = i64::try_from(duration.as_secs()).map_err(|_| {
+                    AuthError::Other("API key TTL exceeds the supported timestamp range".into())
+                })?;
+                Some(now.checked_add(seconds).ok_or_else(|| {
+                    AuthError::Other("API key expiry exceeds the supported timestamp range".into())
+                })?)
+            }
+            None => None,
+        };
 
         let key = ApiKey {
             id: id.clone(),
@@ -323,6 +382,17 @@ mod tests {
     }
 
     #[test]
+    fn key_creation_rejects_invalid_prefix_and_expiry_overflow() {
+        let _guard = api_key_test_lock().lock();
+        let store = ApiKeyStore::new();
+        assert!(store.create("", vec![], None).is_err());
+        assert!(store.create("bad:prefix", vec![], None).is_err());
+        assert!(store
+            .create("ag", vec![], Some(Duration::from_secs(u64::MAX)))
+            .is_err());
+    }
+
+    #[test]
     fn legacy_api_key_json_remains_readable_but_unbound() {
         let legacy = serde_json::json!({
             "id": "legacy",
@@ -336,6 +406,41 @@ mod tests {
         });
         let key: ApiKey = serde_json::from_value(legacy).unwrap();
         assert!(key.identity.is_none());
+    }
+
+    #[test]
+    fn save_to_file_replaces_complete_store_with_restrictive_permissions() {
+        let _guard = api_key_test_lock().lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        let store = ApiKeyStore::new();
+        store.save_to_file(&path).unwrap();
+        let first = std::fs::read(&path).unwrap();
+        store
+            .create_bound(
+                "ag",
+                vec!["authorize".into()],
+                None,
+                ApiKeyIdentity::new("User", "alice", None).unwrap(),
+            )
+            .unwrap();
+        store.save_to_file(&path).unwrap();
+        let second = std::fs::read(&path).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(ApiKeyStore::load_from_file(&path).unwrap().list().len(), 1);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "temporary files should be removed after atomic replacement"
+        );
     }
 
     #[test]

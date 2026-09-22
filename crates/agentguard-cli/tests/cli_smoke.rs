@@ -72,3 +72,89 @@ fn doctor_reports_ok() {
     assert!(stdout.contains("audit log"), "got: {}", stdout);
     assert!(stdout.contains("authorizer"), "got: {}", stdout);
 }
+
+#[test]
+fn apikey_cli_creates_lists_without_secret_and_revokes() {
+    let dir = tempfile::tempdir().unwrap();
+    let key_store = dir.path().join("keys.json");
+    let key_store = key_store.to_str().unwrap();
+    let created = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "api-key",
+            "create",
+            "--key-store",
+            key_store,
+            "--subject-type",
+            "Agent",
+            "--subject-id",
+            "research",
+            "--tenant-id",
+            "tenant-a",
+            "--ttl-seconds",
+            "3600",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let id = payload["id"].as_str().unwrap();
+    let raw_secret = payload["raw_secret"].as_str().unwrap();
+    assert!(!raw_secret.is_empty());
+    assert!(payload["scopes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|scope| scope == "authorize"));
+    assert_eq!(payload["identity"]["tenant_id"], "tenant-a");
+
+    let listed = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "api-key",
+            "list",
+            "--key-store",
+            key_store,
+        ])
+        .output()
+        .unwrap();
+    assert!(listed.status.success());
+    let listing = String::from_utf8_lossy(&listed.stdout);
+    assert!(!listing.contains(raw_secret));
+    assert!(!listing.contains("secret_hash"));
+    assert!(listing.contains(id));
+
+    let revoked = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "api-key",
+            "revoke",
+            "--key-store",
+            key_store,
+            id,
+        ])
+        .output()
+        .unwrap();
+    assert!(revoked.status.success());
+    let listing_after_revoke = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "api-key",
+            "list",
+            "--key-store",
+            key_store,
+        ])
+        .output()
+        .unwrap();
+    assert!(listing_after_revoke.status.success());
+    let keys: serde_json::Value = serde_json::from_slice(&listing_after_revoke.stdout).unwrap();
+    assert!(!keys[0]["revoked_at"].is_null());
+}
