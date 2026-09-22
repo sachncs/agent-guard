@@ -57,13 +57,13 @@ impl SpiffeValidator {
     /// pointing the user at the feature flag.
     #[cfg(feature = "spiffe")]
     pub async fn fetch_svid(&self) -> Result<SpiffeId> {
-        use spiffe::WorkloadApiClient;
+        use rust_spiffe::workload_api::client::WorkloadApiClient;
         // ponytail: bound the connect so a misconfigured endpoint
         // can't park the auth middleware indefinitely. 5 s is generous
         // for a local Unix socket; for HTTPS work, raise in
         // deployment-specific config.
-        let connect_fut = WorkloadApiClient::connect_to(&self.workload_endpoint);
-        let client = tokio::time::timeout(Duration::from_secs(5), connect_fut)
+        let connect_fut = WorkloadApiClient::new_from_path(&self.workload_endpoint);
+        let mut client = tokio::time::timeout(Duration::from_secs(5), connect_fut)
             .await
             .map_err(|_| {
                 AuthError::SpiffeFetch(format!(
@@ -76,21 +76,28 @@ impl SpiffeValidator {
             .fetch_x509_svid()
             .await
             .map_err(|e| AuthError::SpiffeFetch(format!("fetch x509-svid: {}", e)))?;
-        // ponytail: validate the SVID's expiry window. The previous
-        // code skipped this entirely — an expired SVID would have
-        // been accepted as long as its SPIFFE ID was in the
-        // allowlist.
+        // Validate the leaf certificate's validity window. rust-spiffe
+        // exposes the DER certificate but not its validity timestamps, so
+        // parse the already-validated leaf with the pinned X.509 parser.
+        let (_, certificate) = x509_parser::parse_x509_certificate(x509_svid.leaf().content())
+            .map_err(|e| AuthError::SpiffeFetch(format!("parse SVID certificate: {}", e)))?;
         let now = chrono::Utc::now();
         let skew =
             chrono::Duration::from_std(self.clock_skew).unwrap_or(chrono::Duration::seconds(0));
-        let not_after = *x509_svid.expires_at();
+        let not_after =
+            chrono::DateTime::from_timestamp(certificate.validity().not_after.timestamp(), 0)
+                .ok_or_else(|| AuthError::SpiffeFetch("invalid SVID not-after timestamp".into()))?;
         if not_after + skew < now {
             return Err(AuthError::SpiffeFetch(format!(
                 "SVID expired at {}",
                 not_after.to_rfc3339()
             )));
         }
-        let not_before = *x509_svid.not_before();
+        let not_before =
+            chrono::DateTime::from_timestamp(certificate.validity().not_before.timestamp(), 0)
+                .ok_or_else(|| {
+                    AuthError::SpiffeFetch("invalid SVID not-before timestamp".into())
+                })?;
         if not_before > now + skew {
             return Err(AuthError::SpiffeFetch(format!(
                 "SVID not valid until {}",

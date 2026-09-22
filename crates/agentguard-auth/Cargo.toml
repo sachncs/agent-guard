@@ -9,7 +9,7 @@ description = "Authentication for agentguard: JWT, OIDC, API keys, DPoP, SPIFFE"
 default = ["api-keys", "reqwest"]
 api-keys = ["dep:argon2", "dep:rand"]
 reqwest = ["dep:reqwest"]
-spiffe = ["dep:rust-spiffe"]
+spiffe = ["dep:rust-spiffe", "dep:x509-parser"]
 
 [dependencies]
 agentguard-core = { path = "../agentguard-core", version = "0.2.0" }
@@ -34,6 +34,7 @@ rand = { workspace = true, optional = true }
 
 argon2 = { version = "0.5", optional = true }
 rust-spiffe = { version = "0.5", optional = true, package = "spiffe" }
+x509-parser = { version = "0.16", optional = true }
 subtle.workspace = true
 
 # Workspace lint policy (see /Cargo.toml).
