@@ -226,41 +226,19 @@ impl DecisionLog {
             suffix = suffix.saturating_add(1);
         }
 
-        // Close + rename + reopen. Drop the inner file before the
-        // rename so the OS isn't holding the source handle across
-        // the rename on Windows.
+        // Hold the file lock across close + rename + reopen. Otherwise a
+        // concurrent append can observe the temporary `None` and silently
+        // discard its record while rotation is in progress.
         match &self.mode {
             LogMode::Plain(file) => {
                 let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
                 *guard = None;
-            }
-            LogMode::Chained { file, .. } => {
-                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
-                *guard = None;
-            }
-        }
-        std::fs::rename(&self.path, &rotated).map_err(|e| {
-            Error::Io(format!(
-                "rotate {} -> {}: {}",
-                self.path.display(),
-                rotated.display(),
-                e
-            ))
-        })?;
-        if self.chain_id_path.exists() {
-            let rotated_sidecar = chain_id_sidecar_path(&rotated);
-            let _ = std::fs::rename(&self.chain_id_path, &rotated_sidecar);
-        }
-        let f = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
-        match &self.mode {
-            LogMode::Plain(file) => {
-                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
-                *guard = Some(f);
+                *guard = Some(self.reopen_rotated(&rotated)?);
             }
             LogMode::Chained { file, chain } => {
+                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = None;
+                let f = self.reopen_rotated(&rotated)?;
                 // Re-load chain head from the rotated file so the new
                 // active file chains from where the rotated one left
                 // off. The chain id is preserved through the sidecar
@@ -271,7 +249,6 @@ impl DecisionLog {
                 if let Some(id) = read_chain_id_sidecar(&chain_id_sidecar_path(&rotated)) {
                     chain.adopt_id(id);
                 }
-                let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
                 *guard = Some(f);
             }
         }
@@ -281,6 +258,26 @@ impl DecisionLog {
             "rotated audit log"
         );
         Ok(())
+    }
+
+    fn reopen_rotated(&self, rotated: &Path) -> Result<File> {
+        std::fs::rename(&self.path, rotated).map_err(|e| {
+            Error::Io(format!(
+                "rotate {} -> {}: {}",
+                self.path.display(),
+                rotated.display(),
+                e
+            ))
+        })?;
+        if self.chain_id_path.exists() {
+            let rotated_sidecar = chain_id_sidecar_path(rotated);
+            let _ = std::fs::rename(&self.chain_id_path, rotated_sidecar);
+        }
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(Error::from)
     }
 
     /// Path the log was opened at. Useful for `agentguard doctor` and
