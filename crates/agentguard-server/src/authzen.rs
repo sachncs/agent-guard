@@ -23,32 +23,52 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::Semaphore;
 
-/// Bound blocking audit fsync work so slow persistent volumes cannot fill
-/// Tokio's blocking-task queue without limit.
-const MAX_CONCURRENT_AUDIT_WRITES: usize = 4;
+/// Bound policy evaluation and audit fsync work so they cannot block Tokio
+/// workers or create an unbounded blocking-task queue.
+const MAX_CONCURRENT_PDP_WORK_ITEMS: usize = 4;
 
 #[derive(Debug)]
-pub(crate) enum AuditPersistError {
+pub(crate) enum PdpWorkError {
     Saturated,
     Join(tokio::task::JoinError),
-    Append(agentguard_core::Error),
+    Entities(String),
+    Authorize(agentguard_core::Error),
+    Audit(agentguard_core::Error),
 }
 
-pub(crate) fn report_audit_failure(
+pub(crate) fn report_pdp_work_failure(
     state: &AppState,
-    error: AuditPersistError,
+    error: PdpWorkError,
 ) -> (StatusCode, &'static str) {
     match error {
-        AuditPersistError::Saturated => {
-            state.metrics().record_pdp_error("audit_overloaded");
-            (StatusCode::SERVICE_UNAVAILABLE, "audit capacity exhausted")
+        PdpWorkError::Saturated => {
+            state.metrics().record_pdp_error("pdp_overloaded");
+            (StatusCode::SERVICE_UNAVAILABLE, "PDP capacity exhausted")
         }
-        AuditPersistError::Join(error) => {
-            state.metrics().record_pdp_error("audit_worker");
-            tracing::error!(%error, "audit worker failed; refusing decision");
-            (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
+        PdpWorkError::Join(error) => {
+            state.metrics().record_pdp_error("pdp_worker");
+            tracing::error!(%error, "PDP worker failed; refusing decision");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authorization unavailable",
+            )
         }
-        AuditPersistError::Append(error) => {
+        PdpWorkError::Entities(error) => {
+            state.metrics().record_pdp_error("entities_build");
+            tracing::debug!(%error, "request entities rejected");
+            (StatusCode::BAD_REQUEST, "invalid request entities")
+        }
+        PdpWorkError::Authorize(error) => {
+            state.metrics().record_pdp_error("authorize");
+            let (code, summary) = summarize_authorize_error(&error);
+            tracing::error!(error_code = %code, error = %summary, "authorize failed");
+            tracing::debug!(error = ?error, "full authorize error");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal authorization error",
+            )
+        }
+        PdpWorkError::Audit(error) => {
             state.metrics().record_pdp_error("audit_append");
             tracing::error!(%error, "audit append failed; refusing decision");
             (StatusCode::INTERNAL_SERVER_ERROR, "audit log unavailable")
@@ -56,52 +76,50 @@ pub(crate) fn report_audit_failure(
     }
 }
 
-fn audit_write_slots() -> Arc<Semaphore> {
+fn pdp_work_slots() -> Arc<Semaphore> {
     static SLOTS: std::sync::OnceLock<Arc<Semaphore>> = std::sync::OnceLock::new();
     SLOTS
-        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_AUDIT_WRITES)))
+        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PDP_WORK_ITEMS)))
         .clone()
 }
 
-pub(crate) async fn persist_audit_decision(
+pub(crate) async fn authorize_and_persist_decision(
+    authorizer: Arc<Authorizer>,
+    request: AgentRequest,
+    entity_values: Vec<serde_json::Value>,
     audit: Arc<Option<DecisionLog>>,
-    decision: agentguard_core::Decision,
-) -> Result<(), AuditPersistError> {
-    persist_audit_decision_with_slots(audit, decision, audit_write_slots()).await
-}
-
-async fn persist_audit_decision_with_slots(
-    audit: Arc<Option<DecisionLog>>,
-    decision: agentguard_core::Decision,
-    slots: Arc<Semaphore>,
-) -> Result<(), AuditPersistError> {
-    if audit.is_none() {
-        return Ok(());
-    }
-    run_bounded_audit(slots, move || match audit.as_ref().as_ref() {
-        Some(audit) => audit.append_decision(&decision),
-        None => Ok(()),
+) -> Result<(agentguard_core::Decision, std::time::Duration), PdpWorkError> {
+    run_bounded_pdp_work(pdp_work_slots(), move || {
+        let entities = build_request_entities(&entity_values).map_err(PdpWorkError::Entities)?;
+        let started = Instant::now();
+        let decision = authorizer
+            .authorize(&request, &entities)
+            .map_err(PdpWorkError::Authorize)?;
+        let elapsed = started.elapsed();
+        if let Some(audit) = audit.as_ref() {
+            audit
+                .append_decision(&decision)
+                .map_err(PdpWorkError::Audit)?;
+        }
+        Ok((decision, elapsed))
     })
     .await
 }
 
-async fn run_bounded_audit<T, F>(
-    slots: Arc<Semaphore>,
-    operation: F,
-) -> Result<T, AuditPersistError>
+async fn run_bounded_pdp_work<T, F>(slots: Arc<Semaphore>, operation: F) -> Result<T, PdpWorkError>
 where
     T: Send + 'static,
-    F: FnOnce() -> agentguard_core::Result<T> + Send + 'static,
+    F: FnOnce() -> Result<T, PdpWorkError> + Send + 'static,
 {
     let permit = slots
         .try_acquire_owned()
-        .map_err(|_| AuditPersistError::Saturated)?;
+        .map_err(|_| PdpWorkError::Saturated)?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        operation().map_err(AuditPersistError::Append)
+        operation()
     })
     .await
-    .map_err(AuditPersistError::Join)?
+    .map_err(PdpWorkError::Join)?
 }
 
 /// Maximum number of evaluations accepted in a single
@@ -236,7 +254,7 @@ impl AuthorizerHandle {
         Ok(authorizer)
     }
 
-    fn snapshot(&self) -> Arc<Authorizer> {
+    pub(crate) fn snapshot(&self) -> Arc<Authorizer> {
         self.current
             .read()
             .expect("authorizer snapshot lock poisoned")
@@ -557,23 +575,20 @@ async fn evaluation(
             return (StatusCode::BAD_REQUEST, e).into_response()
         }
     };
-    let entities = match build_request_entities(&per_request_entities) {
-        Ok(e) => e,
-        Err(e) => {
-            state.metrics().record_pdp_error("entities_build");
-            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
-        }
-    };
-    let started = Instant::now();
-    let outcome = state.authorizer.authorize(&agent_req, &entities);
-    let elapsed = started.elapsed();
+    let action_label = format!("{}", agent_req.action);
+    let outcome = authorize_and_persist_decision(
+        state.authorizer.snapshot(),
+        agent_req,
+        per_request_entities,
+        state.audit.clone(),
+    )
+    .await;
     match outcome {
-        Ok(decision) => {
+        Ok((decision, elapsed)) => {
             let effect_label = match decision.effect {
                 Effect::Allow => "allow",
                 Effect::Deny => "deny",
             };
-            let action_label = format!("{}", agent_req.action);
             // tenant_id is optional in our model; empty string keeps
             // the cardinality low but still distinguishable from a
             // multi-tenant deployment that does set it.
@@ -595,13 +610,6 @@ async fn evaluation(
             } else {
                 state.metrics().record_cache_miss();
             }
-            // Persist before returning the decision, but keep blocking fsync
-            // off the async worker. Any saturation or storage error fails closed.
-            if let Err(error) = persist_audit_decision(state.audit.clone(), decision.clone()).await
-            {
-                let (status, message) = report_audit_failure(&state, error);
-                return (status, message).into_response();
-            }
             let resp = EvaluationResponse {
                 decision: matches!(decision.effect, Effect::Allow),
                 context: None,
@@ -609,21 +617,9 @@ async fn evaluation(
             };
             (StatusCode::OK, Json(resp)).into_response()
         }
-        Err(e) => {
-            state.metrics().record_pdp_error("authorize");
-            // Sanitize the error before logging: cedar policy and
-            // schema text can echo into Diagnostics, and tracing
-            // output is commonly shipped to log aggregators. Log a
-            // stable error code + short summary at error level; keep
-            // the full error at debug level for engineering triage.
-            let (code, summary) = summarize_authorize_error(&e);
-            tracing::error!(error_code = %code, error = %summary, "authorize failed");
-            tracing::debug!(error = ?e, "full authorize error");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal authorization error",
-            )
-                .into_response()
+        Err(error) => {
+            let (status, message) = report_pdp_work_failure(&state, error);
+            (status, message).into_response()
         }
     }
 }
@@ -668,22 +664,16 @@ async fn evaluations(
                 return (StatusCode::BAD_REQUEST, e).into_response()
             }
         };
-        let entities = match build_request_entities(&per_request_entities) {
-            Ok(e) => e,
-            Err(e) => {
-                state.metrics().record_pdp_error("entities_build");
-                return (StatusCode::BAD_REQUEST, e).into_response();
-            }
-        };
-        match authorizer.authorize(&agent_req, &entities) {
-            Ok(decision) => {
+        match authorize_and_persist_decision(
+            authorizer.clone(),
+            agent_req,
+            per_request_entities,
+            state.audit.clone(),
+        )
+        .await
+        {
+            Ok((decision, _elapsed)) => {
                 let allow = matches!(decision.effect, Effect::Allow);
-                if let Err(error) =
-                    persist_audit_decision(state.audit.clone(), decision.clone()).await
-                {
-                    let (status, message) = report_audit_failure(&state, error);
-                    return (status, message).into_response();
-                }
                 responses.push(EvaluationResponse {
                     decision: allow,
                     context: None,
@@ -695,13 +685,9 @@ async fn evaluations(
                     _ => {}
                 }
             }
-            Err(e) => {
-                tracing::error!(error = %e, "authorize failed");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal authorization error",
-                )
-                    .into_response();
+            Err(error) => {
+                let (status, message) = report_pdp_work_failure(&state, error);
+                return (status, message).into_response();
             }
         }
     }
@@ -775,7 +761,7 @@ pub async fn build_state_with_cache(
 
 #[cfg(test)]
 mod summarize_tests {
-    use super::{summarize_authorize_error, DecisionLog};
+    use super::summarize_authorize_error;
     use agentguard_core::Error;
     use agentguard_core::PolicyStore;
     use tempfile::tempdir;
@@ -830,28 +816,14 @@ mod summarize_tests {
     }
 
     #[tokio::test]
-    async fn audit_capacity_saturation_fails_fast_without_dropping_a_decision() {
-        let dir = tempdir().unwrap();
-        let audit = DecisionLog::open(dir.path().join("audit.jsonl")).unwrap();
-        let decision = agentguard_core::Decision {
-            effect: agentguard_core::Effect::Allow,
-            policies: vec!["p0".into()],
-            reasons: vec![],
-            request: serde_json::json!({}),
-            trace: None,
-            from_cache: false,
-        };
-        let result = super::persist_audit_decision_with_slots(
-            std::sync::Arc::new(Some(audit)),
-            decision,
-            std::sync::Arc::new(Semaphore::new(0)),
-        )
-        .await;
-        assert!(matches!(result, Err(super::AuditPersistError::Saturated)));
+    async fn pdp_work_capacity_saturation_fails_fast() {
+        let result =
+            super::run_bounded_pdp_work(std::sync::Arc::new(Semaphore::new(0)), || Ok(())).await;
+        assert!(matches!(result, Err(super::PdpWorkError::Saturated)));
     }
 
     #[tokio::test]
-    async fn slow_audit_work_does_not_stall_async_workers() {
+    async fn slow_pdp_work_does_not_stall_async_workers() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::time::Duration;
 
@@ -864,7 +836,7 @@ mod summarize_tests {
                 tick_count.fetch_add(1, Ordering::Relaxed);
             }
         });
-        let result = super::run_bounded_audit(std::sync::Arc::new(Semaphore::new(1)), || {
+        let result = super::run_bounded_pdp_work(std::sync::Arc::new(Semaphore::new(1)), || {
             std::thread::sleep(Duration::from_millis(80));
             Ok(())
         })
@@ -874,7 +846,7 @@ mod summarize_tests {
         assert!(result.is_ok());
         assert!(
             ticks.load(Ordering::Relaxed) >= 3,
-            "async work should continue while audit fsync is in the blocking pool"
+            "async work should continue while PDP work runs in the blocking pool"
         );
     }
 

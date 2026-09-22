@@ -221,6 +221,30 @@ async fn evaluation_with_request_entities() {
 }
 
 #[tokio::test]
+async fn malformed_request_entities_are_rejected_as_bad_request() {
+    let app = make_app_shared().await;
+    let body = serde_json::json!({
+        "subject": {"type": "User", "id": "alice"},
+        "action": {"type": "Action", "id": "ToolCall::read"},
+        "resource": {"type": "Document", "id": "doc"},
+        "context": {},
+        "entities": [{"uid": "not-an-entity-uid"}]
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluation")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn readyz_returns_503_when_no_audit() {
     use agentguard_server::authzen::build_state;
     let dir = tempfile::tempdir().unwrap();

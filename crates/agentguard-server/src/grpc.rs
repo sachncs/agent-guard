@@ -7,7 +7,7 @@
 //! resource semantics identical across transports.
 
 use crate::auth_layer::AuthenticationFailure;
-use crate::authzen::{build_request_entities, evaluation_request_for_caller, AppState};
+use crate::authzen::{evaluation_request_for_caller, AppState};
 use crate::proto::agentguard::v1::{
     access_evaluation_server::{AccessEvaluation, AccessEvaluationServer},
     EvaluationRequest as PbRequest, EvaluationResponse as PbResponse,
@@ -141,26 +141,32 @@ impl AccessEvaluation for AccessEvaluationService {
                 }
             },
         )?;
-        let entities = build_request_entities(&per_request_entities).map_err(Status::internal)?;
-
         // Fill the tracing span fields now that we have the parsed request.
         tracing::Span::current().record("subject_id", agent_req.principal.id().to_string());
         tracing::Span::current().record("action_id", format!("{}", agent_req.action));
         tracing::Span::current().record("resource_id", agent_req.resource.uid.to_string());
+        let action_label = format!("{}", agent_req.action);
 
-        let started = std::time::Instant::now();
-        let outcome = self.state.authorizer().authorize(&agent_req, &entities);
-        let elapsed = started.elapsed();
-        let decision = outcome.map_err(|e| {
-            self.state.metrics().record_pdp_error("grpc_authorize");
-            Status::internal(format!("authorize failed: {e}"))
+        let (decision, elapsed) = crate::authzen::authorize_and_persist_decision(
+            self.state.authorizer().snapshot(),
+            agent_req,
+            per_request_entities,
+            self.state.audit_handle(),
+        )
+        .await
+        .map_err(|error| {
+            let (status, message) = crate::authzen::report_pdp_work_failure(&self.state, error);
+            match status {
+                StatusCode::SERVICE_UNAVAILABLE => Status::unavailable(message),
+                StatusCode::BAD_REQUEST => Status::invalid_argument(message),
+                _ => Status::internal(message),
+            }
         })?;
 
         let effect_label = match decision.effect {
             Effect::Allow => "allow",
             Effect::Deny => "deny",
         };
-        let action_label = format!("{}", agent_req.action);
         let policy_id = decision
             .policies
             .first()
@@ -173,18 +179,6 @@ impl AccessEvaluation for AccessEvaluationService {
             self.state.metrics().record_cache_hit();
         } else {
             self.state.metrics().record_cache_miss();
-        }
-
-        if let Err(error) =
-            crate::authzen::persist_audit_decision(self.state.audit_handle(), decision.clone())
-                .await
-        {
-            let (status, message) = crate::authzen::report_audit_failure(&self.state, error);
-            return Err(if status == StatusCode::SERVICE_UNAVAILABLE {
-                Status::unavailable(message)
-            } else {
-                Status::internal(message)
-            });
         }
 
         Ok(Response::new(PbResponse {

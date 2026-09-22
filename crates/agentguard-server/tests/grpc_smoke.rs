@@ -63,6 +63,11 @@ async fn grpc_evaluation_returns_decision() {
     let resp = client.evaluation(req.clone()).await.unwrap();
     assert!(resp.into_inner().decision);
 
+    let mut invalid_entities = req.clone();
+    invalid_entities.entities_json = r#"[{"uid":"not-an-entity-uid"}]"#.into();
+    let error = client.evaluation(invalid_entities).await.unwrap_err();
+    assert_eq!(error.code(), tonic::Code::InvalidArgument);
+
     let mut oversized = req;
     oversized.context_json = " ".repeat(agentguard_server::grpc::MAX_GRPC_REQUEST_BYTES);
     let error = client.evaluation(oversized).await.unwrap_err();
