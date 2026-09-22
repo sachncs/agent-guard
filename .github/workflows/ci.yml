@@ -177,11 +177,14 @@ jobs:
       - uses: helm/kind-action@v1.12.0
         with:
           node_image: kindest/node:v1.31.4
+          cluster_name: agentguard-smoke
       - name: Load PDP image into Kind
         run: |
-          kind load docker-image agentguard-server:smoke
-          kind load docker-image agentguard-server:smoke-rollback
+          kind load docker-image agentguard-server:smoke --name agentguard-smoke
+          kind load docker-image agentguard-server:smoke-rollback --name agentguard-smoke
       - name: Run Kubernetes startup, decision, audit, termination, and rollback smoke test
+        env:
+          AGENTGUARD_KIND_CLUSTER: agentguard-smoke
         run: ./scripts/k8s-smoke.sh
 
   deny:
