@@ -30,6 +30,24 @@ export function agentguard(): Client {
   return cached;
 }
 
+/** Async CLI operations keep Next.js route handlers from blocking the event loop. */
+export async function logTail(
+  n: number,
+  filter?: { principal?: string; action?: string }
+): Promise<unknown[]> {
+  return agentguard().logTailAsync(n, filter);
+}
+
+export async function createDelegation(
+  from: string,
+  to: string,
+  actions: string[],
+  resources: string[],
+  ttlSeconds: number
+): Promise<string> {
+  return agentguard().delegateAsync(from, to, actions, resources, ttlSeconds);
+}
+
 /** Map a thrown error to the appropriate JSON status/body for API routes. */
 export function toErrorResponse(e: unknown): Response {
   const body = toErrorBody(e);

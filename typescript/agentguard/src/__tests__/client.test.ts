@@ -23,6 +23,15 @@ case "\$FAKE_AGENTGUARD_MODE" in
     printf '{"effect":"allow","policies":["p-env"],"reasons":["bearer=%s trace=%s"],"request":{}}' "\$AGENTGUARD_BEARER" "\$AGENTGUARD_TRACEPARENT" ;;
   argsdump)
     printf '%s' "\$*" ;;
+  asyncdelay)
+    sleep 0.18
+    case "\$*" in
+      *"log tail"*) echo '[{"id":"async-1"}]' ;;
+      *delegate*) echo 'fake.jwt.token' ;;
+      *) echo '{}' ;;
+    esac ;;
+  hang)
+    exec sleep 5 ;;
   fail)
     echo 'boom' >&2
     exit 3 ;;
@@ -213,5 +222,76 @@ describe("Client", () => {
     } finally {
       delete process.env.FAKE_AGENTGUARD_MODE;
     }
+  });
+
+  it("runs async log requests without blocking the event loop", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "asyncdelay";
+    const client = new Client({ cliBin: fakeCli, timeoutMs: 2_000 });
+    let ticks = 0;
+    const interval = setInterval(() => ticks += 1, 30);
+    try {
+      const records = await client.logTailAsync(5);
+      assert.deepEqual(records, [{ id: "async-1" }]);
+      assert.ok(ticks >= 3, `event loop should continue ticking during CLI work (ticks=${ticks})`);
+    } finally {
+      clearInterval(interval);
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("supports asynchronous delegation with a configured signing key", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "asyncdelay";
+    try {
+      const client = new Client({ cliBin: fakeCli, delegationKeyFile: "/run/secrets/delegation.key" });
+      assert.equal(
+        await client.delegateAsync(
+          'Agent::"research"',
+          'Agent::"summarizer"',
+          ["ToolCall::repo_read"],
+          ["Repository::demo"],
+          300,
+        ),
+        "fake.jwt.token",
+      );
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("terminates an asynchronous CLI that exceeds its timeout", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "hang";
+    try {
+      const client = new Client({ cliBin: fakeCli, timeoutMs: 25 });
+      await assert.rejects(client.logTailAsync(), (error: unknown) => {
+        assert.ok(error instanceof CLIUnavailable);
+        assert.match(error.message, /timed out after 25 ms/);
+        return true;
+      });
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("bounds concurrent asynchronous CLI processes", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "asyncdelay";
+    try {
+      const client = new Client({ cliBin: fakeCli, maxConcurrentCliProcesses: 1 });
+      const first = client.logTailAsync();
+      await assert.rejects(client.logTailAsync(), (error: unknown) => {
+        assert.ok(error instanceof CLIUnavailable);
+        assert.match(error.message, /concurrency limit reached/);
+        return true;
+      });
+      assert.deepEqual(await first, [{ id: "async-1" }]);
+      assert.deepEqual(await client.logTailAsync(), [{ id: "async-1" }]);
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("rejects invalid asynchronous CLI timeouts", () => {
+    assert.throws(() => new Client({ cliBin: fakeCli, timeoutMs: 0 }), RangeError);
+    assert.throws(() => new Client({ cliBin: fakeCli, timeoutMs: Number.POSITIVE_INFINITY }), RangeError);
+    assert.throws(() => new Client({ cliBin: fakeCli, maxConcurrentCliProcesses: 0 }), RangeError);
   });
 });

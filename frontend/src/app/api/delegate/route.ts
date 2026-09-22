@@ -1,4 +1,4 @@
-import { agentguard, toErrorResponse } from "@/lib/agentguard";
+import { createDelegation, toErrorResponse } from "@/lib/agentguard";
 import { parseJsonBody, delegateSchema } from "@/lib/api_schemas";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireAdmin } from "@/lib/auth/guard";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const body = parsed.data;
 
   try {
-    const token = agentguard().delegate(
+    const token = await createDelegation(
       body.from,
       body.to,
       body.actions,

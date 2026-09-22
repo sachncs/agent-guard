@@ -76,7 +76,7 @@ export class StepUpRequired extends AgentguardError {
 /** Thrown when the agentguard CLI binary cannot be found or spawned. */
 export class CLIUnavailable extends AgentguardError {}
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -109,7 +109,15 @@ export interface ClientOptions {
   traceparent?: string;
   /** Default private signing-key file for delegation minting. */
   delegationKeyFile?: string;
+  /** Maximum time allowed for an asynchronous CLI operation (defaults to 30 seconds). */
+  timeoutMs?: number;
+  /** Maximum concurrent asynchronous CLI children for this client (defaults to 8). */
+  maxConcurrentCliProcesses?: number;
 }
+
+const DEFAULT_CLI_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_CONCURRENT_CLI_PROCESSES = 8;
+const MAX_CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 /**
  * Synchronous client that shells out to the `agentguard` CLI binary.
@@ -124,6 +132,9 @@ export class Client {
   private bearerToken?: string;
   private traceparent?: string;
   private delegationKeyFile?: string;
+  private timeoutMs: number;
+  private maxConcurrentCliProcesses: number;
+  private activeAsyncProcesses = 0;
 
   constructor(opts: ClientOptions = {}) {
     this.store = opts.store ?? ".agentguard";
@@ -132,16 +143,29 @@ export class Client {
     this.bearerToken = opts.bearerToken;
     this.traceparent = opts.traceparent;
     this.delegationKeyFile = opts.delegationKeyFile;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_CLI_TIMEOUT_MS;
+    if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1) {
+      throw new RangeError("timeoutMs must be a positive safe integer");
+    }
+    this.maxConcurrentCliProcesses = opts.maxConcurrentCliProcesses ??
+      DEFAULT_MAX_CONCURRENT_CLI_PROCESSES;
+    if (!Number.isSafeInteger(this.maxConcurrentCliProcesses) || this.maxConcurrentCliProcesses < 1) {
+      throw new RangeError("maxConcurrentCliProcesses must be a positive safe integer");
+    }
   }
 
-  private run(args: string[], stdin?: string): string {
+  private commandEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (this.bearerToken) env.AGENTGUARD_BEARER = this.bearerToken;
     if (this.traceparent) env.AGENTGUARD_TRACEPARENT = this.traceparent;
+    return env;
+  }
+
+  private run(args: string[], stdin?: string): string {
     const res = spawnSync(
       this.cli,
       ["--store", this.store, "--audit", this.auditLog, ...args],
-      { input: stdin, encoding: "utf-8", timeout: 30_000, env }
+      { input: stdin, encoding: "utf-8", timeout: 30_000, env: this.commandEnv() }
     );
     if (res.error) throw new CLIUnavailable(`agentguard CLI failed to spawn: ${res.error}`);
     if (res.status !== 0 && res.status !== 2) {
@@ -150,6 +174,82 @@ export class Client {
       );
     }
     return res.stdout;
+  }
+
+  /**
+   * Run a CLI operation without blocking the Node.js event loop. Prefer these
+   * variants in web servers and other concurrent Node applications.
+   */
+  private runAsync(args: string[]): Promise<string> {
+    if (this.activeAsyncProcesses >= this.maxConcurrentCliProcesses) {
+      return Promise.reject(new CLIUnavailable(
+        `agentguard CLI concurrency limit reached (${this.maxConcurrentCliProcesses})`
+      ));
+    }
+    this.activeAsyncProcesses += 1;
+    return new Promise((resolve, reject) => {
+      let child: ChildProcessWithoutNullStreams;
+      try {
+        child = spawn(
+          this.cli,
+          ["--store", this.store, "--audit", this.auditLog, ...args],
+          { env: this.commandEnv(), stdio: "pipe" }
+        );
+      } catch (error) {
+        this.activeAsyncProcesses -= 1;
+        reject(new CLIUnavailable(`agentguard CLI failed to spawn: ${error}`));
+        return;
+      }
+
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let outputBytes = 0;
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = (action: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.activeAsyncProcesses -= 1;
+        action();
+      };
+      timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        finish(() => reject(new CLIUnavailable(
+          `agentguard CLI timed out after ${this.timeoutMs} ms`
+        )));
+      }, this.timeoutMs);
+      const collect = (chunk: Buffer, stream: "stdout" | "stderr") => {
+        outputBytes += chunk.byteLength;
+        if (outputBytes > MAX_CLI_OUTPUT_BYTES) {
+          child.kill("SIGKILL");
+          finish(() => reject(new AgentguardError(
+            `agentguard CLI output exceeded ${MAX_CLI_OUTPUT_BYTES} bytes`
+          )));
+          return;
+        }
+        if (stream === "stdout") stdoutChunks.push(chunk);
+        else stderrChunks.push(chunk);
+      };
+      child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
+      child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
+      child.stdin.end();
+      child.once("error", (error) => finish(() => reject(
+        new CLIUnavailable(`agentguard CLI failed to spawn: ${error.message}`)
+      )));
+      child.once("close", (code, signal) => finish(() => {
+        const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+        if (code === 0 || code === 2) {
+          resolve(stdout);
+        } else {
+          const stderr = Buffer.concat(stderrChunks).toString("utf8");
+          reject(new AgentguardError(
+            `agentguard CLI failed (${signal ? `signal ${signal}` : `status ${code}`}): ` +
+              (stderr.trim() || stdout.trim())
+          ));
+        }
+      }));
+    });
   }
 
   /**
@@ -254,6 +354,29 @@ export class Client {
     return this.run(args).trim();
   }
 
+  /** Asynchronous, non-blocking version of {@link Client.delegate}. */
+  async delegateAsync(
+    from: string,
+    to: string,
+    actions: string[],
+    resources: string[],
+    ttlSeconds = 900,
+    opts: { keyFile?: string; outFile?: string } = {}
+  ): Promise<string> {
+    const args = [
+      "delegate",
+      "--from", from,
+      "--to", to,
+      "--actions", ...actions,
+      "--resources", ...resources,
+      "--ttl", String(ttlSeconds),
+    ];
+    const keyFile = opts.keyFile ?? this.delegationKeyFile;
+    if (keyFile) args.push("--key-file", keyFile);
+    if (opts.outFile) args.push("--out", opts.outFile);
+    return (await this.runAsync(args)).trim();
+  }
+
   /** Verify a delegation token against a trusted keys file. */
   verify(token: string, keysFile: string): Record<string, unknown> {
     const out = this.run(["--output", "json", "verify", token, "--keys", keysFile]);
@@ -267,6 +390,17 @@ export class Client {
     if (filter?.action) args.push("--action", filter.action);
     const out = this.run(["--output", "json", ...args]);
     return JSON.parse(out);
+  }
+
+  /** Asynchronous, non-blocking version of {@link Client.logTail}. */
+  async logTailAsync(
+    n = 20,
+    filter?: { principal?: string; action?: string }
+  ): Promise<unknown[]> {
+    const args = ["--output", "json", "log", "tail", "--n", String(n)];
+    if (filter?.principal) args.push("--principal", filter.principal);
+    if (filter?.action) args.push("--action", filter.action);
+    return JSON.parse(await this.runAsync(args));
   }
 }
 

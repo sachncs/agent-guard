@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add non-blocking `Client.logTailAsync` and `Client.delegateAsync` methods to
+  the TypeScript SDK, with configurable execution timeout and bounded output.
+  Concurrent child processes are bounded per client. The console audit and
+  delegation routes use these async variants so CLI work does not block the
+  Next.js event loop.
+
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 
 Comprehensive ten-tier deep review against the Rust style guide and

@@ -1,5 +1,5 @@
 import type { LogRecord } from "@/lib/api_types";
-import { agentguard, toErrorResponse } from "@/lib/agentguard";
+import { logTail, toErrorResponse } from "@/lib/agentguard";
 import { logQuerySchema } from "@/lib/api_schemas";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireViewer } from "@/lib/auth/guard";
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const records = agentguard().logTail(parsed.data.n, {
+    const records = await logTail(parsed.data.n, {
       principal: parsed.data.principal,
       action: parsed.data.action,
     }) as LogRecord[];
