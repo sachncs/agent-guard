@@ -31,6 +31,8 @@ for (const file of [
 ]) requireFile(file);
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');
+requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard-cli");
+requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

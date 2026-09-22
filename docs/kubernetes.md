@@ -103,5 +103,8 @@ kubectl -n agentguard rollout status deployment/agentguard-pdp
 
 Keep the policy ConfigMap, secrets, and audit PVC across application rollbacks.
 The reference PDP deployment uses one replica because the audit writer is
-file-backed; multi-replica PDP operation requires a coordinated append-only
-audit design and is outside the shipped production contract.
+file-backed. The console image includes the CLI used by its audit and
+delegation routes and mounts policy/audit state read-only. Its required pod
+affinity keeps it on the same node as the PDP so the `ReadWriteOnce` audit
+volume remains attachable. Multi-replica PDP operation requires a coordinated
+append-only audit design and is outside the shipped production contract.

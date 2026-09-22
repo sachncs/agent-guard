@@ -30,6 +30,11 @@ if (failures.length === 0) {
   const console = read("console.yaml");
   for (const value of [
     "secretRef: {name: agentguard-console-env}",
+    "name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard",
+    "mountPath: /var/lib/agentguard/policies, readOnly: true",
+    "mountPath: /var/lib/agentguard/audit, readOnly: true",
+    "claimName: agentguard-audit",
+    "podAffinity",
     "path: /login",
     "startupProbe",
     "terminationGracePeriodSeconds: 30",

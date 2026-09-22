@@ -99,7 +99,9 @@ mode.
   for an atomic Redis-compatible limiter before running multiple replicas.
   Store failures fail closed.
 - **Per-request CLI spawns** for log/delegate/verify (no HTTP surface exists
-  server-side yet); the simulator already avoids this via the PDP API.
+  server-side yet); the simulator already avoids this via the PDP API. The
+  production console image includes the pinned `agentguard` CLI. Mount the
+  policy directory and audit file read-only, as the Kubernetes reference does.
 - **TLS termination** is expected at your reverse proxy; set
   `X-Forwarded-Proto` so HSTS and secure cookies engage.
 - CSP allows `'unsafe-inline'` scripts because the App Router hydration

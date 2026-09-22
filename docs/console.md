@@ -41,8 +41,9 @@ Set these values through a secret manager or Kubernetes Secret:
 
 Terminate TLS before the console and preserve `X-Forwarded-Proto`. The
 console uses secure cookies when the request is HTTPS and sends restrictive
-security headers. Keep the PDP and CLI-backed policy/audit directories private
-to the console runtime.
+security headers. The production image includes the pinned `agentguard` CLI;
+mount the policy directory and audit file read-only, as the Kubernetes
+reference does, and keep both paths private to the console runtime.
 
 ## Roles and failure behavior
 
