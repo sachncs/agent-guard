@@ -5,9 +5,14 @@ on:
     branches: [master, main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fmt:
     name: rustfmt
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +23,7 @@ jobs:
 
   clippy:
     name: clippy
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +39,7 @@ jobs:
     # rust-version`. A change that uses a stable-only API newer than
     # this fails CI here, before downstream consumers hit it.
     name: msrv
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +48,7 @@ jobs:
 
   test:
     name: cargo test
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +66,7 @@ jobs:
 
   ts:
     name: typescript workspace
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +97,7 @@ jobs:
 
   containers:
     name: production container builds
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     needs: [test, ts]
     steps:
@@ -127,6 +137,7 @@ jobs:
 
   kubernetes:
     name: Kubernetes PDP smoke
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     needs: [containers]
     steps:
@@ -145,6 +156,7 @@ jobs:
 
   deny:
     name: cargo-deny
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -160,6 +172,7 @@ jobs:
 
   audit:
     name: cargo audit
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,6 +192,7 @@ jobs:
 
   coverage:
     name: cargo llvm-cov
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -196,6 +210,7 @@ jobs:
 
   fuzz:
     name: cargo fuzz (nightly)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     needs: fmt
     # Nightly fuzz job to keep the existing fuzz harnesses honest.
@@ -214,6 +229,7 @@ jobs:
 
   miri:
     name: cargo miri (nightly)
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     needs: fmt
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
