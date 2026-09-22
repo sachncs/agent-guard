@@ -590,10 +590,11 @@ fn rotated_logs(log_path: &Path) -> Result<Vec<PathBuf>> {
     for entry in std::fs::read_dir(parent)? {
         let entry = entry?;
         let path = entry.path();
-        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if name.starts_with(&prefix)
+        let rotation_suffix = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|stem| stem.strip_prefix(&prefix));
+        if rotation_suffix.is_some_and(is_rotation_filename)
             && path.extension().and_then(|s| s.to_str()) == Some(extension)
             && entry.file_type()?.is_file()
         {
@@ -606,6 +607,29 @@ fn rotated_logs(log_path: &Path) -> Result<Vec<PathBuf>> {
 
 fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
     Ok(rotated_logs(log_path)?.pop())
+}
+
+fn is_rotation_filename(suffix: &str) -> bool {
+    let timestamp = suffix
+        .split_once('-')
+        .map_or(suffix, |(timestamp, _)| timestamp);
+    let bytes = timestamp.as_bytes();
+    if bytes.len() != 22 || bytes[8] != b'T' || bytes[21] != b'Z' {
+        return false;
+    }
+    if !bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| index == 8 || index == 21 || byte.is_ascii_digit())
+    {
+        return false;
+    }
+    match suffix.split_once('-') {
+        None => true,
+        Some((_, collision_suffix)) => collision_suffix
+            .parse::<u32>()
+            .is_ok_and(|number| number > 0),
+    }
 }
 
 /// Best-effort read of the persisted chain id. Returns `None` if the
@@ -920,6 +944,22 @@ mod tests {
             dir.path().display()
         );
         assert!(path.exists(), "active file must still be open");
+    }
+
+    #[test]
+    fn rotated_log_discovery_ignores_lookalike_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = dir.path().join("decisions.jsonl");
+        let real = dir.path().join("decisions-20260923T123456000000Z.jsonl");
+        std::fs::write(dir.path().join("decisions-backup.jsonl"), b"not a rotation").unwrap();
+        std::fs::write(
+            dir.path().join("decisions-20260923T123456Z.jsonl"),
+            b"bad timestamp",
+        )
+        .unwrap();
+        std::fs::write(&real, b"rotation").unwrap();
+
+        assert_eq!(rotated_logs(&active).unwrap(), vec![real]);
     }
 
     #[test]
