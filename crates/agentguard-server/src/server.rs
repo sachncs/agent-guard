@@ -25,7 +25,7 @@ use crate::auth_layer::AuthLayer;
 use crate::authzen::{build_state, router};
 use crate::listener::{Listener, ServerConfig};
 use agentguard_core::decode_chain_secret;
-use agentguard_policy::watcher::{watch as policy_watch, WatchEvent};
+use agentguard_policy::watcher::watch as policy_watch;
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
 use std::path::Path;
@@ -86,6 +86,7 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     }
     let auth = AuthLayer::from_config(&cfg.auth, allow_loopback_bypass)
         .map_err(|e| anyhow!("auth layer: {}", e))?;
+    let key_watcher_target = auth.reloadable_key_store();
     let chain_secret = match &cfg.chain_secret {
         Some(path) => {
             let bytes =
@@ -113,6 +114,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         .await
         .map_err(|e| anyhow!("build state: {}", e))?,
     );
+    let key_watcher_handle = key_watcher_target
+        .map(|(path, store)| spawn_api_key_watcher(path, store))
+        .transpose()?;
     let watcher_handle =
         spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>);
     let app = router((*state).clone());
@@ -177,6 +181,9 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     }
 
     watcher_handle.abort();
+    if let Some(handle) = key_watcher_handle {
+        handle.abort();
+    }
     if let Some(h) = grpc_handle {
         h.abort();
     }
@@ -251,7 +258,7 @@ pub fn spawn_policy_watcher(
     store_root: std::path::PathBuf,
     sink: Arc<dyn ReloadSink>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn_blocking(move || {
+    tokio::spawn(async move {
         let mut watcher = match policy_watch(&store_root, Duration::from_millis(250)) {
             Ok(w) => w,
             Err(e) => {
@@ -260,14 +267,13 @@ pub fn spawn_policy_watcher(
                     error = %e,
                     "policy watcher init failed; hot reload disabled"
                 );
-                // Park forever so the JoinHandle stays valid.
-                std::thread::park();
                 return;
             }
         };
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
         loop {
-            std::thread::sleep(Duration::from_millis(500));
-            let events: Vec<WatchEvent> = watcher.events();
+            interval.tick().await;
+            let events = watcher.events();
             if events.is_empty() {
                 continue;
             }
@@ -275,6 +281,43 @@ pub fn spawn_policy_watcher(
             tracing::info!(events = events.len(), "policy reload triggered by watcher");
         }
     })
+}
+
+/// Watch the parent directory of a mounted API-key file and reload the
+/// complete key set after projected-secret updates or atomic CLI writes.
+/// Invalid snapshots retain the current key set and are reported loudly;
+/// the next filesystem event retries the load.
+pub fn spawn_api_key_watcher(
+    path: std::path::PathBuf,
+    store: Arc<agentguard_auth::ApiKeyStore>,
+) -> Result<tokio::task::JoinHandle<()>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut watcher = policy_watch(parent, Duration::from_millis(250)).map_err(|error| {
+        anyhow!(
+            "watch API-key store directory {:?}: {error}",
+            parent.display()
+        )
+    })?;
+    Ok(tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
+        loop {
+            interval.tick().await;
+            if watcher.events().is_empty() {
+                continue;
+            }
+            match store.reload_from_file(&path) {
+                Ok(()) => tracing::info!(key_store = %path.display(), "API-key store reloaded"),
+                Err(error) => tracing::error!(
+                    key_store = %path.display(),
+                    %error,
+                    "API-key store reload failed; retaining last known-good key set"
+                ),
+            }
+        }
+    }))
 }
 
 /// Block until SIGINT or SIGTERM is received. SIGHUP is handled

@@ -36,6 +36,12 @@ identity bound to its own credential. `metrics:read` gates the metrics
 endpoint. API-key scopes gate endpoint capabilities; Cedar policies still make
 the resource/action authorization decision.
 
+The standalone server watches the key-store directory and applies valid file
+updates (including Kubernetes projected Secret updates) without a restart.
+Allow about one second for a rotation or revocation to take effect. Invalid or
+partially projected JSON is logged and the last-known-good key set remains
+active; correct the file and let the next update trigger another reload.
+
 Do not expose a listener with disabled authentication. For a non-loopback
 listener, configure `AGENTGUARD_AUTH=apikey:<path>` or the equivalent CLI flags,
 then terminate TLS at a trusted ingress or service mesh.

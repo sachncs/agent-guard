@@ -123,16 +123,29 @@ impl ApiKeyStore {
     /// Load from a JSON file. Missing file → empty store.
     pub fn load_from_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
         let s = Self::new();
-        if path.as_ref().exists() {
+        s.reload_from_file(path)?;
+        Ok(s)
+    }
+
+    /// Atomically replace the in-memory key set from a complete persisted
+    /// snapshot. A parse or I/O failure leaves the currently active set
+    /// untouched, so a partial secret projection cannot erase valid keys.
+    pub fn reload_from_file(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let path = path.as_ref();
+        let keys = if path.exists() {
             let text = std::fs::read_to_string(path)
                 .map_err(|e| AuthError::Other(format!("read: {}", e)))?;
-            let keys: Vec<ApiKey> = serde_json::from_str(&text)
+            let parsed: Vec<ApiKey> = serde_json::from_str(&text)
                 .map_err(|e| AuthError::Other(format!("parse: {}", e)))?;
-            for k in keys {
-                s.keys.write().insert(k.id.clone(), k);
-            }
-        }
-        Ok(s)
+            parsed
+                .into_iter()
+                .map(|key| (key.id.clone(), key))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+        *self.keys.write() = keys;
+        Ok(())
     }
 
     /// Save to a JSON file.
@@ -441,6 +454,35 @@ mod tests {
             1,
             "temporary files should be removed after atomic replacement"
         );
+    }
+
+    #[test]
+    fn reload_replaces_keys_only_after_a_valid_snapshot_parses() {
+        let _guard = api_key_test_lock().lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        let admin = ApiKeyStore::new();
+        let (key, raw) = admin
+            .create_bound(
+                "ag",
+                vec!["authorize".into()],
+                None,
+                ApiKeyIdentity::new("User", "alice", None).unwrap(),
+            )
+            .unwrap();
+        admin.save_to_file(&path).unwrap();
+        let live = ApiKeyStore::load_from_file(&path).unwrap();
+        live.verify(&raw).unwrap();
+
+        std::fs::write(&path, b"not-json").unwrap();
+        assert!(live.reload_from_file(&path).is_err());
+        live.verify(&raw)
+            .expect("invalid snapshots retain the last known-good key set");
+
+        admin.revoke(&key.id).unwrap();
+        admin.save_to_file(&path).unwrap();
+        live.reload_from_file(&path).unwrap();
+        assert!(matches!(live.verify(&raw), Err(AuthError::ApiKeyRevoked)));
     }
 
     #[test]

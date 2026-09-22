@@ -59,6 +59,11 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```
 
+The PDP watches the projected API-key Secret directory and applies a valid
+rotation or revocation without a process restart (typically within about one
+second). Invalid intermediate JSON is logged and the last-known-good key set
+remains active until a valid snapshot is detected.
+
 The console production config requires the trusted-proxy flag. The ingress
 must remove any incoming `X-Forwarded-For` value and replace it with exactly
 one validated client address; do not enable the flag when the console can be

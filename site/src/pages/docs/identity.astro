@@ -8,7 +8,7 @@ import Docs from '@/layouts/docs.astro';
     <p>Credentials establish a constrained caller identity; Cedar policies decide access to actions and resources.</p>
   </div>
   <h2>Standalone PDP authentication</h2>
-  <p>The server supports disabled authentication for local development and API-key bearer validation. ApiKeyStore persists Argon2id secret hashes with expiry and revocation state. Create production keys with <code>ApiKeyStore::create_bound</code> in the Rust API.</p>
+  <p>The server supports disabled authentication for local development and API-key bearer validation. ApiKeyStore persists Argon2id secret hashes with expiry and revocation state. Use the operator CLI below to provision production keys.</p>
   <p>HTTP and gRPC evaluation require the <code>authorize</code> scope (or <code>*</code>) and a key bound to one User or Agent. The submitted subject must match. An optional key tenant is injected as trusted request/audit metadata, not as a Cedar policy attribute; tenant isolation must still be encoded with trusted entities and policy inputs. A conflicting caller-supplied <code>context.tenant_id</code> is rejected. Legacy unbound keys still load but cannot access evaluation routes; reissue them as bound keys. <code>metrics:read</code> gates metrics. Scopes gate endpoint capabilities and do not replace Cedar policy.</p>
   <pre><code>agentguard api-key create --key-store ./keys.json \
   --subject-type Agent --subject-id research --tenant-id tenant-a \
@@ -16,6 +16,7 @@ import Docs from '@/layouts/docs.astro';
 agentguard api-key list --key-store ./keys.json
 agentguard api-key revoke --key-store ./keys.json KEY_ID</code></pre>
   <p>The CLI prints the raw secret once, after persisting its hash. Listing omits both raw secrets and hashes. Protect the file as a secret and mount it read-only into the PDP.</p>
+  <p>The standalone server watches the key-store directory and applies valid rotations or revocations without a restart, usually within about one second. Invalid intermediate JSON is logged and the last-known-good key set remains active until a valid update arrives.</p>
   <h2>JWT and OIDC libraries</h2>
   <p><code>agentguard-auth</code> provides JWT/JWKS validation and OIDC discovery as library APIs, not standalone server authentication modes. Applications must map validated claims into a User or Agent identity. The JWT implementation supports EdDSA verification; it does not imply support for every algorithm named in data types.</p>
   <h2>DPoP and workload identity</h2>

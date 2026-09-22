@@ -9,8 +9,8 @@ RUN cargo build --locked --release -p agentguard-server -p agentguard
 FROM debian:bookworm-slim
 RUN groupadd --system --gid 10001 agentguard \
   && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin agentguard \
-  && mkdir -p /var/lib/agentguard/policies /var/lib/agentguard/audit \
-  && chown -R agentguard:agentguard /var/lib/agentguard
+  && mkdir -p /var/lib/agentguard/policies /var/lib/agentguard/audit /etc/agentguard/keys \
+  && chown -R agentguard:agentguard /var/lib/agentguard /etc/agentguard/keys
 COPY --from=builder /src/target/release/agentguard-server /usr/local/bin/agentguard-server
 COPY --from=builder /src/target/release/agentguard /usr/local/bin/agentguard
 # Use a numeric identity so Kubernetes can verify runAsNonRoot before the

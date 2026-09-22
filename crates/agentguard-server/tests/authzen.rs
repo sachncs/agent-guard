@@ -406,6 +406,56 @@ async fn auth_apikey_accepts_valid_bearer() {
 }
 
 #[tokio::test]
+async fn standalone_auth_watcher_applies_key_revocation_without_restart() {
+    use agentguard_server::auth_layer::AuthenticationFailure;
+    use agentguard_server::listener::AuthConfig;
+    use agentguard_server::server::spawn_api_key_watcher;
+
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("keys.json");
+    let provisioner = agentguard_auth::ApiKeyStore::new();
+    let (key, raw) = provisioner
+        .create_bound(
+            "ag_test",
+            vec!["authorize".into()],
+            None,
+            agentguard_auth::ApiKeyIdentity::new("User", "alice", None).unwrap(),
+        )
+        .unwrap();
+    provisioner.save_to_file(&key_path).unwrap();
+    let auth = _AuthLayer::from_config(
+        &AuthConfig::ApiKey {
+            path: key_path.clone(),
+        },
+        false,
+    )
+    .unwrap();
+    auth.authenticate_bearer(Some(&format!("Bearer {raw}")), "authorize", true)
+        .unwrap();
+
+    let (watched_path, watched_store) = auth.reloadable_key_store().unwrap();
+    let watcher = spawn_api_key_watcher(watched_path, watched_store).unwrap();
+    let updated = agentguard_auth::ApiKeyStore::load_from_file(&key_path).unwrap();
+    updated.revoke(&key.id).unwrap();
+    updated.save_to_file(&key_path).unwrap();
+
+    tokio::time::timeout(std::time::Duration::from_secs(4), async {
+        loop {
+            if matches!(
+                auth.authenticate_bearer(Some(&format!("Bearer {raw}")), "authorize", true),
+                Err(AuthenticationFailure::Unauthenticated)
+            ) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("revocation should become active without restarting the PDP");
+    watcher.abort();
+}
+
+#[tokio::test]
 async fn auth_apikey_rejects_subject_impersonation_and_missing_scope() {
     let dir = tempfile::tempdir().unwrap();
     let store = agentguard_auth::ApiKeyStore::new();

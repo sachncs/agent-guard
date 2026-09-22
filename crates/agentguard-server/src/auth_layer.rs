@@ -39,6 +39,10 @@ pub enum AuthenticationFailure {
 pub enum AuthLayer {
     Disabled,
     ApiKey(Arc<ApiKeyStore>),
+    ReloadableApiKey {
+        store: Arc<ApiKeyStore>,
+        path: std::path::PathBuf,
+    },
 }
 
 impl AuthLayer {
@@ -49,7 +53,10 @@ impl AuthLayer {
             AuthConfig::ApiKey { path } => {
                 let store = ApiKeyStore::load_from_file(path)
                     .map_err(|e| format!("load api-key store {:?}: {}", path, e))?;
-                AuthLayer::ApiKey(Arc::new(store))
+                AuthLayer::ReloadableApiKey {
+                    store: Arc::new(store),
+                    path: path.clone(),
+                }
             }
         };
         if allow_loopback_bypass && matches!(layer, AuthLayer::Disabled) {
@@ -59,6 +66,15 @@ impl AuthLayer {
             );
         }
         Ok(layer)
+    }
+
+    /// Return the key-store source used by the standalone lifecycle so it
+    /// can watch and atomically reload operator rotations/revocations.
+    pub fn reloadable_key_store(&self) -> Option<(std::path::PathBuf, Arc<ApiKeyStore>)> {
+        match self {
+            Self::ReloadableApiKey { store, path } => Some((path.clone(), store.clone())),
+            Self::Disabled | Self::ApiKey(_) => None,
+        }
     }
 
     /// Authenticate non-HTTP transports using the same scope and identity
@@ -71,7 +87,7 @@ impl AuthLayer {
     ) -> Result<Option<AuthenticatedIdentity>, AuthenticationFailure> {
         match self {
             Self::Disabled => Ok(None),
-            Self::ApiKey(store) => {
+            Self::ApiKey(store) | Self::ReloadableApiKey { store, .. } => {
                 let token = authorization
                     .and_then(|value| {
                         value
@@ -115,7 +131,7 @@ pub async fn auth_layer_fn(State(state): State<AppState>, req: Request, next: Ne
     };
     match &state.auth {
         AuthLayer::Disabled => next.run(req).await,
-        AuthLayer::ApiKey(_) => {
+        AuthLayer::ApiKey(_) | AuthLayer::ReloadableApiKey { .. } => {
             let identity = match state.auth.authenticate_bearer(
                 req.headers()
                     .get(axum::http::header::AUTHORIZATION)

@@ -7,7 +7,7 @@ import Docs from '@/layouts/docs.astro';
   <h2>Apply and verify</h2><pre><code>kubectl apply -k deploy/k8s
 kubectl -n agentguard rollout status deploy/agentguard-pdp
 kubectl -n agentguard rollout status deploy/agentguard-console</code></pre>
-  <p>The base ships a valid starter schema and an empty deny-by-default policy. Replace both before enabling traffic, then run authenticated allow, deny, audit verification, restart, and rollback checks.</p>
+  <p>The base ships a valid starter schema and an empty deny-by-default policy. Replace both before enabling traffic, then run authenticated allow, deny, audit verification, restart, and rollback checks. The PDP watches the projected API-key Secret directory and reloads valid rotations/revocations without a restart; invalid intermediate JSON leaves the last-known-good set active and is logged.</p>
   <h2>State and recovery</h2><p>Back up the audit file, <code>.chainid</code> sidecar, chain secret, API-key store, and exact policy bundle together. Test restore in an isolated namespace. Keep these objects across image rollbacks.</p>
   <p>Read the complete <a href="https://github.com/sachncs/agent-guard/blob/master/docs/kubernetes.md">Kubernetes operations runbook ↗</a>.</p>
 </Docs>
