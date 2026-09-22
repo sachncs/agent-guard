@@ -117,6 +117,7 @@ async function startIdp() {
 // ---------------------------------------------------------------- fake PDP
 
 async function startPdp() {
+  let responseMode = "decision";
   const server = http.createServer((req, res) => {
     if (req.method !== "POST" || !req.url.includes("/access/v1/evaluation")) {
       res.writeHead(404).end();
@@ -125,6 +126,17 @@ async function startPdp() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
+      if (responseMode === "unavailable") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "maintenance" }));
+        return;
+      }
+      if (responseMode === "invalid") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ decision: "allow" }));
+        return;
+      }
+
       const evaluation = JSON.parse(body);
       const allowed = evaluation.resource?.id !== "forbidden";
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -137,7 +149,12 @@ async function startPdp() {
     });
   });
   await new Promise((r) => server.listen(PDP_PORT, "127.0.0.1", r));
-  return server;
+  return {
+    server,
+    setResponseMode(mode) {
+      responseMode = mode;
+    },
+  };
 }
 
 // -------------------------------------------- Redis-compatible REST store
@@ -287,7 +304,7 @@ async function waitForApp() {
 async function main() {
   const fakeBin = writeFakeCli();
   const idpServer = await startIdp();
-  const pdpServer = await startPdp();
+  const pdp = await startPdp();
   const redisServer = await startRedisRest();
 
   const env = {
@@ -396,6 +413,30 @@ async function main() {
     const denyDecision = await denyRes.json();
     assert.equal(denyDecision.effect, "deny");
 
+    // PDP failures must never be converted into an authorization decision.
+    pdp.setResponseMode("unavailable");
+    const unavailablePdp = await req(viewer, "/api/authorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uid: "alice", tool: "web_search", resourceType: "Resource", resourceId: "docs",
+      }),
+    });
+    assert.equal(unavailablePdp.status, 503, "PDP HTTP failures return service unavailable");
+    assert.equal((await unavailablePdp.json()).kind, "pdp_unavailable");
+
+    pdp.setResponseMode("invalid");
+    const invalidPdp = await req(viewer, "/api/authorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uid: "alice", tool: "web_search", resourceType: "Resource", resourceId: "docs",
+      }),
+    });
+    assert.equal(invalidPdp.status, 503, "malformed PDP decisions fail closed");
+    assert.equal((await invalidPdp.json()).kind, "pdp_unavailable");
+    pdp.setResponseMode("decision");
+
     const invalidAuthz = await req(viewer, "/api/authorize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -462,7 +503,7 @@ async function main() {
   } finally {
     app.kill("SIGTERM");
     idpServer.close();
-    pdpServer.close();
+    pdp.server.close();
     redisServer.close();
   }
 
