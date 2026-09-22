@@ -4,6 +4,55 @@ metadata:
   name: agentguard-policies
 data:
   schema.cedarschema: |
-    // Mount your reviewed schema here before deploying.
+    // AgentGuard starter schema. Replace this with your reviewed schema.
+    type Session = {
+      ip?: String,
+      user_agent?: String,
+      mfa?: Bool,
+      ts?: Long,
+    };
+
+    entity User;
+    entity Agent { parent?: Agent, registered_tools?: String };
+    entity Mailbox { owner: User };
+    entity Document { owner: User, visibility: String };
+    entity Repository { org: String };
+
+    action "ToolCall::send_email" appliesTo {
+      principal: [User, Agent],
+      resource: [Mailbox],
+      context: { to: String, subject: String, body: String, session: Session }
+    };
+    action "ToolCall::read_doc" appliesTo {
+      principal: [User, Agent],
+      resource: [Document],
+      context: { doc_id: String, session: Session }
+    };
+    action "ToolCall::write_doc" appliesTo {
+      principal: [User, Agent],
+      resource: [Document],
+      context: { doc_id: String, body: String, session: Session }
+    };
+    action "ToolCall::repo_read" appliesTo {
+      principal: [User, Agent],
+      resource: [Repository],
+      context: { repo: String, session: Session }
+    };
+    action "ToolCall::repo_write" appliesTo {
+      principal: [User, Agent],
+      resource: [Repository],
+      context: { repo: String, branch: String, session: Session }
+    };
+    action "ToolCall::shell_exec" appliesTo {
+      principal: [Agent],
+      resource: [Repository],
+      context: { cmd: String, session: Session }
+    };
+    action "ToolCall::web_fetch" appliesTo {
+      principal: [User, Agent],
+      resource: [Document],
+      context: { url: String, session: Session }
+    };
   20_agents.cedar: |
-    // Mount your reviewed policies here before deploying.
+    // Deliberately empty: Cedar denies by default.
+    // Replace this file with reviewed permits before enabling traffic.

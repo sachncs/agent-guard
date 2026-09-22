@@ -56,9 +56,11 @@ The delegation key is a persistent Ed25519 private key used by the admin
 console when issuing grants. Rotate it as a credential, publish the matching
 trusted public key to verifiers, and never use an ephemeral key in production.
 
-Replace `deploy/k8s/configmap.yaml` with reviewed schema and policies. Treat a
-policy change as a release: validate it, review the diff, apply it, observe
-the reload metric, and run representative allow and deny requests.
+The checked-in ConfigMap contains the valid starter schema and an empty
+deny-by-default policy so a fresh deployment can become ready safely. Replace
+both with reviewed schema and policies before enabling traffic. Treat a policy
+change as a release: validate it, review the diff, apply it, observe the reload
+metric, and run representative allow and deny requests.
 
 ## Deploy
 

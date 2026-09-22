@@ -27,6 +27,11 @@ if (failures.length === 0) {
     "claimName: agentguard-audit",
   ]) if (!pdp.includes(value)) failures.push(`pdp.yaml missing ${value}`);
 
+  const configmap = read("configmap.yaml");
+  for (const value of ["schema.cedarschema:", "entity User;", "entity Agent", "20_agents.cedar:"]) {
+    if (!configmap.includes(value)) failures.push(`configmap.yaml missing ${value}`);
+  }
+
   const console = read("console.yaml");
   for (const value of [
     "secretRef: {name: agentguard-console-env}",
