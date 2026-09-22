@@ -75,6 +75,12 @@ function readEnv(): AuthConfigResult {
   if (sessionStoreMode !== "memory" && sessionStoreMode !== "redis") {
     return { valid: false, reason: "AGENTGUARD_SESSION_STORE must be memory or redis" };
   }
+  if (process.env.NODE_ENV === "production" && sessionStoreMode !== "redis") {
+    return {
+      valid: false,
+      reason: "production console sessions require AGENTGUARD_SESSION_STORE=redis",
+    };
+  }
   if (sessionStoreMode === "redis" && (!sessionRedisUrl || !sessionRedisToken)) {
     return {
       valid: false,

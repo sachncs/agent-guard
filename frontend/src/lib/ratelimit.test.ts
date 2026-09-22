@@ -83,4 +83,26 @@ describe("rate limiter", () => {
     else process.env.AGENTGUARD_RATE_LIMIT_STORE = previousMode;
     resetRateLimiter();
   });
+
+  it("rejects an explicit memory rate-limit store in production", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    const previousStore = env.AGENTGUARD_RATE_LIMIT_STORE;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_RATE_LIMIT_STORE = "memory";
+    resetRateLimiter();
+
+    try {
+      assert.deepEqual(await rateLimit("explicit-memory", 5), {
+        allowed: false,
+        remaining: 0,
+      });
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      if (previousStore === undefined) delete env.AGENTGUARD_RATE_LIMIT_STORE;
+      else env.AGENTGUARD_RATE_LIMIT_STORE = previousStore;
+      resetRateLimiter();
+    }
+  });
 });

@@ -328,7 +328,7 @@ cargo test --workspace             # Rust unit + integration tests
 cargo test --workspace --all-features
 pnpm --filter agentguard test      # TypeScript SDK
 pnpm --filter frontend lint        # Frontend console lint
-node frontend/scripts/e2e.mjs      # Full console e2e (mock IdP/PDP/CLI)
+node frontend/scripts/e2e.mjs      # Production console e2e (mock IdP/PDP/Redis REST/CLI)
 ```
 
 ## Build

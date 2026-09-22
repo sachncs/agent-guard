@@ -2,9 +2,10 @@
 /**
  * End-to-end authentication proof for the agentguard console.
  *
- * Boots three fakes on loopback, then drives the PRODUCTION Next.js build:
+ * Boots loopback test services, then drives the PRODUCTION Next.js build:
  *   - mock OIDC IdP (RS256 tokens, PKCE, nonce, discovery)
  *   - mock AuthZEN PDP
+ *   - Redis-compatible REST store for production sessions and rate limits
  *   - fake `agentguard` CLI (for log/delegate/verify routes)
  *
  * Asserts the full security posture:
@@ -29,8 +30,11 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 const FRONTEND_PORT = 3171;
 const IDP_PORT = 3172;
 const PDP_PORT = 3173;
+const REDIS_PORT = 3174;
 const BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
 const ISSUER = `http://127.0.0.1:${IDP_PORT}`;
+const REDIS_URL = `http://127.0.0.1:${REDIS_PORT}`;
+const REDIS_TOKEN = "e2e-redis-token";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -136,6 +140,66 @@ async function startPdp() {
   return server;
 }
 
+// -------------------------------------------- Redis-compatible REST store
+
+async function startRedisRest() {
+  const sessions = new Map();
+  const rateWindows = new Map();
+  const server = http.createServer(async (req, res) => {
+    if (req.method !== "POST") {
+      res.writeHead(405).end();
+      return;
+    }
+    if (req.headers.authorization !== `Bearer ${REDIS_TOKEN}`) {
+      res.writeHead(401).end();
+      return;
+    }
+
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let command;
+    try {
+      command = JSON.parse(body);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
+
+    let result;
+    if (command[0] === "SET" && command[3] === "EX") {
+      sessions.set(command[1], {
+        value: command[2],
+        expiresAt: Date.now() + Number(command[4]) * 1000,
+      });
+      result = "OK";
+    } else if (command[0] === "GET") {
+      const stored = sessions.get(command[1]);
+      if (stored && stored.expiresAt <= Date.now()) sessions.delete(command[1]);
+      result = stored && stored.expiresAt > Date.now() ? stored.value : null;
+    } else if (command[0] === "DEL") {
+      result = sessions.delete(command[1]) ? 1 : 0;
+    } else if (command[0] === "EVAL" && command[2] === "1") {
+      const key = command[3];
+      const windowMs = Number(command[4]) * 1000;
+      const previous = rateWindows.get(key);
+      const bucket = !previous || previous.expiresAt <= Date.now()
+        ? { count: 0, expiresAt: Date.now() + windowMs }
+        : previous;
+      bucket.count += 1;
+      rateWindows.set(key, bucket);
+      result = bucket.count;
+    } else {
+      res.writeHead(400).end();
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ result }));
+  });
+  await new Promise((r) => server.listen(REDIS_PORT, "127.0.0.1", r));
+  return server;
+}
+
 // -------------------------------------------------------------- fake CLI
 
 function writeFakeCli() {
@@ -224,6 +288,7 @@ async function main() {
   const fakeBin = writeFakeCli();
   const idpServer = await startIdp();
   const pdpServer = await startPdp();
+  const redisServer = await startRedisRest();
 
   const env = {
     ...process.env,
@@ -233,8 +298,12 @@ async function main() {
     AGENTGUARD_OIDC_CLIENT_ID: "agentguard-console",
     AGENTGUARD_OIDC_CLIENT_SECRET: "e2e-client-secret",
     AGENTGUARD_SESSION_SECRET: "s".repeat(48),
-    AGENTGUARD_SESSION_STORE: "memory",
-    AGENTGUARD_RATE_LIMIT_STORE: "memory",
+    AGENTGUARD_SESSION_STORE: "redis",
+    AGENTGUARD_SESSION_REDIS_URL: REDIS_URL,
+    AGENTGUARD_SESSION_REDIS_TOKEN: REDIS_TOKEN,
+    AGENTGUARD_RATE_LIMIT_STORE: "redis",
+    AGENTGUARD_RATE_LIMIT_REDIS_URL: REDIS_URL,
+    AGENTGUARD_RATE_LIMIT_REDIS_TOKEN: REDIS_TOKEN,
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
     AGENTGUARD_INSECURE_COOKIE: "1",
@@ -394,6 +463,7 @@ async function main() {
     app.kill("SIGTERM");
     idpServer.close();
     pdpServer.close();
+    redisServer.close();
   }
 
   // --- 8. fail-closed without configuration -------------------------------

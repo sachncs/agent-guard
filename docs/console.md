@@ -17,8 +17,9 @@ pnpm --filter frontend dev
 ```
 
 Authentication is fail-closed. Without all required OIDC and session settings,
-the console returns `503` rather than exposing an open mode. The mock end-to-end
-test supplies an isolated IdP and PDP for local verification:
+the console returns `503` rather than exposing an open mode. The end-to-end
+test supplies an isolated IdP, PDP, and Redis-compatible REST store, then runs
+the production build through the full sign-in and simulator flow:
 
 ```bash
 pnpm --filter frontend exec node scripts/e2e.mjs

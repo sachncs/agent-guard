@@ -104,7 +104,12 @@ function activeStore(): RateLimitStore {
   if (mode !== "memory" && mode !== "redis") {
     throw new Error("AGENTGUARD_RATE_LIMIT_STORE must be memory or redis");
   }
-  if (mode === "memory") return memoryStore;
+  if (mode === "memory") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("production rate limiting requires AGENTGUARD_RATE_LIMIT_STORE=redis");
+    }
+    return memoryStore;
+  }
   const url = process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
   const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
   if (!url || !token) throw new Error("Redis rate limiting is not configured");

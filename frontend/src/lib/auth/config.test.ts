@@ -72,4 +72,25 @@ describe("auth config", () => {
     assert.equal(cfg.valid, true);
     delete (process.env as Record<string, string | undefined>).NODE_ENV;
   });
+
+  it("rejects an explicit memory session store in production", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    const previousStore = env.AGENTGUARD_SESSION_STORE;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_SESSION_STORE = "memory";
+
+    try {
+      const cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /SESSION_STORE=redis/);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      if (previousStore === undefined) delete env.AGENTGUARD_SESSION_STORE;
+      else env.AGENTGUARD_SESSION_STORE = previousStore;
+      resetAuthConfigCache();
+    }
+  });
 });

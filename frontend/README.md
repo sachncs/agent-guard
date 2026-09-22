@@ -48,8 +48,9 @@ the console answers `503` on every route — there is no open mode.
    ```
 
 3. An OIDC provider the console can reach for discovery + token exchange.
-   For local testing without one, run `node scripts/e2e.mjs` which boots a
-   mock IdP/PDP and drives the whole flow end-to-end.
+   For local testing without one, run `node scripts/e2e.mjs` which boots mock
+   IdP/PDP services plus a Redis-compatible REST test store and drives the
+   production build end-to-end.
 
 ## Run
 
@@ -93,9 +94,9 @@ pnpm --filter frontend exec node scripts/e2e.mjs # full auth flow vs prod build
 ```
 
 The e2e script asserts the complete security posture: redirects, 401s, the
-OIDC round trip (PKCE + nonce), viewer/admin RBAC, PDP-backed simulator
-decisions, validation errors, rate limiting, logout, and the 503 fail-closed
-mode.
+OIDC round trip (PKCE + nonce), Redis-backed session and rate-limit commands,
+viewer/admin RBAC, PDP-backed simulator decisions, validation errors, rate
+limiting, logout, and the 503 fail-closed mode.
 
 ## Production boundary
 
