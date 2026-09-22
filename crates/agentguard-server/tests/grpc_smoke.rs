@@ -60,8 +60,13 @@ async fn grpc_evaluation_returns_decision() {
         context_json: "{}".into(),
         entities_json: "[]".into(),
     };
-    let resp = client.evaluation(req).await.unwrap();
+    let resp = client.evaluation(req.clone()).await.unwrap();
     assert!(resp.into_inner().decision);
+
+    let mut oversized = req;
+    oversized.context_json = " ".repeat(agentguard_server::grpc::MAX_GRPC_REQUEST_BYTES);
+    let error = client.evaluation(oversized).await.unwrap_err();
+    assert_eq!(error.code(), tonic::Code::OutOfRange);
 
     shutdown_tx.send(()).unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(2), server)

@@ -25,6 +25,8 @@ acquiring a verification slot. If all slots are busy, protected HTTP requests
 receive `503 Service Unavailable` and gRPC requests receive `UNAVAILABLE`; the
 caller should retry with bounded backoff. Put network-level rate limiting at
 the ingress as an additional control against sustained credential guessing.
+The gRPC evaluation transport also caps decoded requests at 64 KiB, matching
+the HTTP request-body budget.
 
 Create keys through the operator CLI, assigning only the narrow scope and
 identity required by that integration:

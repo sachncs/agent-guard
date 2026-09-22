@@ -16,6 +16,10 @@ use agentguard_core::Effect;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
+/// Keep the protobuf transport's request budget aligned with the HTTP
+/// interface. The limit applies before protobuf decoding at the server.
+pub const MAX_GRPC_REQUEST_BYTES: usize = 64 * 1024;
+
 /// The service implementation. Cheap to clone (internally Arc).
 #[derive(Clone)]
 pub struct AccessEvaluationService {
@@ -62,6 +66,25 @@ impl AccessEvaluation for AccessEvaluationService {
                 }
             })?;
         let req = request.into_inner();
+        let request_bytes = req
+            .subject
+            .as_ref()
+            .map_or(0, |entity| {
+                entity.r#type.len().saturating_add(entity.id.len())
+            })
+            .saturating_add(req.action.as_ref().map_or(0, |entity| {
+                entity.r#type.len().saturating_add(entity.id.len())
+            }))
+            .saturating_add(req.resource.as_ref().map_or(0, |entity| {
+                entity.r#type.len().saturating_add(entity.id.len())
+            }))
+            .saturating_add(req.context_json.len())
+            .saturating_add(req.entities_json.len());
+        if request_bytes > MAX_GRPC_REQUEST_BYTES {
+            return Err(Status::resource_exhausted(
+                "evaluation request exceeds 64 KiB",
+            ));
+        }
         let subject = req
             .subject
             .ok_or_else(|| Status::invalid_argument("missing subject"))?;
@@ -169,4 +192,5 @@ impl AccessEvaluation for AccessEvaluationService {
 /// Return the tonic-wrapped service ready to mount on a `Server`.
 pub fn service(state: Arc<AppState>) -> AccessEvaluationServer<AccessEvaluationService> {
     AccessEvaluationServer::new(AccessEvaluationService::new(state))
+        .max_decoding_message_size(MAX_GRPC_REQUEST_BYTES)
 }

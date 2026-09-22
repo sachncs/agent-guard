@@ -27,6 +27,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   workers or accumulating unbounded hash jobs.
 - Evaluate each AuthZEN batch against one pinned policy snapshot so concurrent
   policy reloads cannot mix policy generations within a single response.
+- Cap gRPC evaluation request decoding at 64 KiB and reject oversized requests
+  before JSON parsing or policy evaluation.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 
