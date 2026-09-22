@@ -12,7 +12,9 @@ fuzz_target!(|data: &[u8]| {
     // Split input at the first NUL byte (or after 256 bytes if no NUL).
     let split = data.iter().position(|&b| b == 0).unwrap_or(data.len().min(256));
     let pattern = &data[..split];
-    let value = &data[split + 1..data.len().min(split + 257)];
+    let value_start = split.saturating_add(1).min(data.len());
+    let value_end = data.len().min(split.saturating_add(257));
+    let value = &data[value_start..value_end];
     // Only consider printable ASCII patterns (avoid control chars in the
     // pattern; value can be anything).
     if !pattern.iter().all(|&b| b.is_ascii_graphic() || b == b' ') {
