@@ -14,6 +14,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   delegation routes use these async variants so CLI work does not block the
   Next.js event loop.
 
+### Fixed
+
+- Reject malformed `AGENTGUARD_GRPC_LISTEN` values at startup instead of
+  silently disabling the configured gRPC listener.
+- Fail closed after audit-log write or sync errors; attempt to truncate a
+  partial JSONL append back to its prior record boundary.
+
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 
 Comprehensive ten-tier deep review against the Rust style guide and

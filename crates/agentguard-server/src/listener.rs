@@ -140,13 +140,7 @@ impl ServerConfig {
             .ok()
             .map(PathBuf::from);
         let auth = AuthConfig::from_env()?;
-        let grpc_listener = std::env::var("AGENTGUARD_GRPC_LISTEN").ok().and_then(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                s.parse().ok()
-            }
-        });
+        let grpc_listener = parse_grpc_listener(std::env::var("AGENTGUARD_GRPC_LISTEN").ok())?;
         Ok(Self {
             listener,
             store_root,
@@ -155,6 +149,42 @@ impl ServerConfig {
             auth,
             grpc_listener,
         })
+    }
+}
+
+fn parse_grpc_listener(value: Option<String>) -> Result<Option<SocketAddr>, String> {
+    match value.as_deref() {
+        None | Some("") => Ok(None),
+        Some(raw) => raw.parse().map(Some).map_err(|error| {
+            format!("AGENTGUARD_GRPC_LISTEN must be a socket address, got {raw:?}: {error}")
+        }),
+    }
+}
+
+#[cfg(test)]
+mod grpc_listener_tests {
+    use super::parse_grpc_listener;
+    use std::net::SocketAddr;
+
+    #[test]
+    fn grpc_listener_is_optional_when_unset_or_empty() {
+        assert_eq!(parse_grpc_listener(None).unwrap(), None);
+        assert_eq!(parse_grpc_listener(Some(String::new())).unwrap(), None);
+    }
+
+    #[test]
+    fn grpc_listener_parses_a_valid_socket_address() {
+        assert_eq!(
+            parse_grpc_listener(Some("127.0.0.1:9443".into())).unwrap(),
+            Some("127.0.0.1:9443".parse::<SocketAddr>().unwrap())
+        );
+    }
+
+    #[test]
+    fn grpc_listener_rejects_malformed_configuration() {
+        let error = parse_grpc_listener(Some("localhost:broken".into())).unwrap_err();
+        assert!(error.contains("AGENTGUARD_GRPC_LISTEN"));
+        assert!(error.contains("localhost:broken"));
     }
 }
 
