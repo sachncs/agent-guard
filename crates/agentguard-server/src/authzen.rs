@@ -3,7 +3,10 @@
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::decision::{cache::CacheConfig, DecisionLog};
+use agentguard_core::decision::{
+    cache::{CacheConfig, DecisionCache},
+    DecisionLog, RotationConfig,
+};
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use agentguard_telemetry::Metrics;
@@ -586,13 +589,24 @@ pub async fn build_state_with_cache(
     auth: crate::auth_layer::AuthLayer,
     cache: Option<CacheConfig>,
 ) -> Result<AppState, String> {
-    let authorizer = AuthorizerHandle::new(store_root, cache)?;
+    let authorizer = AuthorizerHandle::new(
+        store_root,
+        Some(cache.unwrap_or_else(DecisionCache::config_from_env)),
+    )?;
     let audit = match audit_log {
         Some(path) => {
-            let log = match chain_secret {
-                Some(secret) => DecisionLog::open_with_chain(&path, &secret)
+            let log = match (chain_secret, RotationConfig::from_env()) {
+                (Some(secret), Some(rotation)) => {
+                    DecisionLog::open_with_rotation(&path, Some(&secret), rotation)
+                        .map_err(|e| format!("open rotating chained audit log: {}", e))?
+                }
+                (Some(secret), None) => DecisionLog::open_with_chain(&path, &secret)
                     .map_err(|e| format!("open chained audit log: {}", e))?,
-                None => DecisionLog::open(&path).map_err(|e| format!("open audit log: {}", e))?,
+                (None, Some(rotation)) => DecisionLog::open_with_rotation(&path, None, rotation)
+                    .map_err(|e| format!("open rotating audit log: {}", e))?,
+                (None, None) => {
+                    DecisionLog::open(&path).map_err(|e| format!("open audit log: {}", e))?
+                }
             };
             Some(log)
         }
@@ -657,6 +671,26 @@ mod summarize_tests {
             .unwrap();
         assert!(handle.reload().is_err());
         assert_eq!(handle.policy_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn standalone_state_enables_default_decision_cache() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        store
+            .write_policy("initial", "permit(principal, action, resource);")
+            .unwrap();
+
+        let state = super::build_state(
+            dir.path().to_path_buf(),
+            None,
+            None,
+            crate::auth_layer::AuthLayer::Disabled,
+        )
+        .await
+        .unwrap();
+
+        assert!(state.authorizer.cache.is_some());
     }
 
     #[test]

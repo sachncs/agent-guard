@@ -181,8 +181,9 @@ agentguard authorize request.json
 
 ### 9. Caching + policy changes
 
-`AGENTGUARD_CACHE_TTL=60s AGENTGUARD_CACHE_CAPACITY=10000` turn on
-the decision cache (default 60 s / 10 k entries). The server
+The standalone server enables the decision cache by default (60 s / 10 k
+entries). Set `AGENTGUARD_CACHE_TTL`, `AGENTGUARD_DENY_CACHE_TTL`, or
+`AGENTGUARD_CACHE_CAPACITY` before startup to override those values. The server
 auto-reloads the policy directory on file change; on Unix,
 `SIGHUP` forces an immediate reload.
 

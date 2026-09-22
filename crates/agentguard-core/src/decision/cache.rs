@@ -177,7 +177,7 @@ impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             capacity: 10_000,
-            allow_ttl: Duration::from_secs(30),
+            allow_ttl: Duration::from_secs(60),
             deny_ttl: Duration::from_secs(5),
             cache_denies: true,
         }
