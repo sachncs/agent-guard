@@ -21,6 +21,8 @@ case "\$FAKE_AGENTGUARD_MODE" in
     echo '{"effect":"deny","policies":[],"reasons":[],"step_up":{"acr_values":"mfa","amr_values":"otp"},"request":{}}' ;;
   envdump)
     printf '{"effect":"allow","policies":["p-env"],"reasons":["bearer=%s trace=%s"],"request":{}}' "\$AGENTGUARD_BEARER" "\$AGENTGUARD_TRACEPARENT" ;;
+  argsdump)
+    printf '%s' "\$*" ;;
   fail)
     echo 'boom' >&2
     exit 3 ;;
@@ -188,6 +190,26 @@ describe("Client", () => {
       assert.deepEqual(d.reasons, [
         `bearer=secret-token trace=${tp}`,
       ]);
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("uses the configured delegation key file by default", () => {
+    process.env.FAKE_AGENTGUARD_MODE = "argsdump";
+    try {
+      const client = new Client({
+        cliBin: fakeCli,
+        delegationKeyFile: "/run/secrets/delegation.key",
+      });
+      const args = client.delegate(
+        'Agent::"research"',
+        'Agent::"summarizer"',
+        ["ToolCall::repo_read"],
+        ["Repository::demo"],
+        300
+      );
+      assert.match(args, /delegate.*--key-file \/run\/secrets\/delegation\.key/);
     } finally {
       delete process.env.FAKE_AGENTGUARD_MODE;
     }

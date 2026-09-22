@@ -36,6 +36,7 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_SESSION_SECRET` | At least 32 random characters; rotate deliberately |
 | `AGENTGUARD_ADMIN_CLAIM` / `AGENTGUARD_ADMIN_VALUES` | Explicit admin mapping; empty values grant viewer only |
 | `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | Private PDP URL and optional bearer credential |
+| `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required before running multiple replicas |
 | `AGENTGUARD_INSECURE_COOKIE` | Local HTTP only; never set in production |
 

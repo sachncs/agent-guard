@@ -77,6 +77,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_PDP_BEARER` | *(unset)* | Bearer token when the PDP requires auth |
 | `AGENTGUARD_STORE` | `.agentguard` | Cedar schema + policies (CLI-backed routes) |
 | `AGENTGUARD_AUDIT` | `.audit/decisions.jsonl` | Audit log destination (CLI-backed routes) |
+| `AGENTGUARD_DELEGATION_KEY_FILE` | *(required for issuance)* | Persistent Ed25519 signer key for admin delegation; the route fails closed when unset |
 | `AGENTGUARD_INSECURE_COOKIE` | *(unset)* | Set to `1` only for plain-HTTP local/e2e runs |
 
 ## Tests

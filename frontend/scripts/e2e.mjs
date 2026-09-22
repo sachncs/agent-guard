@@ -237,6 +237,7 @@ async function main() {
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
     AGENTGUARD_INSECURE_COOKIE: "1",
     AGENTGUARD_BIN: fakeBin,
+    AGENTGUARD_DELEGATION_KEY_FILE: "/tmp/e2e-delegation.key",
   };
 
   console.log("starting production build…");

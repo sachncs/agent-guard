@@ -16,6 +16,16 @@ export async function POST(request: Request) {
   const session = await requireAdmin(cfg.config.sessionSecret, request);
   if (isResponse(session)) return session;
 
+  if (!process.env.AGENTGUARD_DELEGATION_KEY_FILE) {
+    return Response.json(
+      {
+        error: "delegation signing is not configured; set AGENTGUARD_DELEGATION_KEY_FILE",
+        kind: "not_configured",
+      },
+      { status: 503 }
+    );
+  }
+
   const rl = await rateLimit(`delegate:${clientKey(request)}`, 10);
   if (!rl.allowed) {
     return Response.json(

@@ -24,6 +24,7 @@ export function agentguard(): Client {
       store: process.env.AGENTGUARD_STORE ?? ".agentguard",
       auditLog: process.env.AGENTGUARD_AUDIT ?? ".audit/decisions.jsonl",
       bearerToken: process.env.AGENTGUARD_BEARER,
+      delegationKeyFile: process.env.AGENTGUARD_DELEGATION_KEY_FILE,
     });
   }
   return cached;

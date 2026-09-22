@@ -31,9 +31,12 @@ if (failures.length === 0) {
   for (const value of [
     "secretRef: {name: agentguard-console-env}",
     "name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard",
+    "name: AGENTGUARD_DELEGATION_KEY_FILE, value: /etc/agentguard/delegation/delegation.key",
     "mountPath: /var/lib/agentguard/policies, readOnly: true",
     "mountPath: /var/lib/agentguard/audit, readOnly: true",
+    "mountPath: /etc/agentguard/delegation, readOnly: true",
     "claimName: agentguard-audit",
+    "secretName: agentguard-delegation-key",
     "podAffinity",
     "path: /login",
     "startupProbe",

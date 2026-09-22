@@ -25,9 +25,11 @@ spec:
             - {name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard}
             - {name: AGENTGUARD_STORE, value: /var/lib/agentguard/policies}
             - {name: AGENTGUARD_AUDIT, value: /var/lib/agentguard/audit/decisions.jsonl}
+            - {name: AGENTGUARD_DELEGATION_KEY_FILE, value: /etc/agentguard/delegation/delegation.key}
           volumeMounts:
             - {name: policies, mountPath: /var/lib/agentguard/policies, readOnly: true}
             - {name: audit, mountPath: /var/lib/agentguard/audit, readOnly: true}
+            - {name: delegation, mountPath: /etc/agentguard/delegation, readOnly: true}
           readinessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 20}
           startupProbe: {httpGet: {path: /login, port: http}, failureThreshold: 30, periodSeconds: 2}
@@ -38,6 +40,7 @@ spec:
       volumes:
         - {name: policies, configMap: {name: agentguard-policies}}
         - {name: audit, persistentVolumeClaim: {claimName: agentguard-audit}}
+        - {name: delegation, secret: {secretName: agentguard-delegation-key}}
 ---
 apiVersion: v1
 kind: Service

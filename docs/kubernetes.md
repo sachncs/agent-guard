@@ -40,6 +40,8 @@ kubectl -n agentguard create secret generic agentguard-secrets \
   --from-file=chain-secret=./.chain-secret
 kubectl -n agentguard create secret generic agentguard-api-keys \
   --from-file=keys.json=./keys.json
+kubectl -n agentguard create secret generic agentguard-delegation-key \
+  --from-file=delegation.key=./delegation.key
 kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_OIDC_ISSUER='https://idp.example.com/realms/acme' \
   --from-literal=AGENTGUARD_OIDC_CLIENT_ID='agentguard-console' \
@@ -49,6 +51,10 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```
+
+The delegation key is a persistent Ed25519 private key used by the admin
+console when issuing grants. Rotate it as a credential, publish the matching
+trusted public key to verifiers, and never use an ephemeral key in production.
 
 Replace `deploy/k8s/configmap.yaml` with reviewed schema and policies. Treat a
 policy change as a release: validate it, review the diff, apply it, observe

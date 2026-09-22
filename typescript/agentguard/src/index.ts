@@ -107,6 +107,8 @@ export interface ClientOptions {
   bearerToken?: string;
   /** W3C traceparent header forwarded to the CLI as AGENTGUARD_TRACEPARENT. */
   traceparent?: string;
+  /** Default private signing-key file for delegation minting. */
+  delegationKeyFile?: string;
 }
 
 /**
@@ -121,6 +123,7 @@ export class Client {
   private cli: string;
   private bearerToken?: string;
   private traceparent?: string;
+  private delegationKeyFile?: string;
 
   constructor(opts: ClientOptions = {}) {
     this.store = opts.store ?? ".agentguard";
@@ -128,6 +131,7 @@ export class Client {
     this.cli = findCli(opts.cliBin);
     this.bearerToken = opts.bearerToken;
     this.traceparent = opts.traceparent;
+    this.delegationKeyFile = opts.delegationKeyFile;
   }
 
   private run(args: string[], stdin?: string): string {
@@ -244,7 +248,8 @@ export class Client {
       "--resources", ...resources,
       "--ttl", String(ttlSeconds),
     ];
-    if (opts.keyFile) args.push("--key-file", opts.keyFile);
+    const keyFile = opts.keyFile ?? this.delegationKeyFile;
+    if (keyFile) args.push("--key-file", keyFile);
     if (opts.outFile) args.push("--out", opts.outFile);
     return this.run(args).trim();
   }
