@@ -321,6 +321,17 @@ impl DecisionLog {
         }
     }
 
+    /// Whether the writer still has a usable active file handle. This turns
+    /// permanent append failures into an observable readiness signal instead
+    /// of leaving the service healthy while every decision fails to audit.
+    pub fn is_healthy(&self) -> bool {
+        match &self.mode {
+            LogMode::Plain(file) | LogMode::Chained { file, .. } => {
+                file.lock().map(|guard| guard.is_some()).unwrap_or(false)
+            }
+        }
+    }
+
     /// Append a record. When the log is chained, the record is signed.
     ///
     /// # Crash safety (chained mode)
@@ -892,6 +903,7 @@ mod tests {
                 log.append(&rec).is_err(),
                 "first storage failure must surface"
             );
+            assert!(!log.is_healthy(), "failed writer must become unhealthy");
             let retry = log.append(&rec).unwrap_err();
             assert!(retry
                 .to_string()

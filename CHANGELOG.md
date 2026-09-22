@@ -29,6 +29,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   policy reloads cannot mix policy generations within a single response.
 - Cap gRPC evaluation request decoding at 64 KiB and reject oversized requests
   before JSON parsing or policy evaluation.
+- Report readiness as unavailable after a permanent audit writer failure, so
+  Kubernetes stops routing decisions to an instance that cannot persist them.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

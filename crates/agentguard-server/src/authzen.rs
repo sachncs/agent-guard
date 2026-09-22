@@ -301,8 +301,11 @@ async fn readyz(State(state): State<AppState>) -> Response {
     if state.authorizer.policy_count() == 0 {
         return readyz_unavailable("policies not loaded");
     }
-    // 2. Audit log must be configured and open.
+    // 2. Audit log must be configured, have a chained identity, and retain
+    // an active writer handle. A permanent append failure poisons that handle
+    // so the orchestrator can stop routing new decisions to this instance.
     match state.audit() {
+        Some(audit) if !audit.is_healthy() => return readyz_unavailable("audit log unavailable"),
         Some(audit) if audit.chain_id().is_some() => (),
         Some(_) => return readyz_unavailable("audit log not opened"),
         None => return readyz_unavailable("audit log not configured"),
