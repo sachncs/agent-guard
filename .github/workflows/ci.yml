@@ -116,6 +116,8 @@ jobs:
         run: docker build --pull --tag agentguard-server:ci .
       - name: Validate PDP image entrypoint
         run: docker run --rm agentguard-server:ci --help
+      - name: Validate PDP audit CLI
+        run: docker run --rm --entrypoint /usr/local/bin/agentguard agentguard-server:ci audit --help
       - name: Validate PDP stays live past the graceful-drain boundary
         run: |
           container=$(docker run --detach --publish 8443:8443 \

@@ -4,7 +4,7 @@ RUN apt-get update \
   && apt-get install --no-install-recommends -y protobuf-compiler ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY . .
-RUN cargo build --locked --release -p agentguard-server
+RUN cargo build --locked --release -p agentguard-server -p agentguard
 
 FROM debian:bookworm-slim
 RUN groupadd --system --gid 10001 agentguard \
@@ -12,6 +12,7 @@ RUN groupadd --system --gid 10001 agentguard \
   && mkdir -p /var/lib/agentguard/policies /var/lib/agentguard/audit \
   && chown -R agentguard:agentguard /var/lib/agentguard
 COPY --from=builder /src/target/release/agentguard-server /usr/local/bin/agentguard-server
+COPY --from=builder /src/target/release/agentguard /usr/local/bin/agentguard
 # Use a numeric identity so Kubernetes can verify runAsNonRoot before the
 # container starts. The named account remains useful for image inspection.
 USER 10001:10001

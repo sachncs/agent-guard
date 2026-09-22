@@ -29,7 +29,8 @@ docker push "$REGISTRY/agentguard-console:$VERSION"
 
 The images run as non-root users and expose `/healthz` and `/readyz` on the
 PDP. Kubernetes enforces a 30-second termination grace period while the
-server drains in-flight requests. Scan both images before promotion.
+server drains in-flight requests. The PDP image includes the `agentguard` CLI
+for audit-chain verification. Scan both images before promotion.
 
 ## Secrets and policy state
 
@@ -91,8 +92,13 @@ Before routing traffic, verify:
    are available.
 2. An authenticated request returns the expected allow decision.
 3. A denied request remains denied.
-4. The audit file grows and `agentguard audit verify` succeeds with the chain
-   secret.
+4. The audit file grows and verification succeeds with the chain secret:
+
+   ```bash
+   kubectl -n agentguard exec deployment/agentguard-pdp -- agentguard audit verify \
+     --audit /var/lib/agentguard/audit/decisions.jsonl \
+     --secret-file /etc/agentguard/secrets/chain-secret
+   ```
 5. A PDP pod terminates cleanly and becomes ready after restart.
 6. Console login, viewer access, admin access, PDP failure handling, and rate
    limiting behave as expected.
