@@ -50,6 +50,7 @@ requireText("scripts/k8s-smoke.sh", "agentguard audit verify");
 requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
 requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
 requireText("docs/production.md", "never becomes an implicit production fallback");
+requireText("site/src/pages/docs/production.astro", "startup refuses the store");
 requireText("frontend/src/components/theme_provider.tsx", "enableSystem");
 requireText("frontend/src/components/theme_toggle.tsx", "aria-label");
 requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
