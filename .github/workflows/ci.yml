@@ -135,6 +135,24 @@ jobs:
           echo "console did not reach its fail-closed readiness state"
           docker logs "$container"
           exit 1
+      - name: Scan PDP image for fixable high and critical vulnerabilities
+        run: >-
+          docker run --rm
+          -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.66.0 image
+          --exit-code 1
+          --ignore-unfixed
+          --severity HIGH,CRITICAL
+          agentguard-server:ci
+      - name: Scan console image for fixable high and critical vulnerabilities
+        run: >-
+          docker run --rm
+          -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.66.0 image
+          --exit-code 1
+          --ignore-unfixed
+          --severity HIGH,CRITICAL
+          agentguard-console:ci
 
   kubernetes:
     name: Kubernetes PDP smoke
