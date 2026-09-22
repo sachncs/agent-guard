@@ -1,0 +1,8 @@
+{
+  "name": "@agentguard/design-tokens",
+  "version": "0.2.0",
+  "private": true,
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  }
+}

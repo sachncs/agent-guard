@@ -32,6 +32,9 @@ importers:
 
   frontend:
     dependencies:
+      '@agentguard/design-tokens':
+        specifier: workspace:*
+        version: link:../typescript/packages/design-tokens
       agentguard:
         specifier: workspace:*
         version: link:../typescript/agentguard
@@ -117,6 +120,8 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+
+  typescript/packages/design-tokens: {}
 
 packages:
 

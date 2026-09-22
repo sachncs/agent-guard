@@ -1,0 +1,30 @@
+/* Canonical AgentGuard tokens. Imported by the Astro site and Next.js console. */
+:root {
+  --ag-color-brand-50: #effcf7;
+  --ag-color-brand-100: #d7f6ea;
+  --ag-color-brand-500: #2e9d7b;
+  --ag-color-brand-600: #218263;
+  --ag-color-brand-700: #17664f;
+  --ag-color-ink: #172420;
+  --ag-color-surface: #ffffff;
+  --ag-color-surface-dark: #101716;
+  --ag-color-surface-inset-dark: #0c1211;
+  --ag-color-text: #172420;
+  --ag-color-text-muted: #61756c;
+  --ag-color-text-on-brand: #ffffff;
+  --ag-color-allow: #218263;
+  --ag-color-deny: #b42318;
+  --ag-color-warning: #a15c00;
+  --ag-color-focus: #2e9d7b;
+  --ag-radius-sm: 6px;
+  --ag-radius-md: 12px;
+  --ag-radius-lg: 16px;
+}
+
+.dark,
+[data-theme='dark'] {
+  --ag-color-surface: #101716;
+  --ag-color-text: #eef3f0;
+  --ag-color-text-muted: #a8b9b1;
+  --ag-color-focus: #79dfbf;
+}

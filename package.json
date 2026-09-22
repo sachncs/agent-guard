@@ -7,7 +7,7 @@
     "build": "pnpm -r build && pnpm --dir site build",
     "test": "pnpm -r test",
     "check": "pnpm check:public && pnpm check:docs && node scripts/verify-k8s.mjs && pnpm --dir site check && pnpm --filter frontend lint && pnpm --filter frontend typecheck",
-    "check:public": "node scripts/verify-public-surface.mjs",
+    "check:public": "node scripts/verify-public-surface.mjs && node scripts/verify-design-tokens.mjs",
     "check:docs": "node scripts/verify-doc-links.mjs"
   },
   "engines": {

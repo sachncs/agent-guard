@@ -11,6 +11,7 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@agentguard/design-tokens": "workspace:*",
     "agentguard": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
