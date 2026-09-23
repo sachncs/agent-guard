@@ -47,6 +47,9 @@ if (
 ) {
   failures.push("bootstrap must reject Node.js versions older than the declared 20.9 minimum");
 }
+if (!ci.includes("node --test scripts/*.test.mjs")) {
+  failures.push("CI must run the repository tooling test suites");
+}
 if (
   !consoleDockerfile.includes("ARG AGENTGUARD_CLI_IMAGE") ||
   !consoleDockerfile.includes("COPY --from=cli-source") ||
