@@ -246,10 +246,10 @@ bounded per-state work permit until persistence completes; readiness requires
 a healthy chained adapter. Async adapters do not occupy blocking workers
 during remote I/O. Async appends have a five-second deadline and readiness
 checks have a two-second deadline. A timed-out append fails closed; because a
-remote commit can have an uncertain outcome, adapters should use idempotent
-record identities. The standalone binary continues to use the file-backed
-`DecisionLog`; a distributed audit backend is not included in the supported
-deployment package.
+remote commit can have an uncertain outcome, adapters should account for
+unknown append outcomes and use idempotency facilities where available. The
+standalone binary continues to use the file-backed `DecisionLog`; a distributed
+audit backend is not included in the supported deployment package.
 
 ## Configuration
 
