@@ -23,7 +23,7 @@ pub use auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
 pub use authorize::{Authorizer, Decision, Effect};
 pub use chain_secret::decode as decode_chain_secret;
 pub use context::AgentContext;
-pub use decision::{DecisionCache, DecisionLog, DecisionRecord};
+pub use decision::{AuthenticatedActor, DecisionCache, DecisionLog, DecisionRecord};
 pub use delegation::{
     DelegationClaims, DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier,
 };

@@ -191,6 +191,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: Some("alice".into()),
+            authenticated_actor: None,
         };
         log.append(&rec).unwrap();
         log.append(&rec).unwrap();
@@ -255,6 +256,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         log.append(&record("before-rotation")).unwrap();
         log.rotate().unwrap();

@@ -27,6 +27,11 @@ console access with OIDC/RBAC, and prefer tenant-bound service identities.
 Ordinary `authorize` keys remain identity-bound, and wildcard `*` does not
 implicitly grant `authorize:any`.
 
+Authenticated PDP audit records retain the evaluated principal separately from
+the bound caller identity, credential id, tenant, and act-as flag. This makes
+service-key use attributable without adding caller-controlled values to Cedar
+context. JSONL, CEF, LEEF, and ECS exports retain these provenance fields.
+
 Argon2id verification runs on Tokio's blocking pool and is capped at two
 concurrent verifications per process to bound CPU and memory use. Requests
 with missing or structurally malformed bearer credentials are rejected before

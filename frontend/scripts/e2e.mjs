@@ -224,7 +224,8 @@ async function startRealPdp() {
     "--scope", "authorize:any",
   ], { cwd: REPO_ROOT, encoding: "utf8" });
   assert.equal(keyCreation.status, 0, `create scoped console API key: ${keyCreation.stderr}`);
-  const bearer = JSON.parse(keyCreation.stdout).raw_secret;
+  const key = JSON.parse(keyCreation.stdout);
+  const bearer = key.raw_secret;
   assert.ok(bearer, "the real PDP test creates a bound authorize:any service key");
   const binary = process.env.AGENTGUARD_SERVER_BIN
     ?? join(REPO_ROOT, "target/debug/agentguard-server");
@@ -309,6 +310,7 @@ async function startRealPdp() {
   return {
     auditPath,
     bearer,
+    credentialId: key.id,
     async start() {
       output = "";
       spawnError = undefined;
@@ -656,6 +658,12 @@ async function main() {
       assert.deepEqual(records.map((record) => record.effect), ["allow", "deny"]);
       assert.ok(records.every((record) => record.record_hash && record.chain_id),
         "audit records include chained-integrity metadata");
+      assert.ok(records.every((record) =>
+        record.authenticated_actor?.subject_type === "Agent" &&
+        record.authenticated_actor.subject_id === "console-service" &&
+        record.authenticated_actor.credential_id === pdp.credentialId &&
+        record.authenticated_actor.can_act_as === true),
+      "audit records attribute act-as decisions to the bound service and key");
 
       await pdp.stop();
       const stoppedPdp = await req(viewer, "/api/authorize", {

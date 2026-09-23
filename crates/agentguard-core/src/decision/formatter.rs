@@ -77,7 +77,7 @@ impl std::fmt::Display for AuditFormat {
 
 fn format_cef(rec: &DecisionRecord) -> String {
     let severity = if rec.effect == "allow" { 1 } else { 5 };
-    let extensions = format!(
+    let mut extensions = format!(
         "src={} suser={} act={} outcome={} cs1={} cs1Label=agentguardDecision cs2={} cs2Label=agentguardPolicy cs3={} cs3Label=agentguardResource",
         escape(rec.principal.as_str()),
         escape(rec.principal.as_str()),
@@ -87,6 +87,14 @@ fn format_cef(rec: &DecisionRecord) -> String {
         escape(&rec.policies.join(",")),
         escape(&rec.resource),
     );
+    if let Some(actor) = &rec.authenticated_actor {
+        extensions.push_str(&format!(
+            " cs4={} cs4Label=agentguardAuthenticatedActor cs5={} cs5Label=agentguardCredentialId cs6={} cs6Label=agentguardActAs",
+            escape(&format!("{}::{}", actor.subject_type, actor.subject_id)),
+            escape(&actor.credential_id),
+            actor.can_act_as,
+        ));
+    }
     format!(
         "CEF:0|agentguard|agentguard|2.0|0|authz_decision|{}|{}",
         severity, extensions
@@ -115,6 +123,14 @@ fn format_leef(rec: &DecisionRecord) -> String {
     }
     if let Some(t) = &rec.trace_id {
         s.push_str(&format!(" traceId={}", escape(&t.to_string())));
+    }
+    if let Some(actor) = &rec.authenticated_actor {
+        s.push_str(&format!(
+            " agentguardAuthenticatedActor={} agentguardCredentialId={} agentguardActAs={}",
+            escape(&format!("{}::{}", actor.subject_type, actor.subject_id)),
+            escape(&actor.credential_id),
+            actor.can_act_as,
+        ));
     }
     s
 }
@@ -151,6 +167,21 @@ struct EcsRecord<'a> {
         skip_serializing_if = "Option::is_none"
     )]
     trace_id: Option<String>,
+    #[serde(
+        rename = "labels.agentguard_authenticated_actor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    authenticated_actor: Option<String>,
+    #[serde(
+        rename = "labels.agentguard_credential_id",
+        skip_serializing_if = "Option::is_none"
+    )]
+    credential_id: Option<&'a str>,
+    #[serde(
+        rename = "labels.agentguard_act_as",
+        skip_serializing_if = "Option::is_none"
+    )]
+    act_as: Option<bool>,
 }
 
 fn format_ecs(rec: &DecisionRecord) -> String {
@@ -171,6 +202,18 @@ fn format_ecs(rec: &DecisionRecord) -> String {
         policies: rec.policies.join(","),
         decision_id: Some(&rec.id),
         trace_id: rec.trace_id.as_ref().map(|t| t.to_string()),
+        authenticated_actor: rec
+            .authenticated_actor
+            .as_ref()
+            .map(|actor| format!("{}::{}", actor.subject_type, actor.subject_id)),
+        credential_id: rec
+            .authenticated_actor
+            .as_ref()
+            .map(|actor| actor.credential_id.as_str()),
+        act_as: rec
+            .authenticated_actor
+            .as_ref()
+            .map(|actor| actor.can_act_as),
     };
     serde_json::to_string(&r).unwrap_or_default()
 }
@@ -204,6 +247,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         }
     }
 
@@ -250,5 +294,35 @@ mod tests {
     #[test]
     fn unknown_format_errors() {
         assert!("xml".parse::<AuditFormat>().is_err());
+    }
+
+    #[test]
+    fn siem_exports_preserve_authenticated_act_as_provenance() {
+        let mut record = fixture();
+        record.authenticated_actor = Some(crate::decision::record::AuthenticatedActor {
+            subject_type: "Agent".into(),
+            subject_id: "console-service".into(),
+            tenant_id: Some("tenant-a".into()),
+            credential_id: "key-123".into(),
+            can_act_as: true,
+        });
+
+        let cef = AuditFormat::Cef.format(&record);
+        assert!(cef.contains("console-service"));
+        assert!(cef.contains("key-123"));
+        assert!(cef.contains("cs6=true"));
+
+        let leef = AuditFormat::Leef.format(&record);
+        assert!(leef.contains("agentguardAuthenticatedActor=Agent::console-service"));
+        assert!(leef.contains("agentguardCredentialId=key-123"));
+
+        let ecs: serde_json::Value =
+            serde_json::from_str(&AuditFormat::Ecs.format(&record)).unwrap();
+        assert_eq!(
+            ecs["labels.agentguard_authenticated_actor"],
+            "Agent::console-service"
+        );
+        assert_eq!(ecs["labels.agentguard_credential_id"], "key-123");
+        assert_eq!(ecs["labels.agentguard_act_as"], true);
     }
 }

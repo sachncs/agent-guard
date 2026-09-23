@@ -911,6 +911,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
 
         assert!(log.append(&rec).is_err());
@@ -957,6 +958,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         {
             let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
@@ -1012,6 +1014,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         log.append(&rec).unwrap();
         log.append(&rec).unwrap();
@@ -1047,6 +1050,7 @@ mod tests {
                 span_id: None,
                 tenant_id: None,
                 subject_id: None,
+                authenticated_actor: None,
             };
             let canonical = canonical_json(&record).unwrap();
             let (prev, hash) = chain.append(&canonical);
@@ -1097,6 +1101,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
 
         for chained in [false, true] {
@@ -1198,6 +1203,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         // Build one plain and one chained line independently, then combine
         // them. A chained writer must reject an existing plain tail; mixed
@@ -1251,6 +1257,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         let log = DecisionLog::open(&path).unwrap();
         log.append(&rec).unwrap();
@@ -1311,6 +1318,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         for _ in 0..5 {
             log.append(&rec).unwrap();
@@ -1383,6 +1391,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
 
         let first_id = {
@@ -1447,6 +1456,7 @@ mod tests {
             span_id: None,
             tenant_id: None,
             subject_id: None,
+            authenticated_actor: None,
         };
         let mut workers = Vec::new();
         for _ in 0..4 {

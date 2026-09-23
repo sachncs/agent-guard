@@ -987,6 +987,7 @@ fn bound_tenant_is_trusted_audit_metadata_not_caller_context() {
     let caller = AuthenticatedIdentity {
         identity: agentguard_auth::ApiKeyIdentity::new("User", "alice", Some("tenant-a".into()))
             .unwrap(),
+        credential_id: "user-key".into(),
         can_act_as: false,
     };
     let request = EvaluationRequest {
@@ -1044,6 +1045,7 @@ fn act_as_scope_allows_console_simulation_but_keeps_key_tenant_trusted() {
             Some("tenant-a".into()),
         )
         .unwrap(),
+        credential_id: "console-key".into(),
         can_act_as: true,
     };
     let request = EvaluationRequest {

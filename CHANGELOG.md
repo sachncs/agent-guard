@@ -12,6 +12,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   simulators. Keys remain bound to a service identity, while ordinary
   `authorize` keys continue to reject subject impersonation. Production console
   configuration now requires a PDP bearer credential.
+- Record the authenticated PDP service identity, API-key id, tenant, and act-as
+  state separately from the evaluated principal; preserve these fields in the
+  JSONL, CEF, LEEF, and ECS audit formats.
 - Add non-blocking `Client.logTailAsync` and `Client.delegateAsync` methods to
   the TypeScript SDK, with configurable execution timeout and bounded output.
   Concurrent child processes are bounded per client. The console audit and

@@ -14,4 +14,4 @@ pub use cache::DecisionCache;
 pub use chain::{ChainId, HashChain, HASH_LEN};
 pub use formatter::AuditFormat;
 pub use log::{ChainedRecord, DecisionLog, RotationConfig};
-pub use record::DecisionRecord;
+pub use record::{AuthenticatedActor, DecisionRecord};

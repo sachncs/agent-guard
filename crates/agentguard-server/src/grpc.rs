@@ -153,6 +153,7 @@ impl AccessEvaluation for AccessEvaluationService {
             agent_req,
             per_request_entities,
             self.state.audit_handle(),
+            crate::authzen::authenticated_actor(caller.as_ref()),
         )
         .await
         .map_err(|error| {

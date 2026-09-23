@@ -33,6 +33,8 @@ const MAX_CONCURRENT_API_KEY_VERIFICATIONS: usize = 2;
 #[derive(Debug, Clone)]
 pub struct AuthenticatedIdentity {
     pub identity: ApiKeyIdentity,
+    /// Stable API-key id for audit correlation; never the raw bearer secret.
+    pub credential_id: String,
     /// True only for credentials granted the explicit `authorize:any` scope.
     pub can_act_as: bool,
 }
@@ -121,6 +123,7 @@ impl AuthLayer {
                 match identity {
                     Ok(identity) => Ok(Some(AuthenticatedIdentity {
                         identity,
+                        credential_id: key.id,
                         can_act_as,
                     })),
                     Err(AuthenticationFailure::Unauthenticated) if !require_identity => Ok(None),
@@ -358,7 +361,7 @@ mod async_auth_tests {
 
         let store = ApiKeyStore::new();
         let identity = ApiKeyIdentity::new("Agent", "console-service", None).unwrap();
-        let (_, raw) = store
+        let (key, raw) = store
             .create_bound("ag_test", vec!["authorize:any".into()], None, identity)
             .unwrap();
         let auth = AuthLayer::ApiKey(Arc::new(store));
@@ -373,6 +376,7 @@ mod async_auth_tests {
             .unwrap()
             .unwrap();
         assert_eq!(result.identity.subject_id, "console-service");
+        assert_eq!(result.credential_id, key.id);
         assert!(
             result.can_act_as,
             "only authorize:any opts into acting as a request subject"

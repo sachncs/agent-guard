@@ -34,6 +34,21 @@ pub struct DecisionRecord {
     /// Subject ID for SAR queries (GDPR Art. 15).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject_id: Option<String>,
+    /// Authenticated PDP caller. This is server-added audit metadata and is
+    /// intentionally separate from Cedar context and the evaluated principal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authenticated_actor: Option<AuthenticatedActor>,
+}
+
+/// Provenance for a request accepted by a standalone authenticated PDP.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuthenticatedActor {
+    pub subject_type: String,
+    pub subject_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    pub credential_id: String,
+    pub can_act_as: bool,
 }
 
 impl DecisionRecord {
@@ -104,6 +119,69 @@ impl DecisionRecord {
                 .get("subject_id")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            authenticated_actor: req
+                .get("authenticated_actor")
+                .cloned()
+                .and_then(|actor| serde_json::from_value(actor).ok()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::authorize::Effect;
+
+    #[test]
+    fn decision_record_preserves_authenticated_caller_provenance() {
+        let decision = Decision {
+            effect: Effect::Allow,
+            policies: vec!["policy0".into()],
+            reasons: vec![],
+            request: serde_json::json!({
+                "principal":{"uid":"research-agent"},
+                "authenticated_actor":{
+                    "subject_type":"Agent",
+                    "subject_id":"console-service",
+                    "tenant_id":"tenant-a",
+                    "credential_id":"key-123",
+                    "can_act_as":true
+                }
+            }),
+            trace: None,
+            from_cache: false,
+        };
+
+        let record = DecisionRecord::from_decision(&decision, None, None);
+        assert_eq!(record.principal, "research-agent");
+        assert_eq!(
+            record.authenticated_actor,
+            Some(AuthenticatedActor {
+                subject_type: "Agent".into(),
+                subject_id: "console-service".into(),
+                tenant_id: Some("tenant-a".into()),
+                credential_id: "key-123".into(),
+                can_act_as: true,
+            })
+        );
+    }
+
+    #[test]
+    fn older_decision_record_json_without_actor_remains_compatible() {
+        let value = serde_json::json!({
+            "id":"legacy",
+            "timestamp":"2025-01-01T00:00:00Z",
+            "effect":"allow",
+            "policies":[],
+            "request_id":null,
+            "principal":"alice",
+            "action":"read",
+            "resource":"doc",
+            "reasons":[],
+            "session_id":null,
+            "agent_chain":null
+        });
+        let record: DecisionRecord = serde_json::from_value(value).unwrap();
+        assert_eq!(record.authenticated_actor, None);
     }
 }

@@ -4,7 +4,9 @@
 
 use crate::audit::{AsyncAuditAppender, AuditAppender, AuditWriter};
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::decision::{cache::CacheConfig, DecisionLog, RotationConfig};
+use agentguard_core::decision::{
+    cache::CacheConfig, AuthenticatedActor, DecisionLog, RotationConfig,
+};
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use agentguard_telemetry::Metrics;
@@ -82,13 +84,22 @@ pub(crate) async fn authorize_and_persist_decision(
     request: AgentRequest,
     entity_values: Vec<serde_json::Value>,
     audit: Arc<Option<AuditWriter>>,
+    authenticated_actor: Option<AuthenticatedActor>,
 ) -> Result<(agentguard_core::Decision, std::time::Duration), PdpWorkError> {
     let ((decision, elapsed), permit) = run_bounded_pdp_work(slots, move || {
         let entities = build_request_entities(&entity_values).map_err(PdpWorkError::Entities)?;
         let started = Instant::now();
-        let decision = authorizer
+        let mut decision = authorizer
             .authorize(&request, &entities)
             .map_err(PdpWorkError::Authorize)?;
+        if let Some(actor) = authenticated_actor {
+            if let serde_json::Value::Object(request) = &mut decision.request {
+                request.insert(
+                    "authenticated_actor".into(),
+                    serde_json::to_value(actor).expect("authenticated actor is serializable"),
+                );
+            }
+        }
         let elapsed = started.elapsed();
         Ok((decision, elapsed))
     })
@@ -122,6 +133,18 @@ pub(crate) async fn authorize_and_persist_decision(
             Ok((decision, elapsed))
         }
     }
+}
+
+pub(crate) fn authenticated_actor(
+    caller: Option<&crate::auth_layer::AuthenticatedIdentity>,
+) -> Option<AuthenticatedActor> {
+    caller.map(|caller| AuthenticatedActor {
+        subject_type: caller.identity.subject_type.clone(),
+        subject_id: caller.identity.subject_id.clone(),
+        tenant_id: caller.identity.tenant_id.clone(),
+        credential_id: caller.credential_id.clone(),
+        can_act_as: caller.can_act_as,
+    })
 }
 
 async fn run_bounded_pdp_work<T, F>(
@@ -656,6 +679,7 @@ async fn evaluation(
         agent_req,
         per_request_entities,
         state.audit_appender.clone(),
+        authenticated_actor(caller.as_ref().map(|c| &c.0)),
     )
     .await;
     match outcome {
@@ -745,6 +769,7 @@ async fn evaluations(
             agent_req,
             per_request_entities,
             state.audit_appender.clone(),
+            authenticated_actor(caller.as_ref().map(|c| &c.0)),
         )
         .await
         {
