@@ -12,6 +12,7 @@ export async function checkPdpReady(
       headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
+      redirect: "error",
     });
   } catch {
     throw new Error("PDP readiness probe failed");

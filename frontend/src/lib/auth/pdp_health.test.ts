@@ -15,6 +15,7 @@ describe("PDP readiness probe", () => {
     assert.equal(new Headers(request?.headers).get("authorization"), "Bearer internal-token");
     assert.ok(request?.signal, "probe must have a timeout");
     assert.equal(request?.cache, "no-store");
+    assert.equal(request?.redirect, "error", "credential-bearing probes must reject redirects");
   });
 
   it("rejects non-ready PDP responses", async () => {

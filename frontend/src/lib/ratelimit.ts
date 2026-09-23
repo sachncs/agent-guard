@@ -105,6 +105,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
       body: JSON.stringify(["EVAL", script, "1", key, String(WINDOW_SECONDS)]),
       signal: AbortSignal.timeout(this.timeoutMs),
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
     const payload = (await response.json()) as { result?: number };
@@ -121,6 +122,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
       body: JSON.stringify(["PING"]),
       signal: AbortSignal.timeout(this.timeoutMs),
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
     const payload = (await response.json()) as { result?: unknown };

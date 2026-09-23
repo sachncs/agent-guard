@@ -149,9 +149,16 @@ async function startPdp() {
 
   let responseMode = "decision";
   let lastEvaluation;
+  let redirectTargetHits = 0;
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/readyz") {
       res.writeHead(responseMode === "unavailable" ? 503 : 200).end();
+      return;
+    }
+    if (req.url === "/redirect-target") {
+      redirectTargetHits += 1;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ decision: true }));
       return;
     }
     if (req.method !== "POST" || !req.url.includes("/access/v1/evaluation")) {
@@ -161,6 +168,10 @@ async function startPdp() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
+      if (responseMode === "redirect") {
+        res.writeHead(307, { Location: "/redirect-target" }).end();
+        return;
+      }
       if (responseMode === "unavailable") {
         res.writeHead(503, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "maintenance" }));
@@ -193,6 +204,9 @@ async function startPdp() {
     },
     lastEvaluation() {
       return structuredClone(lastEvaluation);
+    },
+    redirectTargetHits() {
+      return redirectTargetHits;
     },
   };
 }
@@ -703,6 +717,17 @@ async function main() {
     assert.doesNotMatch(JSON.stringify(unavailableBody), /maintenance|PDP returned HTTP/);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
       "readiness fails when the required PDP is unavailable");
+
+    pdp.setResponseMode("redirect");
+    const redirectedPdp = await req(viewer, "/api/authorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uid: "alice", tool: "web_search", resourceType: "Resource", resourceId: "docs",
+      }),
+    });
+    assert.equal(redirectedPdp.status, 503, "PDP redirects fail closed");
+    assert.equal(pdp.redirectTargetHits(), 0, "the PDP redirect target is never contacted");
 
     pdp.setResponseMode("invalid");
     const invalidPdp = await req(viewer, "/api/authorize", {

@@ -50,6 +50,7 @@ export async function evaluate(
       body: JSON.stringify(req),
       signal: AbortSignal.timeout(5_000),
       cache: "no-store",
+      redirect: "error",
     });
   } catch (e) {
     throw new PdpUnavailable(

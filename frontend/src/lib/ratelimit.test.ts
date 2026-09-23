@@ -96,23 +96,29 @@ describe("rate limiter", () => {
 
   it("uses an atomic Redis-compatible request", async () => {
     let request: Request | undefined;
+    let redirect: RequestRedirect | undefined;
     const store = new RedisRateLimitStore("https://redis.example", "secret", async (_url, init) => {
       request = new Request(String(_url), init);
+      redirect = init?.redirect;
       return new Response(JSON.stringify({ result: 2 }), { status: 200 });
     });
     assert.deepEqual(await store.consume("delegate:x", 5), { allowed: true, remaining: 3 });
     assert.equal(request?.headers.get("authorization"), "Bearer secret");
+    assert.equal(redirect, "error", "credential-bearing store requests must reject redirects");
     assert.match(await request!.text(), /EVAL/);
   });
 
   it("checks Redis connectivity without consuming a rate-limit slot", async () => {
     let body = "";
+    let redirect: RequestRedirect | undefined;
     const store = new RedisRateLimitStore("https://redis.example", "secret", async (_url, init) => {
       body = String(init?.body);
+      redirect = init?.redirect;
       return new Response(JSON.stringify({ result: "PONG" }), { status: 200 });
     });
     await store.healthCheck();
     assert.deepEqual(JSON.parse(body), ["PING"]);
+    assert.equal(redirect, "error");
   });
 
   it("fails closed when the shared store is unavailable", async () => {

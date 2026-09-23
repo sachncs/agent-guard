@@ -82,6 +82,7 @@ export class RedisSessionStore implements SessionStore {
       },
       body: JSON.stringify(command),
       signal: AbortSignal.timeout(this.timeoutMs),
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`session store returned ${response.status}`);
     const payload = (await response.json()) as { result?: unknown };

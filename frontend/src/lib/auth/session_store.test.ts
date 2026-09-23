@@ -19,12 +19,14 @@ describe("session stores", () => {
 
   it("uses Redis-compatible SET/GET/DEL commands", async () => {
     const commands: string[][] = [];
+    const redirectModes: (RequestRedirect | undefined)[] = [];
     let signal: AbortSignal | undefined;
     const store = new RedisSessionStore(
       "https://redis.example",
       "secret",
       async (_url, init) => {
         signal = init?.signal as AbortSignal;
+        redirectModes.push(init?.redirect);
         const command = JSON.parse(String(init?.body)) as string[];
         commands.push(command);
         const result = command[0] === "GET"
@@ -43,6 +45,7 @@ describe("session stores", () => {
     await store.healthCheck();
     assert.deepEqual(commands.map(([command]) => command), ["SET", "GET", "DEL", "PING"]);
     assert.equal(commands[0][4], "600");
+    assert.deepEqual(redirectModes, ["error", "error", "error", "error"]);
     assert.ok(signal, "shared-store requests have a bounded timeout");
   });
 
