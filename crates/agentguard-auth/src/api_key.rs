@@ -340,7 +340,7 @@ impl ApiKeyStore {
             )));
         }
         if let Some(exp) = key.expires_at {
-            if exp < chrono::Utc::now().timestamp() {
+            if exp <= chrono::Utc::now().timestamp() {
                 return Err(AuthError::ApiKeyExpired);
             }
         }
@@ -608,36 +608,8 @@ mod tests {
     fn expired_key_rejected() {
         let _guard = api_key_test_lock().lock();
         let s = ApiKeyStore::new();
-        let id = uuid::Uuid::new_v4().to_string();
-        let salt = SaltString::generate(&mut OsRng);
-        let argon = argon2().unwrap();
-        let hash = argon
-            .hash_password(b"some-secret", &salt)
-            .unwrap()
-            .to_string();
-        let now = chrono::Utc::now().timestamp();
-        let key = ApiKey {
-            id: id.clone(),
-            prefix: "ag".into(),
-            secret_hash: hash,
-            scopes: vec![],
-            identity: None,
-            created_at: now - 100,
-            expires_at: Some(now - 10),
-            last_used_at: None,
-            revoked_at: None,
-        };
-        s.keys.write().insert(id.clone(), key);
-        // Build a raw key with an arbitrary secret for verify to extract.
-        let raw = format!(
-            "ag_{}_{}",
-            id,
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode([0u8; 32])
-        );
-        let res = s.verify(&raw);
-        assert!(matches!(
-            res,
-            Err(AuthError::ApiKeyExpired) | Err(AuthError::ApiKeyInvalid)
-        ));
+        let (key, raw) = s.create("ag", vec![], None).unwrap();
+        s.keys.write().get_mut(&key.id).unwrap().expires_at = Some(chrono::Utc::now().timestamp());
+        assert!(matches!(s.verify(&raw), Err(AuthError::ApiKeyExpired)));
     }
 }

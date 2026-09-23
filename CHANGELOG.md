@@ -46,6 +46,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Validate API-key snapshots before replacing the active set; reject duplicate
   ids, malformed records, and Argon2 parameters above the verifier's resource
   budget while preserving the last-known-good snapshot.
+- Treat an API key as expired at its exact expiration timestamp and verify this
+  with a valid key in the regression test.
 - Upgrade the optional SPIFFE Workload API client and HTTP TLS server adapter,
   remove the unused gRPC TLS feature, and eliminate the deferred RustSec
   advisory ignores so dependency auditing is blocking without exceptions.
