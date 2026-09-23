@@ -78,6 +78,7 @@ describe("auth config", () => {
   it("requires Redis sessions for production mode", () => {
     for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    process.env.AGENTGUARD_PDP_URL = "https://pdp.example";
     let cfg = authConfig();
     assert.equal(cfg.valid, false);
     if (cfg.valid) return;
@@ -98,6 +99,7 @@ describe("auth config", () => {
     const env = process.env as Record<string, string | undefined>;
     const previousNodeEnv = env.NODE_ENV;
     env.NODE_ENV = "production";
+    env.AGENTGUARD_PDP_URL = "https://pdp.example";
     env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
     env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
     try {
@@ -120,6 +122,7 @@ describe("auth config", () => {
     const env = process.env as Record<string, string | undefined>;
     const previousNodeEnv = env.NODE_ENV;
     env.NODE_ENV = "production";
+    env.AGENTGUARD_PDP_URL = "https://pdp.example";
     env.AGENTGUARD_SESSION_STORE = "redis";
     env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
     env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
@@ -159,6 +162,7 @@ describe("auth config", () => {
     const previousNodeEnv = env.NODE_ENV;
     const previousStore = env.AGENTGUARD_SESSION_STORE;
     env.NODE_ENV = "production";
+    env.AGENTGUARD_PDP_URL = "https://pdp.example";
     env.AGENTGUARD_SESSION_STORE = "memory";
 
     try {
@@ -170,6 +174,52 @@ describe("auth config", () => {
       else env.NODE_ENV = previousNodeEnv;
       if (previousStore === undefined) delete env.AGENTGUARD_SESSION_STORE;
       else env.AGENTGUARD_SESSION_STORE = previousStore;
+      resetAuthConfigCache();
+    }
+  });
+
+  it("fails closed on production HTTP PDP URLs unless the exception is explicit", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_SESSION_STORE = "redis";
+    env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
+    env.AGENTGUARD_SESSION_REDIS_TOKEN = "redis-secret";
+    env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
+    env.AGENTGUARD_PDP_BEARER = "pdp-secret";
+
+    try {
+      delete env.AGENTGUARD_PDP_URL;
+      let cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /PDP_URL is required/);
+
+      resetAuthConfigCache();
+      env.AGENTGUARD_PDP_URL = "http://attacker.example";
+      cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /PDP_URL.*HTTPS/);
+
+      resetAuthConfigCache();
+      env.AGENTGUARD_PDP_URL = "https://pdp.example";
+      cfg = authConfig();
+      assert.equal(cfg.valid, true);
+
+      resetAuthConfigCache();
+      env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL = "true";
+      cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /must be 0 or 1/);
+
+      resetAuthConfigCache();
+      env.AGENTGUARD_PDP_URL = "http://agentguard-pdp:8443";
+      env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL = "1";
+      cfg = authConfig();
+      assert.equal(cfg.valid, true);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
       resetAuthConfigCache();
     }
   });

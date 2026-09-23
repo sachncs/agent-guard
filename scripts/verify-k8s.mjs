@@ -74,6 +74,7 @@ if (failures.length === 0) {
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   for (const value of [
     "AGENTGUARD_TRUST_PROXY_HEADERS='1'",
+    "AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL='1'",
     "remove any incoming `X-Forwarded-For`",
   ]) if (!operationsGuide.includes(value)) {
     failures.push(`docs/kubernetes.md missing trusted-proxy requirement: ${value}`);
@@ -96,6 +97,7 @@ if (failures.length === 0) {
     "secretRef: {name: agentguard-console-env}",
     "key: AGENTGUARD_PDP_BEARER",
     "name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard",
+    'name: AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL, value: "1"',
     "name: AGENTGUARD_DELEGATION_KEY_FILE, value: /etc/agentguard/delegation/delegation.key",
     "mountPath: /var/lib/agentguard/policies, readOnly: true",
     "mountPath: /var/lib/agentguard/audit, readOnly: true",

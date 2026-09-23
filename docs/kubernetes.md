@@ -91,6 +91,7 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_SESSION_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_SESSION_REDIS_TOKEN='replace-me' \
   --from-literal=AGENTGUARD_TRUST_PROXY_HEADERS='1' \
+  --from-literal=AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL='1' \
   --from-literal=AGENTGUARD_ADMIN_VALUES='security-admins' \
   --from-file=AGENTGUARD_PDP_BEARER=./pdp-bearer \
   --from-literal=AGENTGUARD_RATE_LIMIT_STORE='redis' \
@@ -102,6 +103,11 @@ Do not put the raw key in shell history, process arguments, or source control.
 The console manifest requires this key and production startup fails
 closed when it is absent. Use a tenant-bound service key where applicable. See
 [identity and API-key scopes](identity.md).
+The in-cluster PDP URL uses HTTP in the reference manifest, so the explicit
+`AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL=1` opt-in is also required. It accepts
+the cluster-network trust boundary; use mesh mTLS or restrict access with a
+CNI-enforced NetworkPolicy as described above. For any PDP outside that
+boundary, use HTTPS and leave this exception unset.
 
 The PDP polls the projected API-key Secret contents and applies a valid
 rotation or revocation without a process restart. Once the updated bytes are

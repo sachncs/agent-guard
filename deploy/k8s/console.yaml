@@ -32,6 +32,8 @@ spec:
                   name: agentguard-console-env
                   key: AGENTGUARD_PDP_BEARER
             - {name: AGENTGUARD_PDP_URL, value: http://agentguard-pdp:8443}
+            # The reference topology accepts the private cluster-network boundary; see docs/kubernetes.md.
+            - {name: AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL, value: "1"}
             - {name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard}
             - {name: AGENTGUARD_STORE, value: /var/lib/agentguard/policies}
             - {name: AGENTGUARD_AUDIT, value: /var/lib/agentguard/audit/decisions.jsonl}

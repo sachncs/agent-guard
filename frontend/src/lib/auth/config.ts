@@ -1,7 +1,7 @@
 import { RedisSessionStore } from "./session_store.ts";
 import type { SessionStore } from "./session_store.ts";
 import { validateSharedStoreUrl } from "../shared_store_url.ts";
-import { validateOidcEndpoint } from "./endpoint_url.ts";
+import { validateOidcEndpoint, validatePdpEndpoint } from "./endpoint_url.ts";
 
 /**
  * Console authentication configuration.
@@ -61,7 +61,9 @@ function readEnv(): AuthConfigResult {
   const sessionRedisUrl = process.env.AGENTGUARD_SESSION_REDIS_URL;
   const sessionRedisToken = process.env.AGENTGUARD_SESSION_REDIS_TOKEN;
   const trustProxyHeaders = process.env.AGENTGUARD_TRUST_PROXY_HEADERS === "1";
-  const pdpUrl = stripSlash(process.env.AGENTGUARD_PDP_URL ?? "http://127.0.0.1:8443");
+  const configuredPdpUrl = process.env.AGENTGUARD_PDP_URL;
+  const pdpUrl = stripSlash(configuredPdpUrl ?? "http://127.0.0.1:8443");
+  const allowInsecurePdp = process.env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL === "1";
 
   if (missing.length > 0) {
     return {
@@ -77,6 +79,20 @@ function readEnv(): AuthConfigResult {
       valid: false,
       reason: `AGENTGUARD_OIDC_ISSUER ${issuerIssue}`,
     };
+  }
+  if (process.env.NODE_ENV === "production" && !configuredPdpUrl) {
+    return { valid: false, reason: "AGENTGUARD_PDP_URL is required in production" };
+  }
+  const pdpIssue = validatePdpEndpoint(pdpUrl, process.env.NODE_ENV === "production", allowInsecurePdp);
+  if (pdpIssue) {
+    return { valid: false, reason: `AGENTGUARD_PDP_URL ${pdpIssue}` };
+  }
+  if (
+    process.env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL !== undefined &&
+    process.env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL !== "0" &&
+    process.env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL !== "1"
+  ) {
+    return { valid: false, reason: "AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL must be 0 or 1" };
   }
   if (secret.length < 32) {
     return {
