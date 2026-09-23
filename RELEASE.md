@@ -9,7 +9,8 @@
 - [ ] Apply the Kubernetes manifests in a disposable cluster and verify an
       allow, deny, audit append, graceful shutdown, and rollback.
 - [ ] Run `./scripts/k8s-smoke.sh` (or confirm the CI `Kubernetes PDP smoke`
-      job) against the exact release image tags.
+      job) against the exact release image artifacts; record published digests
+      and ensure the production overlay pins those digests before promotion.
 - [ ] Run `pnpm check && pnpm build` from the repository root so the SDK,
       console, examples, and canonical documentation site are checked together.
 - [ ] Review SECURITY.md, CHANGELOG.md, compatibility policy, and migration

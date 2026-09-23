@@ -24,7 +24,7 @@ itself is eventually consistent and depends on kubelet sync/cache settings.
 Invalid intermediate store content retains the last-known-good key set and is
 logged; check the server logs after credential updates.
 
-kubectl apply -k deploy/k8s
+kubectl apply -k deploy/k8s/overlays/production
 kubectl -n agentguard rollout status deploy/agentguard-pdp
 kubectl -n agentguard rollout status deploy/agentguard-console
 
@@ -37,8 +37,10 @@ append-only audit backend is deployed.
 
 ## Upgrade and rollback
 
-Build and tag both images with the same release version. Apply the manifests,
-wait for readiness, then run an allow, deny, and audit verification smoke
+Build and tag both images with the same release version, capture their registry
+digests, and deploy those digests from an operator-owned Kustomize overlay. Do
+not deploy the checked-in base directly for production; it uses sample tags.
+Apply the overlay, wait for readiness, then run an allow, deny, and audit verification smoke
 test. Roll back with kubectl rollout undo if readiness or audit checks fail.
 Keep the policy ConfigMap, secrets, and audit volume across application
 upgrades. The full smoke-test, backup, and rollback procedure is in

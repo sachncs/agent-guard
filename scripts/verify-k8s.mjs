@@ -73,6 +73,15 @@ if (failures.length === 0) {
 
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   for (const value of [
+    "deploy/k8s/overlays/production/kustomization.yaml",
+    "registry-reported",
+    "digest: sha256:<PDP_DIGEST>",
+    "digest: sha256:<CONSOLE_DIGEST>",
+    "kubectl apply -k deploy/k8s/overlays/production",
+  ]) if (!operationsGuide.includes(value)) {
+    failures.push(`docs/kubernetes.md must document production digest pinning: ${value}`);
+  }
+  for (const value of [
     "AGENTGUARD_TRUST_PROXY_HEADERS='1'",
     "AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL='1'",
     "remove any incoming `X-Forwarded-For`",

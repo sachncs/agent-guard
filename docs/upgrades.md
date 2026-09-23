@@ -1,8 +1,9 @@
 # Upgrades and rollback
 
-AgentGuard releases are immutable artifacts. Deploy a versioned container tag,
-not `latest`, and keep the image digest, policy bundle version, schema,
-configuration, and migration notes together.
+AgentGuard releases are immutable artifacts. Use a versioned tag when building
+and publishing, but deploy the registry image digest rather than relying on
+the tag being immutable. Never deploy `latest`. Keep the image digests, policy
+bundle version, schema, configuration, and migration notes together.
 
 ## Before upgrading
 
@@ -15,10 +16,11 @@ configuration, and migration notes together.
 
 ## Kubernetes rollout
 
-Update the image tag in the deployment overlay, then wait for readiness:
+Update both image digests in the production Kustomize overlay, review the
+resulting diff, then wait for readiness:
 
 ```sh
-kubectl -n agentguard apply -k deploy/k8s
+kubectl -n agentguard apply -k deploy/k8s/overlays/production
 kubectl -n agentguard rollout status deployment/agentguard-pdp
 kubectl -n agentguard rollout status deployment/agentguard-console
 ```

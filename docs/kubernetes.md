@@ -26,7 +26,8 @@ trusted ingress, and operate policy and audit storage as managed state.
 
 ## Build and publish
 
-Use one immutable release tag for both images. Do not deploy `latest`:
+Build both images with one version tag, but deploy the registry-reported
+digests rather than relying on tags to remain immutable. Never deploy `latest`:
 
 ```bash
 export VERSION=0.2.0
@@ -38,6 +39,11 @@ docker build -t "$REGISTRY/agentguard-console:$VERSION" \
 docker push "$REGISTRY/agentguard-server:$VERSION"
 docker push "$REGISTRY/agentguard-console:$VERSION"
 ```
+
+Record the `sha256:` digest printed by each push (or query the registry's
+manifest API). Tags are useful for humans; a digest is the immutable identity
+used for promotion and rollback. Do not derive the digest from the local image
+ID: the registry may convert the manifest or publish a multi-platform index.
 
 The images run as non-root users and expose `/healthz` and `/readyz` on the
 PDP. Kubernetes enforces a 30-second termination grace period while the
@@ -135,10 +141,30 @@ metric, and run representative allow and deny requests.
 
 ## Deploy
 
-Set image references in an overlay or with `kustomize edit set image`, then:
+Create an operator-owned overlay at
+`deploy/k8s/overlays/production/kustomization.yaml`, pointing at the base and
+pinning the exact registry digests. Substitute the real image names and 64-hex
+digests from the registry; the placeholders below are not deployable:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../
+images:
+  - name: agentguard-server
+    newName: registry.example.com/security/agentguard-server
+    digest: sha256:<PDP_DIGEST>
+  - name: agentguard-console
+    newName: registry.example.com/security/agentguard-console
+    digest: sha256:<CONSOLE_DIGEST>
+```
+
+Keep this overlay in the deployment configuration repository, review its diff,
+and promote the same digest values between environments. Apply and verify it:
 
 ```bash
-kubectl apply -k deploy/k8s
+kubectl apply -k deploy/k8s/overlays/production
 kubectl -n agentguard rollout status deployment/agentguard-pdp
 kubectl -n agentguard rollout status deployment/agentguard-console
 kubectl -n agentguard get pods,svc,pvc
@@ -197,8 +223,9 @@ store, and the exact schema/policy bundle together. Test restore into an
 isolated namespace; a backup without its chain secret cannot verify a chained
 log.
 
-For an upgrade, publish immutable images, apply the image change, wait for
-readiness, and run the smoke test. If readiness, authorization, or audit
+For an upgrade, publish images, update both pinned digests in the overlay,
+review the exact diff, apply it, wait for readiness, and run the smoke test.
+If readiness, authorization, or audit
 verification fails, stop traffic and run:
 
 ```bash
