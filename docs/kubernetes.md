@@ -11,6 +11,16 @@ trusted ingress, and operate policy and audit storage as managed state.
 - A `ReadWriteOnce` persistent volume for the PDP audit log.
 - A TLS ingress or service mesh. The checked-in Services are intentionally
   internal cluster services.
+- A plan for encrypting and restricting the in-cluster console-to-PDP hop.
+  The console currently calls the PDP Service over plain HTTP; TLS at the
+  external ingress does not encrypt this internal connection. For production,
+  use a service mesh that enforces mTLS between the console and PDP workloads,
+  or explicitly accept the cluster-network trust boundary and restrict the
+  PDP Service to approved callers with a CNI-enforced NetworkPolicy. A
+  NetworkPolicy limits reachability but does not encrypt traffic. Apply
+  environment-specific ingress and egress policies in an overlay: the console
+  also needs access to the configured identity provider and Redis endpoint,
+  plus cluster DNS.
 - An operator-managed Redis-compatible endpoint for console rate limiting when
   running more than one console replica.
 
@@ -95,9 +105,15 @@ kubectl -n agentguard get pods,svc,pvc
 ```
 
 Put an ingress in front of the console and PDP only when the PDP API-key
-secret, TLS policy, network policy, and request-size/timeouts are configured.
-Do not expose the plaintext optional gRPC listener outside a trusted loopback
-or private network; the reference manifests do not enable it.
+secret, external TLS policy, network policy, and request-size/timeouts are
+configured. External TLS alone is insufficient: the console-to-PDP hop uses
+plain HTTP in the reference configuration. Enforce mesh mTLS for that hop, or
+document and isolate the trusted cluster-network boundary with a CNI-enforced
+policy that permits only the console workload to reach the PDP Service. The
+reference manifests do not install a NetworkPolicy because allowed ingress,
+identity-provider, Redis, and DNS peers are environment-specific. Do not expose
+the plaintext optional gRPC listener outside a trusted loopback or private
+network; the reference manifests do not enable it.
 
 ## Smoke test and rollout gate
 

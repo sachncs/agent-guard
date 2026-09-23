@@ -69,6 +69,15 @@ if (failures.length === 0) {
   if (!/exactly\s+one validated client address/.test(operationsGuide)) {
     failures.push("docs/kubernetes.md must require one validated forwarded client address");
   }
+  for (const value of [
+    "console currently calls the PDP Service over plain HTTP",
+    "TLS at the external ingress does not encrypt this internal connection",
+    "service mesh that enforces mTLS",
+    "NetworkPolicy limits reachability but does not encrypt traffic",
+    "identity-provider, Redis, and DNS peers are environment-specific",
+  ]) if (!operationsGuide.toLowerCase().replaceAll(/\s+/g, " ").includes(value.toLowerCase())) {
+    failures.push(`docs/kubernetes.md must describe the in-cluster network trust boundary: ${value}`);
+  }
 
   const console = read("console.yaml");
   for (const value of [
