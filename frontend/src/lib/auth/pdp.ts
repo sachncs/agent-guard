@@ -26,6 +26,8 @@ export interface AuthZenDecision {
   reason?: string;
 }
 
+const MAX_PDP_RESPONSE_BYTES = 256 * 1024;
+
 /** Required fields of an AuthZEN evaluation response. */
 const decisionSchema = z.object({
   decision: z.boolean(),
@@ -37,11 +39,12 @@ export class PdpUnavailable extends Error {}
 export async function evaluate(
   pdpUrl: string,
   bearer: string | undefined,
-  req: AuthZenRequest
+  req: AuthZenRequest,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<AuthZenDecision> {
   let res: Response;
   try {
-    res = await fetch(`${pdpUrl}/access/v1/evaluation`, {
+    res = await fetchImpl(`${pdpUrl}/access/v1/evaluation`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -60,9 +63,58 @@ export async function evaluate(
   if (!res.ok) {
     throw new PdpUnavailable(`PDP returned HTTP ${res.status}`);
   }
-  const parsed = decisionSchema.safeParse(await res.json());
+  const declaredLength = res.headers.get("content-length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_PDP_RESPONSE_BYTES) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new PdpUnavailable("PDP response exceeded the size limit");
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(await readBoundedBody(res));
+  } catch (error) {
+    if (error instanceof PdpUnavailable) throw error;
+    throw new PdpUnavailable("PDP returned invalid JSON");
+  }
+  const parsed = decisionSchema.safeParse(payload);
   if (!parsed.success) {
     throw new PdpUnavailable("PDP returned an invalid decision payload");
   }
   return parsed.data;
+}
+
+async function readBoundedBody(response: Response): Promise<string> {
+  if (!response.body) throw new PdpUnavailable("PDP returned an empty response");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_PDP_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new PdpUnavailable("PDP response exceeded the size limit");
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof PdpUnavailable) throw error;
+    throw new PdpUnavailable("PDP response body could not be read");
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new PdpUnavailable("PDP returned invalid UTF-8");
+  }
 }

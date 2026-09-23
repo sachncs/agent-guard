@@ -99,6 +99,9 @@ The e2e script asserts the complete security posture: redirects, 401s, the
 OIDC round trip (PKCE + nonce), Redis-backed session and rate-limit commands,
 viewer/admin RBAC, PDP-backed simulator decisions and fail-closed PDP errors,
 validation errors, rate limiting, logout, and the 503 fail-closed mode.
+PDP evaluation also enforces a five-second deadline, rejects redirects, and
+caps upstream response bodies at 256 KiB even if Content-Length is absent or
+understated. Invalid JSON, UTF-8, and decision shapes fail closed.
 
 ## Production boundary
 
