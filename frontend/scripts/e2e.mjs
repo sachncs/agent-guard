@@ -562,6 +562,12 @@ async function main() {
     });
     assert.equal(okDelegate.status, 200, "admin can delegate");
     assert.equal((await okDelegate.json()).token, "fake.jwt.token");
+    const delegationPage = await req(admin, "/delegation");
+    assert.equal(delegationPage.status, 200, "admin can open delegation tools");
+    assert.match(
+      await delegationPage.text(),
+      /they do not authorize a tool call or enforce/
+    );
 
     const badTtl = await req(admin, "/api/delegate", {
       method: "POST",

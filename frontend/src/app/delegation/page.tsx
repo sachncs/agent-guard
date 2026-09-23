@@ -36,6 +36,16 @@ export default function DelegationPage() {
         </p>
       </div>
 
+      <div
+        role="note"
+        className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm leading-relaxed"
+      >
+        <span className="font-semibold">Enforcement boundary:</span> these tools
+        mint and verify grant claims; they do not authorize a tool call or enforce
+        the grant&apos;s scope. Your tool adapter must check signature, expiry,
+        audience, sender binding, and action/resource scope before execution.
+      </div>
+
       {cliMissing && error && <CliAlert message={error} />}
 
       <Tabs defaultValue="issue">

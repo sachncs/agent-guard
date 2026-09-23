@@ -101,6 +101,12 @@ validation errors, rate limiting, logout, and the 503 fail-closed mode.
 
 ## Production boundary
 
+The delegation page issues and verifies grant claims; neither action enforces
+the grant's scope or authorizes a tool call. The consuming tool adapter must
+check signature, expiry, audience, sender binding, and action/resource scope
+before execution. See the repository's [identity guide](../docs/identity.md)
+for the complete contract.
+
 - **Shared state**: production sessions and rate limits use Redis-compatible
   stores. Set `AGENTGUARD_SESSION_STORE=redis` plus the session Redis
   credentials, and set
