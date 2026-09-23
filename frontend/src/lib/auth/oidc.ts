@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { AuthConfig } from "./config";
 import type { Role } from "./rbac";
 import { resolveRole } from "./rbac";
+import { validateOidcEndpoint } from "./endpoint_url";
 
 /** Required fields of an OIDC discovery document. */
 const discoverySchema = z.object({
@@ -61,6 +62,7 @@ export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints>
   const res = await fetch(url, {
     signal: AbortSignal.timeout(5_000),
     cache: "no-store",
+    redirect: "error",
   });
   if (!res.ok) {
     throw new OidcError(`discovery failed: issuer returned HTTP ${res.status}`);
@@ -76,12 +78,27 @@ export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints>
     jwksUri: doc.jwks_uri,
     endSessionEndpoint: doc.end_session_endpoint,
   };
+  for (const endpoint of [
+    endpoints.authorizationEndpoint,
+    endpoints.tokenEndpoint,
+    endpoints.jwksUri,
+    endpoints.endSessionEndpoint,
+  ]) {
+    if (!endpoint) continue;
+    const issue = validateOidcEndpoint(endpoint);
+    if (issue) throw new OidcError(`discovery endpoint ${issue}`);
+  }
   cache = { endpoints, fetchedAt: Date.now() };
   return endpoints;
 }
 
 /** Error raised for OIDC protocol/discovery failures. */
-export class OidcError extends Error {}
+export class OidcError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OidcError";
+  }
+}
 
 function randomB64url(bytes = 32): string {
   const buf = new Uint8Array(bytes);
@@ -205,6 +222,7 @@ export async function completeLogin(
     body,
     signal: AbortSignal.timeout(5_000),
     cache: "no-store",
+    redirect: "error",
   });
   if (!tokenRes.ok) {
     throw new LoginFailed(`token endpoint returned HTTP ${tokenRes.status}`);

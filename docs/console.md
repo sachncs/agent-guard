@@ -31,7 +31,7 @@ Set these values through a secret manager or Kubernetes Secret:
 
 | Variable | Requirement |
 | --- | --- |
-| `AGENTGUARD_OIDC_ISSUER` | OIDC issuer reachable by the console |
+| `AGENTGUARD_OIDC_ISSUER` | HTTPS OIDC issuer reachable by the console; issuer and discovered authorization, token, and JWKS endpoints must use HTTPS in production |
 | `AGENTGUARD_OIDC_CLIENT_ID` | Confidential client registered with the issuer |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | Never commit or bake into the image |
 | `AGENTGUARD_SESSION_SECRET` | At least 32 random characters; rotate deliberately |

@@ -1,6 +1,7 @@
 import { RedisSessionStore } from "./session_store.ts";
 import type { SessionStore } from "./session_store.ts";
 import { validateSharedStoreUrl } from "../shared_store_url.ts";
+import { validateOidcEndpoint } from "./endpoint_url.ts";
 
 /**
  * Console authentication configuration.
@@ -68,6 +69,13 @@ function readEnv(): AuthConfigResult {
       reason:
         "console authentication is not configured; set " +
         `${missing.join(", ")} to enable it`,
+    };
+  }
+  const issuerIssue = validateOidcEndpoint(issuer);
+  if (issuerIssue) {
+    return {
+      valid: false,
+      reason: `AGENTGUARD_OIDC_ISSUER ${issuerIssue}`,
     };
   }
   if (secret.length < 32) {

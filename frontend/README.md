@@ -69,7 +69,7 @@ Console fails to start serving unless the first four variables are set.
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `AGENTGUARD_OIDC_ISSUER` | *(required)* | IdP issuer URL, e.g. `https://idp.example.com/realms/acme` |
+| `AGENTGUARD_OIDC_ISSUER` | *(required)* | IdP issuer URL, e.g. `https://idp.example.com/realms/acme`; production requires HTTPS for the issuer and every discovery endpoint |
 | `AGENTGUARD_OIDC_CLIENT_ID` | *(required)* | Confidential OIDC client id |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | *(required)* | Client secret (`client_secret_post`) |
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |

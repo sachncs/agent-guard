@@ -33,12 +33,24 @@ const IDP_PORT = 3172;
 const PDP_PORT = 3173;
 const REDIS_PORT = 3174;
 const BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
-const ISSUER = `http://127.0.0.1:${IDP_PORT}`;
+const ISSUER = `https://127.0.0.1:${IDP_PORT}`;
 const REDIS_URL = `https://127.0.0.1:${REDIS_PORT}`;
 const REDIS_TOKEN = "e2e-redis-token";
 const TEST_CLIENT_IP = "198.51.100.42";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function createTestTls(tlsDir) {
+  const keyPath = join(tlsDir, "test-key.pem");
+  const certPath = join(tlsDir, "test-cert.pem");
+  const cert = spawnSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyPath,
+    "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1",
+    "-addext", "subjectAltName=IP:127.0.0.1",
+  ], { stdio: "ignore" });
+  assert.equal(cert.status, 0, "OpenSSL creates the local HTTPS test certificate");
+  return { key: readFileSync(keyPath), cert: readFileSync(certPath), certPath };
+}
 
 // ---------------------------------------------------------------- fake IdP
 
@@ -47,7 +59,7 @@ const idpCodes = new Map(); // code -> { claims, nonce }
 const VIEWER_CLAIMS = { sub: "viewer-user", email: "viewer@example.com", groups: ["everyone"] };
 const ADMIN_CLAIMS = { sub: "admin-user", email: "admin@example.com", groups: ["agentguard-admins"] };
 
-async function startIdp() {
+async function startIdp(tls) {
   const { publicKey, privateKey } = await generateKeyPair("RS256", {
     extractable: true,
   });
@@ -56,7 +68,7 @@ async function startIdp() {
   publicJwk.alg = "RS256";
   const privateKeyImported = privateKey;
 
-  const server = http.createServer(async (req, res) => {
+  const server = https.createServer(tls, async (req, res) => {
     const url = new URL(req.url, ISSUER);
     if (url.pathname === "/.well-known/openid-configuration") {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -161,19 +173,11 @@ async function startPdp() {
 
 // -------------------------------------------- Redis-compatible REST store
 
-async function startRedisRest(tlsDir) {
+async function startRedisRest(tls) {
   const sessions = new Map();
   const rateWindows = new Map();
   let available = true;
-  const keyPath = join(tlsDir, "redis-key.pem");
-  const certPath = join(tlsDir, "redis-cert.pem");
-  const cert = spawnSync("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyPath,
-    "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1",
-    "-addext", "subjectAltName=IP:127.0.0.1",
-  ], { stdio: "ignore" });
-  assert.equal(cert.status, 0, "OpenSSL creates the local Redis test certificate");
-  const server = https.createServer({ key: readFileSync(keyPath), cert: readFileSync(certPath) }, async (req, res) => {
+  const server = https.createServer(tls, async (req, res) => {
     if (!available) {
       res.writeHead(503).end();
       return;
@@ -233,7 +237,6 @@ async function startRedisRest(tlsDir) {
   await new Promise((r) => server.listen(REDIS_PORT, "127.0.0.1", r));
   return {
     server,
-    certPath,
     setAvailable(value) {
       available = value;
     },
@@ -297,15 +300,37 @@ async function req(jar, path, init = {}) {
   return res;
 }
 
+function fetchIdp(url, ca) {
+  return new Promise((resolve, reject) => {
+    const request = https.request(url, { method: "GET", ca, rejectUnauthorized: true }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        const headers = Object.fromEntries(
+          Object.entries(response.headers)
+            .filter(([, value]) => value !== undefined)
+            .map(([name, value]) => [name, Array.isArray(value) ? value.join(", ") : value]),
+        );
+        resolve(new Response(Buffer.concat(chunks), {
+          status: response.statusCode,
+          headers,
+        }));
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 /** Drives the full OIDC dance against the mock IdP. */
-async function login(as, jar) {
+async function login(as, jar, ca) {
   const start = await req(jar, "/api/auth/login");
   assert.equal(start.status, 302, "login redirects to IdP");
   const authorizeUrl = new URL(start.headers.get("location"), BASE);
   assert.equal(authorizeUrl.origin, ISSUER);
   assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
   if (as) authorizeUrl.searchParams.set("as", as);
-  const idpRes = await fetch(authorizeUrl, { redirect: "manual" });
+  const idpRes = await fetchIdp(authorizeUrl, ca);
   jar.absorb(idpRes);
   const callbackUrl = idpRes.headers.get("location");
   assert.ok(callbackUrl.includes("/api/auth/callback"));
@@ -331,9 +356,10 @@ async function waitForApp() {
 async function main() {
   const fakeBin = writeFakeCli();
   const tlsDir = mkdtempSync(join(tmpdir(), "ag-e2e-tls-"));
-  const idpServer = await startIdp();
+  const tls = createTestTls(tlsDir);
+  const idpServer = await startIdp(tls);
   const pdp = await startPdp();
-  const redis = await startRedisRest(tlsDir);
+  const redis = await startRedisRest(tls);
 
   const env = {
     ...process.env,
@@ -349,7 +375,7 @@ async function main() {
     AGENTGUARD_RATE_LIMIT_STORE: "redis",
     AGENTGUARD_RATE_LIMIT_REDIS_URL: REDIS_URL,
     AGENTGUARD_RATE_LIMIT_REDIS_TOKEN: REDIS_TOKEN,
-    NODE_EXTRA_CA_CERTS: redis.certPath,
+    NODE_EXTRA_CA_CERTS: tls.certPath,
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
     AGENTGUARD_TRUST_PROXY_HEADERS: "1",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
@@ -391,7 +417,7 @@ async function main() {
 
     // --- 2. viewer login -------------------------------------------------
     const viewer = new Jar();
-    await login(null, viewer);
+    await login(null, viewer, tls.cert);
     assert.match(viewer.header(), /ag_session=/, "session cookie issued");
 
     const viewerRoot = await req(viewer, "/");
@@ -480,7 +506,7 @@ async function main() {
 
     // --- 5. admin login + delegation --------------------------------------
     const admin = new Jar();
-    await login("admin", admin);
+    await login("admin", admin, tls.cert);
     const okDelegate = await req(admin, "/api/delegate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

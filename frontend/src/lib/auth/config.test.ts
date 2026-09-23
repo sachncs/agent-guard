@@ -58,6 +58,23 @@ describe("auth config", () => {
     assert.equal(cfg.config.trustProxyHeaders, false);
   });
 
+  it("requires an HTTPS OIDC issuer in production", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_OIDC_ISSUER = "http://idp.example";
+    try {
+      const cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /OIDC_ISSUER.*HTTPS/);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      resetAuthConfigCache();
+    }
+  });
+
   it("requires Redis sessions for production mode", () => {
     for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
