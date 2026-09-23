@@ -215,6 +215,18 @@ impl DecisionCache {
     ) -> std::result::Result<Self, String> {
         let capacity = std::num::NonZeroUsize::new(config.capacity)
             .ok_or_else(|| "cache capacity must be greater than zero".to_owned())?;
+        if std::time::Instant::now()
+            .checked_add(config.allow_ttl)
+            .is_none()
+        {
+            return Err("allow cache TTL exceeds the monotonic clock range".to_owned());
+        }
+        if std::time::Instant::now()
+            .checked_add(config.deny_ttl)
+            .is_none()
+        {
+            return Err("deny cache TTL exceeds the monotonic clock range".to_owned());
+        }
         Ok(Self {
             config,
             clock,
@@ -229,8 +241,9 @@ impl DecisionCache {
     /// Construct a cache with an already validated configuration.
     ///
     /// # Panics
-    /// Panics when `config.capacity` is zero. Use [`Self::try_new`] when the
-    /// value comes from application configuration or another fallible input.
+    /// Panics when the capacity is zero or a TTL exceeds the monotonic clock
+    /// range. Use [`Self::try_new`] when values come from application
+    /// configuration or another fallible input.
     pub fn new(config: CacheConfig, clock: Arc<dyn Clock>) -> Self {
         Self::try_new(config, clock).expect("DecisionCache capacity must be greater than zero")
     }
@@ -534,6 +547,19 @@ mod tests {
             .err()
             .expect("zero capacity should return a configuration error");
         assert_eq!(error, "cache capacity must be greater than zero");
+    }
+
+    #[test]
+    fn try_new_rejects_ttl_outside_monotonic_clock_range() {
+        let clock: Arc<dyn Clock> = Arc::new(MockClock::new());
+        let config = CacheConfig {
+            allow_ttl: Duration::MAX,
+            ..CacheConfig::default()
+        };
+        let error = DecisionCache::try_new(config, clock)
+            .err()
+            .expect("unrepresentable TTL should return a configuration error");
+        assert_eq!(error, "allow cache TTL exceeds the monotonic clock range");
     }
 
     #[test]
