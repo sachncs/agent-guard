@@ -2,14 +2,14 @@
 import Docs from '@/layouts/docs.astro';
 import { Content as Guide } from '../../../../docs/reference.md';
 const base = import.meta.env.BASE_URL;
-const hasGeneratedRustdoc = import.meta.env.PUBLIC_AGENTGUARD_RUSTDOC === 'true';
+const hasGeneratedReference = import.meta.env.PUBLIC_AGENTGUARD_REFERENCE === 'true';
 ---
 <Docs title="API and reference" description="Versioned reference entry points for Rust, TypeScript, CLI, HTTP, configuration, and protobuf.">
   <Guide />
-  <h2>Generated Rust API</h2>
-  {hasGeneratedRustdoc ? (
-    <p>The API reference below is generated from the same commit as this documentation site: <a href={`${base}reference/rustdoc/agentguard_core/index.html`}>core</a>, <a href={`${base}reference/rustdoc/agentguard_server/index.html`}>server</a>, <a href={`${base}reference/rustdoc/agentguard/index.html`}>CLI</a>, <a href={`${base}reference/rustdoc/agentguard_auth/index.html`}>identity</a>, <a href={`${base}reference/rustdoc/agentguard_policy/index.html`}>policy operations</a>, and <a href={`${base}reference/rustdoc/agentguard_telemetry/index.html`}>telemetry</a>.</p>
+  <h2>Generated API artifacts</h2>
+  {hasGeneratedReference ? (
+    <p>Browse the <a href={`${base}reference/generated/`}>version-matched API artifact index</a> for Rustdoc, TypeScript declarations, CLI help, and protobuf source/descriptor generated from the same revision as this documentation.</p>
   ) : (
-    <p>Generate the version-matched Rust API locally with <code>cargo doc --workspace --no-deps --open</code>. The published site includes browsable Rust API documentation for its exact source revision.</p>
+    <p>Generate Rustdoc with <code>cargo doc --workspace --no-deps --open</code>, TypeScript declarations with <code>pnpm --filter agentguard build</code>, and the protobuf descriptor with <code>protoc</code>. The published site combines these outputs with CLI help from its exact source revision.</p>
   )}
 </Docs>

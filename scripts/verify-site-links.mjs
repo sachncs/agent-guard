@@ -55,7 +55,7 @@ const authoredHtml = walk(siteRoot)
   .filter((file) => file.endsWith(".html"))
   // Rustdoc owns its generated navigation, JavaScript templates, and encoded
   // implementation anchors; validate its published crate entry points in
-  // stage-rustdoc.mjs and validate links into it from authored site pages here.
+  // stage-api-reference.mjs and validate links into it from authored site pages here.
   .filter((file) => !relative(siteRoot, file).split(sep).includes("rustdoc"));
 
 for (const sourceFile of authoredHtml) {

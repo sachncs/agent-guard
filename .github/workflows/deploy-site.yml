@@ -7,6 +7,8 @@ on:
       - "site/**"
       - "docs/**"
       - "crates/**"
+      - "typescript/agentguard/**"
+      - "pnpm-lock.yaml"
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
@@ -40,7 +42,7 @@ jobs:
           version: 11.22.0
           runtime: node@22.19.0
           cache: true
-          cache-dependency-path: site/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.89.0
@@ -50,8 +52,28 @@ jobs:
         with:
           shared-key: site-rustdoc
 
+      - name: Install TypeScript SDK dependencies
+        run: pnpm install --filter agentguard --frozen-lockfile
+
+      - name: Generate TypeScript declarations
+        run: pnpm --filter agentguard build
+
       - name: Generate version-matched Rust API docs
         run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
+      - name: Build reference CLI binaries
+        run: cargo build --locked -p agentguard -p agentguard-server
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
+
+      - name: Generate CLI and protobuf references
+        run: |
+          mkdir -p target/api-reference
+          target/debug/agentguard --help > target/api-reference/agentguard-cli-help.txt
+          target/debug/agentguard-server --help > target/api-reference/agentguard-server-help.txt
+          protoc --descriptor_set_out=target/api-reference/agentguard.pb \
+            --include_imports crates/agentguard-server/proto/agentguard.proto
 
       - name: Install dependencies
         working-directory: site
@@ -60,11 +82,11 @@ jobs:
       - name: Build and check documentation site
         working-directory: site
         env:
-          PUBLIC_AGENTGUARD_RUSTDOC: "true"
+          PUBLIC_AGENTGUARD_REFERENCE: "true"
         run: pnpm check && pnpm build
 
       - name: Stage generated API reference
-        run: node scripts/stage-rustdoc.mjs
+        run: node scripts/stage-api-reference.mjs
 
       - name: Verify all published site links
         run: node scripts/verify-site-links.mjs site/dist

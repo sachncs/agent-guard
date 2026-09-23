@@ -2,8 +2,9 @@
 
 This page is the stable entry point for the public interfaces. The canonical
 documentation site's API page links to Rustdoc generated from the exact source
-revision being deployed. TypeScript declarations are built from the package
-source; protobuf and HTTP contracts remain checked in and versioned here.
+revision being deployed, plus generated TypeScript declarations, CLI help, and
+protobuf source/descriptor artifacts. HTTP and configuration contracts remain
+in the versioned guides linked below.
 
 | Surface | Reference | Scope |
 | --- | --- | --- |
@@ -27,10 +28,10 @@ protoc --descriptor_set_out=/tmp/agentguard.pb \
 ```
 
 Release CI checks Rustdoc and protobuf generation without opening a browser.
-The site deployment rebuilds Rustdoc whenever workspace Rust sources or the
-toolchain lock change, then publishes it with the matching documentation
-revision. The TypeScript package emits declarations from package source during
-its build. HTTP clients should treat
+The site deployment rebuilds Rustdoc, TypeScript declarations, CLI help, and
+the protobuf descriptor whenever relevant workspace sources or toolchain
+inputs change, then publishes them with the matching documentation revision.
+HTTP clients should treat
 non-2xx responses, malformed responses, timeouts, and `decision: false` as
 non-execution conditions. The repository-defined gRPC endpoint is plaintext
 unless the embedding deployment supplies a protected network boundary; it is
