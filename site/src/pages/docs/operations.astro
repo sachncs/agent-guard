@@ -1,28 +1,7 @@
 ---
-import Docs from "@/layouts/docs.astro";
+import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/operations/runbook.md';
 ---
-<Docs title="Operations and troubleshooting" active="Operations">
-  <div class="doc-title"><span class="section-kicker">OPERATE / DIAGNOSE</span><h1>Understand every failure.</h1><p>Start with service health, then identity, then the policy decision. Keep the original request and decision together when investigating.</p></div>
-  <h2>Check the service</h2>
-  <pre class="doc-code"><code>curl http://127.0.0.1:8443/healthz
-curl http://127.0.0.1:8443/readyz
-curl http://127.0.0.1:8443/metrics</code></pre>
-  <p>Health and readiness are different from an authorization outcome. A healthy server can correctly deny a request. Capture the HTTP status and response body before changing policies.</p>
-  <h2>Validate the local store</h2>
-  <pre class="doc-code"><code>agentguard validate
-agentguard doctor
-agentguard log tail --n 20</code></pre>
-  <p>Run these commands against the same store and audit paths as the service. Use the global <code>--store</code> and <code>--audit</code> options when your working directory differs.</p>
-  <h2>Common symptoms</h2>
-  <details><summary>Every request returns a deny</summary><p>Check the exact Cedar type names and action IDs. An action for the starter schema looks like ToolCall::repo_read. Policies that reference attributes or group membership need the corresponding entities. Missing data can prevent a permit from matching.</p></details>
-  <details><summary>The request returns 401</summary><p>Verify the bearer credential and server authentication configuration. Authentication establishes access to the PDP; a valid credential does not automatically authorize the requested action.</p></details>
-  <details><summary>A batch request is rejected</summary><p>The endpoint caps each batch at 100 evaluations. Split larger batches, and send the documented evaluations array and evaluation_semantics value.</p></details>
-  <details><summary>The server refuses a public listener</summary><p>Review the listener scheme and authentication configuration. Use loopback for the local tutorial. Unauthenticated public exposure is restricted by the server; consult the deployment reference for your boundary.</p></details>
-  <h2>Investigate audit integrity</h2>
-  <pre class="doc-code"><code>agentguard audit verify --secret-file /path/to/chain-secret
-agentguard audit export --format ecs</code></pre>
-  <p>Verification requires the original chain secret. Preserve the original log and secret when investigating a mismatch; do not rewrite records to make verification pass. Protect exported decisions because they can contain application context.</p>
-  <h2>Incident workflow</h2>
-  <p>Stop the affected tool execution path, preserve requests and audit records, identify the policy and identity that allowed the action, and reproduce the decision with a minimal request. Review a narrowed policy against both expected allows and expected denies before rollout.</p>
-  <p>For operational details and implementation notes, see the <a class="inline-link" href="https://github.com/sachncs/agent-guard/blob/master/docs/operations/runbook.md">repository runbook ↗</a>.</p>
+<Docs title="Operations runbook" description="Operate, observe, and recover an AgentGuard deployment using explicit runbooks.">
+  <Guide />
 </Docs>

@@ -1,21 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/backups.md';
 ---
-<Docs title="Backups & retention">
-  <div class="doc-title">
-    <span class="section-kicker">OPERATE / EVIDENCE</span>
-    <h1>Back up what proves.</h1>
-    <p>Hash chaining detects tampering; it does not replace encrypted backups, retention, or restore testing.</p>
-  </div>
-  <h2>Preserve</h2>
-  <p>Back up the reviewed policy and schema, active audit JSONL, every timestamped rotation segment, and each matching hidden <code>.chainid</code> sidecar. Include deployment manifests, image digests, and secret-manager metadata. For Kubernetes, snapshot the entire audit PVC.</p>
-  <h2>Verify a backup</h2>
-  <p>Coordinate or quiesce writes, restore the complete audit directory with filenames intact, and verify it with the matching chain secret:</p>
-  <pre><code>agentguard audit verify \
-  --audit /backup/agentguard/.audit/decisions.jsonl \
-  --secret-file /backup/agentguard/.chain-secret</code></pre>
-  <p>Verification checks the active log together with its timestamped rotation segments. A segment or sidecar copied alone is not a complete backup. Test an isolated restore at least once per release cycle.</p>
-  <h2>Retention and erasure</h2>
-  <p>Set retention according to organizational and legal requirements. Treat <code>audit erase</code> as destructive: it changes records and invalidates the original HMAC chain. Preserve pre-operation evidence, obtain approval, and verify the resulting chain.</p>
-  <p>See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/backups.md">versioned backup and restore guide ↗</a>.</p>
+<Docs title="Backups and retention" description="Back up and restore AgentGuard policy, audit, and cryptographic state.">
+  <Guide />
 </Docs>

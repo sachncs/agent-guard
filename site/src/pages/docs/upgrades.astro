@@ -1,6 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/upgrades.md';
 ---
-<Docs title="Upgrades & rollback"><div class="doc-title"><span class="section-kicker">OPERATE / RELEASE</span><h1>Roll forward with an exit.</h1><p>Deploy immutable image tags, verify readiness and decisions, and keep a tested rollback target.</p></div><pre><code>kubectl -n agentguard apply -k deploy/k8s
-kubectl -n agentguard rollout status deployment/agentguard-pdp
-kubectl -n agentguard rollout status deployment/agentguard-console</code></pre><p>Run allow, deny, audit, and console-to-PDP checks after rollout. To recover, use <code>kubectl rollout undo</code>, restore the policy bundle if needed, and preserve image digests, logs, diffs, and audit exports. Never delete the audit PVC. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/upgrades.md">upgrade guide ↗</a>.</Docs>
+<Docs title="Upgrades and rollback" description="Safely upgrade AgentGuard releases and recover using a tested rollback path.">
+  <Guide />
+</Docs>

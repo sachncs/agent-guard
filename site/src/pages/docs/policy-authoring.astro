@@ -1,6 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/policy-authoring.md';
 ---
-<Docs title="Policy authoring"><div class="doc-title"><span class="section-kicker">AUTHOR / CEDAR</span><h1>Make authority explicit.</h1><p>Write the narrowest permit, validate it, replay representative requests, and review the blast radius.</p></div><h2>Authoring loop</h2><ol><li>Define entities and actions in the schema.</li><li>Constrain principal, action, resource, and trusted context.</li><li>Validate and simulate both allow and deny paths.</li><li>Preserve the prior bundle for rollback.</li></ol><pre><code>agentguard init --store .agentguard
-agentguard validate --store .agentguard
-agentguard sim --store .agentguard --request request.json</code></pre><p>No matching permit is deny. Entity attributes come from the supplied Cedar entity set. Delegation tokens are verification primitives; the tool adapter must enforce scope before execution. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/policy-authoring.md">full guide ↗</a>.</Docs>
+<Docs title="Policy authoring" description="Write, validate, simulate, and safely roll back AgentGuard Cedar policies.">
+  <Guide />
+</Docs>

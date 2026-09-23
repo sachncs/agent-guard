@@ -1,29 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
-import Snippet from '@/components/product/Snippet.astro';
+import { Content as Guide } from '../../../../docs/production.md';
 ---
-<Docs title="Production deployment" description="Deploy and operate AgentGuard with the supported Docker and Kubernetes topology.">
-  <div class="doc-title"><span class="section-kicker">OPERATE / PRODUCTION</span><h1>Deploy a boundary you can trust.</h1><p>Docker and Kubernetes are the supported reference path for the AgentGuard PDP and console. This guide states the operating contract, not just the happy path.</p></div>
-  <h2>Reference topology</h2>
-  <p>The PDP owns policy evaluation and audit persistence. The console is an OIDC-protected operator surface: its simulator calls the PDP, while audit and delegation workflows use the configured local CLI. Keep both services private behind a TLS ingress or service mesh.</p>
-  <div class="docs-table"><div><b>PDP</b><span>One replica in the shipped reference base; API-key protected decision routes, policy files, and file-backed audit log.</span></div><div><b>Console</b><span>Next.js service with fail-closed OIDC, viewer/admin RBAC, and Redis-compatible shared rate limiting for horizontal scale.</span></div><div><b>State</b><span>Reviewed policy ConfigMap, chain secret, API-key store, console secrets, and a ReadWriteOnce audit volume.</span></div></div>
-  <h2>Build immutable images</h2>
-  <Snippet title="Release images" code={'export VERSION=0.2.0\nexport REGISTRY=registry.example.com/security\ndocker build --pull -t $REGISTRY/agentguard-server:$VERSION .\ndocker build --pull -t $REGISTRY/agentguard-console:$VERSION -f frontend/Dockerfile .\ndocker push $REGISTRY/agentguard-server:$VERSION\ndocker push $REGISTRY/agentguard-console:$VERSION'} />
-  <p>Pin both images to the same release tag. Scan them before promotion and do not deploy <code>latest</code>. The images run as non-root users; Kubernetes bounds termination with a 30-second grace period while the server drains in-flight requests.</p>
-  <p>The published PDP image defaults to <code>AGENTGUARD_AUTH=apikey:/etc/agentguard/keys/keys.json</code>. Mount a populated API-key Secret before sending evaluation traffic. Set <code>AGENTGUARD_AUTH=disabled</code> only for isolated local development or trusted smoke tests; the binary's development default does not override this safer container default.</p>
-  <h2>Required secrets and policy state</h2>
-  <p>Create the chain secret, serialized Argon2 API-key store, and OIDC/session/Redis console settings through the cluster secret manager. Never commit raw credentials or put them in a ConfigMap. The checked-in policy ConfigMap has a valid starter schema and an empty deny-by-default policy; replace both with reviewed schema and policies before rollout.</p>
-  <h2>Deploy and verify</h2>
-  <Snippet title="Apply the reference base" code={'kubectl apply -k deploy/k8s\nkubectl -n agentguard rollout status deploy/agentguard-pdp\nkubectl -n agentguard rollout status deploy/agentguard-console'} />
-  <ol><li>Confirm <code>/healthz</code> is live and <code>/readyz</code> is ready only after policies and writable audit state are loaded.</li><li>Run an authenticated allow request and a representative deny request.</li><li>Confirm the audit file grows and verify it with <code>agentguard audit verify</code>.</li><li>Exercise console login, viewer/admin boundaries, PDP failure handling, and rate limiting.</li><li>Terminate and restart the PDP; confirm graceful shutdown and readiness recovery.</li></ol>
-  <h2>Scaling boundary</h2>
-  <p>The reference manifests use one PDP and one console replica. Configure the Redis-compatible console limiter before scaling the console. Multi-replica PDP operation is outside the shipped production contract until a coordinated append-only audit backend replaces the file-backed writer.</p>
-  <h2>Health and failure behavior</h2>
-  <p><code>/healthz</code> is liveness only. <code>/readyz</code> requires a loaded policy store and a healthy configured audit writer. Policy evaluation plus audit appends/fsync run on a bounded blocking pool (four concurrent PDP work items); saturation returns HTTP 503 or gRPC <code>UNAVAILABLE</code> rather than starving async workers. A permanent audit failure returns an error and withdraws readiness. A denial, timeout, malformed response, or unavailable PDP must never become implicit permission.</p>
-  <p>On startup the server verifies the complete chained audit history, including timestamped rotations, before accepting writes. If any record is malformed, tampered, or disconnected, startup refuses the store. Restore the last trusted audit bundle or quarantine the damaged evidence before restarting; do not delete the tail to force readiness.</p>
-  <h2>Audit key changes</h2>
-  <p>Do not replace the chain secret in place. Startup verifies all matching rotation segments with the configured key, so key rotation requires a new audit path and a separately retained old chain, segments, sidecars, and secret. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/operations/runbook.md">audit key rotation runbook ↗</a>.</p>
-  <h2>Backups and rollback</h2>
-  <p>Back up the audit file, its <code>.chainid</code> sidecar, chain secret, API-key store, and exact policy bundle together. Test restore in an isolated namespace. For a failed release, keep state and secrets, run <code>kubectl rollout undo</code>, wait for readiness, and repeat the allow/deny/audit smoke test.</p>
-  <p>Detailed versioned runbooks: <a href="https://github.com/sachncs/agent-guard/blob/master/docs/kubernetes.md">Kubernetes operations ↗</a>, <a href="https://github.com/sachncs/agent-guard/blob/master/docs/console.md">console deployment ↗</a>, and <a href="https://github.com/sachncs/agent-guard/blob/master/docs/incident-response.md">incident response ↗</a>.</p>
+<Docs title="Production deployment" description="Supported deployment contract and production readiness requirements for AgentGuard.">
+  <Guide />
 </Docs>

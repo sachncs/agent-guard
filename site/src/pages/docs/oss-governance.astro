@@ -1,4 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/oss-governance.md';
 ---
-<Docs title="OSS governance"><div class="doc-title"><span class="section-kicker">PROJECT / GOVERNANCE</span><h1>Open source with a release gate.</h1><p>Contributions, security reports, compatibility, and release evidence all have an explicit path.</p></div><h2>Contribute</h2><p>Follow <a href="https://github.com/sachncs/agent-guard/blob/master/CONTRIBUTING.md">CONTRIBUTING.md ↗</a>, run clean-checkout checks, and include tests, docs, and changelog notes for public behavior changes.</p><h2>Security and support</h2><p>Use the private vulnerability reporting path in <a href="https://github.com/sachncs/agent-guard/blob/master/SECURITY.md">SECURITY.md ↗</a>. Usage questions belong in Discussions or question issues.</p><h2>Release evidence</h2><p>The release workflow runs install, lint, type, Rust, site, container, and Kubernetes gates. A release is not production-ready while a documented limitation invalidates the supported contract. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/oss-governance.md">governance guide ↗</a>.</Docs>
+<Docs title="Open-source governance" description="Contribution, security, compatibility, ownership, and release policies for AgentGuard.">
+  <Guide />
+</Docs>

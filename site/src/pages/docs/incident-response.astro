@@ -1,10 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/incident-response.md';
 ---
-<Docs title="Incident response" description="Respond to AgentGuard authorization, identity, policy, and audit incidents.">
-  <div class="doc-title"><span class="section-kicker">OPERATE / INCIDENTS</span><h1>Contain first. Verify evidence.</h1><p>AgentGuard is one control in a larger security response. Stop unsafe execution paths before investigating the decision trail.</p></div>
-  <h2>First response</h2><ol><li>Stop or isolate the affected agent and revoke upstream credentials.</li><li>Preserve the audit file, chain sidecar, chain secret, policy bundle, and deployment manifest.</li><li>Record the release, policy version, principal, action, resource, and time window.</li><li>Inspect health, readiness, reload, authorization-error, and audit-append signals.</li></ol>
-  <h2>Evidence checks</h2><p>Verify a chained log offline with <code>agentguard audit verify</code>. Treat a chain failure, missing checkpoint, or unexpected policy snapshot as an evidence-integrity incident. Do not “repair” the original records in place.</p>
-  <h2>Common failure modes</h2><div class="docs-table"><div><b>Audit append failure</b><span>The PDP returns an error and must not silently authorize. Preserve the failure and inspect storage permissions/capacity.</span></div><div><b>Policy reload failure</b><span>The last known-good snapshot remains active. Fix and validate the complete bundle before retrying.</span></div><div><b>Delegation misuse</b><span>Verify signature, audience, expiry, scope, parent authority, and sender binding in the integration; a valid signature alone is insufficient.</span></div></div>
-  <p>Use the full <a href="https://github.com/sachncs/agent-guard/blob/master/docs/incident-response.md">incident-response runbook ↗</a> for recovery and reporting.</p>
+<Docs title="Incident response" description="Contain authorization incidents and preserve trustworthy evidence.">
+  <Guide />
 </Docs>

@@ -1,28 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/identity.md';
 ---
-<Docs title="Identity & scoped delegation">
-  <div class="doc-title">
-    <span class="section-kicker">IDENTITY / TRUST</span>
-    <h1>Authenticate. Bind. Authorize.</h1>
-    <p>Credentials establish a constrained caller identity; Cedar policies decide access to actions and resources.</p>
-  </div>
-  <h2>Standalone PDP authentication</h2>
-  <p>The server supports disabled authentication for local development and API-key bearer validation. ApiKeyStore persists Argon2id secret hashes with expiry and revocation state. Use the operator CLI below to provision production keys.</p>
-  <p>HTTP and gRPC evaluation require the <code>authorize</code> scope (or <code>*</code>) and a key bound to one User or Agent. The submitted subject must match. An optional key tenant is injected as trusted request/audit metadata, not as a Cedar policy attribute; tenant isolation must still be encoded with trusted entities and policy inputs. A conflicting caller-supplied <code>context.tenant_id</code> is rejected. Legacy unbound keys still load but cannot access evaluation routes; reissue them as bound keys. <code>metrics:read</code> gates metrics. Scopes gate endpoint capabilities and do not replace Cedar policy.</p>
-  <pre><code>agentguard api-key create --key-store ./keys.json \
-  --subject-type Agent --subject-id research --tenant-id tenant-a \
-  --scope authorize --ttl-seconds 2592000
-agentguard api-key list --key-store ./keys.json
-agentguard api-key revoke --key-store ./keys.json KEY_ID</code></pre>
-  <p>The CLI prints the raw secret once, after persisting its hash. Listing omits both raw secrets and hashes. Protect the file as a secret and mount it read-only into the PDP.</p>
-  <p>The standalone server polls key-store content and applies valid rotations or revocations without a restart. Once new bytes are visible at the mounted path, they are checked every 250 ms; Kubernetes projection itself is eventually consistent and depends on kubelet sync/cache settings. Mount Secret volumes as directories, not with <code>subPath</code>. Invalid intermediate JSON is logged and the last-known-good key set remains active until a valid update arrives.</p>
-  <h2>JWT and OIDC libraries</h2>
-  <p><code>agentguard-auth</code> provides JWT/JWKS validation and OIDC discovery as library APIs, not standalone server authentication modes. Applications must map validated claims into a User or Agent identity. The JWT implementation supports EdDSA verification; it does not imply support for every algorithm named in data types.</p>
-  <h2>DPoP and workload identity</h2>
-  <p>DpopVerifier checks EdDSA proof signatures, the bound key thumbprint, HTTP method and URI, access-token hash, time, and replay state. With the <code>spiffe</code> feature, SpiffeValidator fetches an X.509-SVID using the SPIFFE Workload API and checks trust domains. Neither is automatically wired into standalone server authentication.</p>
-  <h2>Console OIDC</h2>
-  <p>The optional frontend implements OIDC Authorization Code + PKCE sign-in. Signed sessions carry viewer/admin roles. Admin values must be configured explicitly; missing mandatory OIDC/session configuration returns 503.</p>
-  <h2 id="delegation">Delegation is a separate enforcement boundary</h2>
-  <p>DelegationSigner mints Ed25519 JWS tokens with issuer, subject, audience, expiry, allowed actions, resource patterns, and optional actor/constraint claims. DelegationVerifier checks signature, key ID, algorithm, time, and audience. A consuming adapter must authorize the parent, verify the grant, enforce action/resource/constraint scope, apply Cedar policy, and implement any required revocation and sender binding. AgentGuard does not provide OAuth token exchange or delegation-token revocation.</p>
+<Docs title="Identity and delegation" description="Understand identity validation and delegation primitives—and the enforcement boundary.">
+  <Guide />
 </Docs>

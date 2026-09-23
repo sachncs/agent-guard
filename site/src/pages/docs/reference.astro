@@ -1,21 +1,7 @@
 ---
 import Docs from '@/layouts/docs.astro';
+import { Content as Guide } from '../../../../docs/reference.md';
 ---
-<Docs title="API reference map">
-  <div class="doc-title">
-    <span class="section-kicker">REFERENCE / PUBLIC SURFACES</span>
-    <h1>Find the contract.</h1>
-    <p>Each public surface has one checked-in source of truth and a release-time documentation path.</p>
-  </div>
-  <div class="docs-table">
-    <div><b>Rust</b><span><a href="https://github.com/sachncs/agent-guard/tree/master/crates">Core, policy, server, and telemetry crates ↗</a></span></div>
-    <div><b>TypeScript</b><span><a href="https://github.com/sachncs/agent-guard/tree/master/typescript/agentguard">Node.js SDK source ↗</a></span></div>
-    <div><b>CLI</b><span><a href="https://github.com/sachncs/agent-guard/blob/master/crates/agentguard-cli/src/main.rs">Command parser ↗</a></span></div>
-    <div><b>HTTP</b><span><a href="https://github.com/sachncs/agent-guard/blob/master/crates/agentguard-server/src/authzen.rs">AuthZEN evaluation ↗</a></span></div>
-    <div><b>gRPC</b><span><a href="https://github.com/sachncs/agent-guard/blob/master/crates/agentguard-server/proto/agentguard.proto">Protobuf contract ↗</a></span></div>
-    <div><b>Configuration</b><span><a href={`${import.meta.env.BASE_URL}docs/configuration/`}>Runtime settings</a></span></div>
-  </div>
-  <h2>Generated reference artifacts</h2>
-  <p>Release CI generates Rust API docs, TypeScript declarations, and a protobuf descriptor from these sources. Run <code>cargo doc --workspace --no-deps</code>, <code>pnpm --filter agentguard build</code>, and <code>protoc --descriptor_set_out=/tmp/agentguard.pb --include_imports crates/agentguard-server/proto/agentguard.proto</code> locally when reviewing a public interface change.</p>
-  <p>Treat non-2xx responses, malformed responses, timeouts, and <code>decision: false</code> as non-execution conditions. See the <a href="https://github.com/sachncs/agent-guard/blob/master/docs/reference.md">versioned reference guide ↗</a>.</p>
+<Docs title="API and reference" description="Versioned reference entry points for Rust, TypeScript, CLI, HTTP, configuration, and protobuf.">
+  <Guide />
 </Docs>

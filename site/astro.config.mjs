@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
+import { remarkDocLinks } from './remark-doc-links.mjs';
 
 export default defineConfig({
   site: 'https://sachncs.github.io',
@@ -10,6 +11,9 @@ export default defineConfig({
   output: 'static',
   trailingSlash: 'always',
   integrations: [react(), sitemap()],
+  markdown: {
+    remarkPlugins: [remarkDocLinks],
+  },
   vite: {
     plugins: [tailwindcss()],
     ssr: {
