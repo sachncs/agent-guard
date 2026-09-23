@@ -143,6 +143,7 @@ async function startIdp(tls) {
 
 async function startPdp() {
   let responseMode = "decision";
+  let lastEvaluation;
   const server = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/readyz") {
       res.writeHead(responseMode === "unavailable" ? 503 : 200).end();
@@ -167,6 +168,7 @@ async function startPdp() {
       }
 
       const evaluation = JSON.parse(body);
+      lastEvaluation = evaluation;
       const allowed = evaluation.resource?.id !== "forbidden";
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
@@ -182,6 +184,9 @@ async function startPdp() {
     server,
     setResponseMode(mode) {
       responseMode = mode;
+    },
+    lastEvaluation() {
+      return structuredClone(lastEvaluation);
     },
   };
 }
@@ -483,13 +488,20 @@ async function main() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        uid: "alice", tool: "web_search", resourceType: "Resource", resourceId: "docs",
+        uid: "research", principalType: "agent", tool: "repo_read",
+        resourceType: "Repository", resourceId: "demo",
+        args: { repo: "demo", session: { ip: "spoofed" } },
+        session: { ip: "127.0.0.1" },
       }),
     });
     assert.equal(allowRes.status, 200);
     const allowDecision = await allowRes.json();
     assert.equal(allowDecision.effect, "allow");
     assert.deepEqual(allowDecision.reasons, ["explicit permit"]);
+    assert.deepEqual(pdp.lastEvaluation().context, {
+      repo: "demo",
+      session: { ip: "127.0.0.1" },
+    }, "console flattens Cedar context args and prevents session spoofing");
 
     const denyRes = await req(viewer, "/api/authorize", {
       method: "POST",

@@ -5,6 +5,11 @@ platform teams. It is not an authorization engine: the simulator calls the
 PDP, audit/delegation routes call the local CLI, and every action still depends
 on the PDP and policy store being configured correctly.
 
+The simulator maps its `args` fields to top-level Cedar context attributes
+and sends `session` separately. The session object is authoritative if an
+argument is also named `session`; this keeps tool arguments from replacing
+session facts while matching the starter Cedar schema.
+
 ## Local development
 
 From a clean checkout:

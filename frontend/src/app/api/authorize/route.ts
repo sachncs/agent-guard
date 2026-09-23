@@ -66,7 +66,11 @@ export async function POST(request: Request) {
           : `ToolCall::${body.tool}`,
       },
       resource: { type: body.resourceType, id: body.resourceId },
-      context: { args: body.args, session: body.session },
+      // AuthZEN `context` is the Cedar context object itself. Tool args map
+      // onto its declared top-level attributes; keep session separate and
+      // authoritative so an args key can never impersonate trusted session
+      // facts.
+      context: { ...body.args, session: body.session },
     });
 
     // Explicit record construction instead of a cast: AuthZenDecision is an
