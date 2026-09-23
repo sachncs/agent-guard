@@ -196,8 +196,14 @@ jobs:
       - name: Validate console image entrypoint
         run: |
           docker run --rm --entrypoint /usr/local/bin/agentguard agentguard-console:ci --help
-          container=$(docker run --detach --publish 3000:3000 agentguard-console:ci)
+          container=$(docker run --detach --read-only --publish 3000:3000 agentguard-console:ci)
           trap 'docker rm --force "$container" >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            live=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/api/health/live || true)
+            if [ "$live" = "200" ]; then break; fi
+            sleep 1
+          done
+          test "$live" = "200"
           for attempt in $(seq 1 30); do
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/login || true)
             if [ "$status" = "503" ]; then exit 0; fi
