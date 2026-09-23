@@ -48,6 +48,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Watch the nested policy directory and root Cedar schema for changes, and
   surface runtime filesystem-watcher errors instead of silently dropping them;
   standalone startup now fails if watch registration is unavailable.
+- Resolve and validate a release tag before CI, run the reusable gate against
+  that exact ref, and publish from the same tested tag for manual and tag-push
+  releases.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

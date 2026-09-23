@@ -19,8 +19,10 @@
 ## Automated path
 
 Push a semantic-version tag such as `v0.3.0` after the checklist is reviewed.
-The `release.yml` workflow reuses the complete CI gate, validates the tag, and
-creates the GitHub release from the changelog. A manual dispatch can validate
-and publish an existing tag by supplying its exact value. The workflow does
-not build or publish mutable `latest` images; deploy the immutable image digest
-produced by the container pipeline through the Kubernetes change process.
+The `release.yml` workflow validates that the tag exists before starting the
+release gate, checks out that exact tag in every CI job, and publishes the same
+tag only after the gate succeeds. A manual dispatch can validate and publish an
+existing tag by supplying its exact value; the workflow does not test the
+dispatch branch as a substitute. The workflow does not build or publish mutable
+`latest` images; deploy the immutable image digest produced by the container
+pipeline through the Kubernetes change process.

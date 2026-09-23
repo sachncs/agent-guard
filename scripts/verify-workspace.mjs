@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import { isValidReleaseTag } from "./validate-release-tag.mjs";
 
 const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
 const sitePackage = JSON.parse(readFileSync("site/package.json", "utf8"));
 const siteWorkspace = readFileSync("site/pnpm-workspace.yaml", "utf8");
 const setup = readFileSync("scripts/setup.sh", "utf8");
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const release = readFileSync(".github/workflows/release.yml", "utf8");
 const consoleDockerfile = readFileSync("frontend/Dockerfile", "utf8");
 const failures = [];
 
@@ -22,6 +24,10 @@ const expectedBuilds = new Map([
   ["esbuild", "true"],
   ["sharp", "true"],
 ]);
+if (!release.includes('node scripts/validate-release-tag.mjs "$tag"')) {
+  failures.push("release workflow must use the tested semantic-version tag validator");
+}
+
 if (
   approvedBuilds.length !== expectedBuilds.size ||
   approvedBuilds.some(([name, allowed]) => expectedBuilds.get(name) !== allowed)
@@ -46,6 +52,29 @@ if (
   !ci.includes("--entrypoint /usr/local/bin/agentguard agentguard-console:ci --help")
 ) {
   failures.push("container CI must provide and verify the console image's shared CLI");
+}
+
+const checkoutCount = [...ci.matchAll(/uses: actions\/checkout@v5/g)].length;
+const refCount = [...ci.matchAll(/ref: \$\{\{ inputs\.checkout_ref \|\| github\.sha \}\}/g)].length;
+if (checkoutCount !== refCount || !ci.includes("checkout_ref:")) {
+  failures.push("every reusable CI checkout must honor its explicit tested ref");
+}
+if (
+  release.indexOf("resolve-tag:") < 0 ||
+  release.indexOf("resolve-tag:") > release.indexOf("release-gate:") ||
+  !release.includes("checkout_ref: ${{ needs.resolve-tag.outputs.tag }}") ||
+  !release.includes("ref: ${{ needs.resolve-tag.outputs.tag }}") ||
+  !release.includes('gh release create "$RELEASE_TAG"') ||
+  !release.includes('git rev-parse --verify --quiet "refs/tags/${tag}^{commit}"')
+) {
+  failures.push("release gate, tested checkout, and publication must use the same existing tag");
+}
+
+for (const tag of ["v0.3.0", "v1.2.3-rc.1", "v2.0.0+build.7", "v1.2.3-0A", "v1.2.3-alpha+build.01"]) {
+  if (!isValidReleaseTag(tag)) failures.push(`release tag validator rejected valid tag ${tag}`);
+}
+for (const tag of ["0.3.0", "v01.2.3", "v1.2", "v1x.2.3", "v1.2.3-01", "v1.2.3-", "v1.2.3+", "v1.2.3+build..7"]) {
+  if (isValidReleaseTag(tag)) failures.push(`release tag validator accepted invalid tag ${tag}`);
 }
 
 if (failures.length) {

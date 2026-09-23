@@ -5,6 +5,11 @@ on:
     branches: [master, main]
   pull_request:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: Git ref to validate when invoked by a release workflow
+        required: false
+        type: string
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -21,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: rustfmt
@@ -32,6 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: clippy
@@ -51,6 +60,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -63,6 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -112,6 +125,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: pnpm/setup@v3
         with:
           version: 11.22.0
@@ -147,6 +162,8 @@ jobs:
     needs: [test, ts]
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - name: Build PDP image
         run: docker build --pull --tag agentguard-server:ci .
       - name: Validate PDP image entrypoint
@@ -215,6 +232,8 @@ jobs:
     needs: [containers]
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - name: Build PDP image
         run: |
           docker build --pull --tag agentguard-server:smoke .
@@ -238,6 +257,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo install cargo-deny --locked
       # Bans + licenses + sources are blocking: we own the surface and
@@ -254,6 +275,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo install cargo-audit --locked
       # Hard gate: any unignored advisory fails CI.
@@ -274,6 +297,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: dtolnay/rust-toolchain@1.89.0
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
@@ -301,6 +326,8 @@ jobs:
       (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: nightly
@@ -325,6 +352,8 @@ jobs:
       MIRIFLAGS: "-Zmiri-disable-isolation"
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: nightly

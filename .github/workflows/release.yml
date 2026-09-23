@@ -14,36 +14,52 @@ permissions:
   contents: write
 
 jobs:
+  resolve-tag:
+    name: resolve and validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Resolve existing semantic-version tag
+        id: resolve
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${DISPATCH_TAG:-$REF_NAME}"
+          node scripts/validate-release-tag.mjs "$tag"
+          if ! git rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
+            echo "Release tag does not exist: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   release-gate:
     name: release gate
+    needs: resolve-tag
     uses: ./.github/workflows/ci.yml
+    with:
+      checkout_ref: ${{ needs.resolve-tag.outputs.tag }}
     permissions:
       contents: read
 
   publish:
     name: publish GitHub release
-    needs: release-gate
+    needs: [resolve-tag, release-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ needs.resolve-tag.outputs.tag }}
           fetch-depth: 0
-      - name: Resolve release tag
-        id: tag
-        env:
-          DISPATCH_TAG: ${{ inputs.tag }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          tag="${DISPATCH_TAG:-$REF_NAME}"
-          case "$tag" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "Expected a semantic version tag such as v0.3.0" >&2; exit 1 ;;
-          esac
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Create release from changelog
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           gh release create "$RELEASE_TAG" \
             --verify-tag \
