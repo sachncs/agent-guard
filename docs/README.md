@@ -22,6 +22,7 @@ repository and are reviewed with the implementation.
 - [Backups and retention](backups.md)
 - [Upgrades and rollback](upgrades.md)
 - [Incident response](incident-response.md)
+- [Security model and operating boundaries](security.md)
 - [Troubleshooting](troubleshooting.md)
 - [Operations runbook](operations/runbook.md)
 

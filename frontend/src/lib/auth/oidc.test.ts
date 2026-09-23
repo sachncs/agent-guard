@@ -151,7 +151,7 @@ describe("OIDC discovery", () => {
     let issuedAtOffsetSeconds = 0;
     let oversizedTokenResponse = false;
     let oversizedJwksResponse = false;
-    let tokenNonceOverride: string | undefined;
+    const tokenNonceOverride: { value?: string } = {};
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -167,7 +167,7 @@ describe("OIDC discovery", () => {
             headers: { "content-length": String(256 * 1024 + 1) },
           });
         }
-        const nonce = tokenNonceOverride ?? nonces[tokenCalls];
+        const nonce = tokenNonceOverride.value ?? nonces[tokenCalls];
         tokenCalls += 1;
         const claims = {
           sub: tokenSubject,
@@ -290,7 +290,7 @@ describe("OIDC discovery", () => {
     resetDiscoveryCache();
     const oversizedJwksLogin = await buildLoginRedirect(config, redirectUri);
     const oversizedJwksState = (await jwtVerify(oversizedJwksLogin.stateJwt, config.sessionSecret)).payload;
-    tokenNonceOverride = String(oversizedJwksState.nonce);
+    tokenNonceOverride.value = String(oversizedJwksState.nonce);
     oversizedJwksResponse = true;
     await assert.rejects(complete(oversizedJwksLogin, "oversized-jwks"), /ID token validation failed/);
     oversizedJwksResponse = false;
