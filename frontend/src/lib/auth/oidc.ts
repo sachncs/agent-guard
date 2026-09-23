@@ -289,6 +289,7 @@ export async function completeLogin(
     ({ payload: claims } = await jwtVerify(tokens.id_token, JWKS, {
       issuer: config.oidc.issuer,
       audience: config.oidc.clientId,
+      requiredClaims: ["exp", "iat", "sub"],
     }));
   } catch {
     throw new LoginFailed("ID token validation failed");
@@ -304,7 +305,14 @@ export async function completeLogin(
     throw new LoginFailed("nonce mismatch");
   }
   const sub = claims.sub;
-  if (typeof sub !== "string") throw new LoginFailed("ID token missing sub");
+  if (
+    typeof sub !== "string" ||
+    sub.length < 1 ||
+    sub.length > 255 ||
+    !/^[\x00-\x7F]+$/.test(sub)
+  ) {
+    throw new LoginFailed("ID token has an invalid sub claim");
+  }
 
   return {
     sub,

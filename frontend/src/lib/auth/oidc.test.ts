@@ -134,6 +134,9 @@ describe("OIDC discovery", () => {
     let jwksCalls = 0;
     let tokenAudience: string | string[] = config.oidc.clientId;
     let tokenAzp: string | undefined;
+    let tokenSubject = "oidc-user";
+    let includeIssuedAt = true;
+    let includeExpiration = true;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -146,17 +149,17 @@ describe("OIDC discovery", () => {
       if (url.pathname === "/token" && init?.method === "POST") {
         const nonce = nonces[tokenCalls++];
         const claims = {
-          sub: "oidc-user",
+          sub: tokenSubject,
           nonce,
           ...(tokenAzp === undefined ? {} : { azp: tokenAzp }),
         };
-        const idToken = await new SignJWT(claims)
+        let token = new SignJWT(claims)
           .setProtectedHeader({ alg: "RS256", kid: "oidc-test-key" })
           .setIssuer(config.oidc.issuer)
-          .setAudience(tokenAudience)
-          .setIssuedAt()
-          .setExpirationTime("5m")
-          .sign(privateKey);
+          .setAudience(tokenAudience);
+        if (includeIssuedAt) token = token.setIssuedAt();
+        if (includeExpiration) token = token.setExpirationTime("5m");
+        const idToken = await token.sign(privateKey);
         return Response.json({ id_token: idToken });
       }
       if (url.pathname === "/jwks") {
@@ -188,6 +191,27 @@ describe("OIDC discovery", () => {
     assert.equal((await complete(first, "first-code")).sub, "oidc-user");
     assert.equal((await complete(second, "second-code")).sub, "oidc-user");
 
+    const missingExpirationLogin = await buildLoginRedirect(config, redirectUri);
+    const missingExpirationState = (await jwtVerify(missingExpirationLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(missingExpirationState.nonce));
+    includeExpiration = false;
+    await assert.rejects(complete(missingExpirationLogin, "missing-exp"), /ID token validation failed/);
+    includeExpiration = true;
+
+    const missingIssuedAtLogin = await buildLoginRedirect(config, redirectUri);
+    const missingIssuedAtState = (await jwtVerify(missingIssuedAtLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(missingIssuedAtState.nonce));
+    includeIssuedAt = false;
+    await assert.rejects(complete(missingIssuedAtLogin, "missing-iat"), /ID token validation failed/);
+    includeIssuedAt = true;
+
+    const emptySubjectLogin = await buildLoginRedirect(config, redirectUri);
+    const emptySubjectState = (await jwtVerify(emptySubjectLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(emptySubjectState.nonce));
+    tokenSubject = "";
+    await assert.rejects(complete(emptySubjectLogin, "empty-sub"), /invalid sub claim/);
+    tokenSubject = "oidc-user";
+
     const multiAudienceLogin = await buildLoginRedirect(config, redirectUri);
     const multiAudienceState = (await jwtVerify(multiAudienceLogin.stateJwt, config.sessionSecret)).payload;
     nonces.push(String(multiAudienceState.nonce));
@@ -211,7 +235,7 @@ describe("OIDC discovery", () => {
     nonces.push(String(validAzpState.nonce));
     tokenAzp = config.oidc.clientId;
     assert.equal((await complete(validAzpLogin, "valid-azp")).sub, "oidc-user");
-    assert.equal(tokenCalls, 6);
+    assert.equal(tokenCalls, 9);
     assert.equal(jwksCalls, 1, "the cached jose resolver reuses the fetched key set");
   });
 });

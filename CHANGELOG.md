@@ -38,8 +38,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Validate the OIDC authorized-party claim, requiring it to match the console
-  client for multi-audience ID tokens and whenever `azp` is present.
+- Require OIDC ID-token `exp`, `iat`, and valid `sub` claims; validate the
+  authorized party against the console client for multi-audience tokens and
+  whenever `azp` is present.
 - Upgrade the optional SPIFFE Workload API client and HTTP TLS server adapter,
   remove the unused gRPC TLS feature, and eliminate the deferred RustSec
   advisory ignores so dependency auditing is blocking without exceptions.
