@@ -138,10 +138,17 @@ impl ApiKeyStore {
                 .map_err(|e| AuthError::Other(format!("read: {}", e)))?;
             let parsed: Vec<ApiKey> = serde_json::from_str(&text)
                 .map_err(|e| AuthError::Other(format!("parse: {}", e)))?;
-            parsed
-                .into_iter()
-                .map(|key| (key.id.clone(), key))
-                .collect()
+            let mut keys = HashMap::with_capacity(parsed.len());
+            for key in parsed {
+                validate_api_key_record(&key)?;
+                let id = key.id.clone();
+                if keys.insert(id.clone(), key).is_some() {
+                    return Err(AuthError::Other(format!(
+                        "duplicate API-key id in store: {id}"
+                    )));
+                }
+            }
+            keys
         } else {
             HashMap::new()
         };
@@ -254,9 +261,14 @@ impl ApiKeyStore {
         ttl: Option<Duration>,
         identity: Option<ApiKeyIdentity>,
     ) -> Result<(ApiKey, String)> {
-        if prefix.is_empty() || prefix.contains(':') {
+        if prefix.trim().is_empty() || prefix.trim() != prefix || prefix.contains(':') {
             return Err(AuthError::Other(
                 "API key prefix must be non-empty and must not contain ':'".into(),
+            ));
+        }
+        if scopes.iter().any(|scope| !valid_scope(scope)) {
+            return Err(AuthError::Other(
+                "API-key scopes must be non-empty and contain no whitespace".into(),
             ));
         }
         let id = uuid::Uuid::new_v4().to_string();
@@ -357,6 +369,65 @@ impl ApiKeyStore {
     }
 }
 
+/// Validate persisted records before they become the live authentication set.
+/// In particular, the PHC parameters control verification cost; an operator
+/// typo or corrupted snapshot must not introduce unbounded Argon2 work on the
+/// request path. Legacy hashes with lower costs remain readable.
+fn validate_api_key_record(key: &ApiKey) -> Result<()> {
+    if key.id.trim().is_empty() || key.id.trim() != key.id || key.id.contains(':') {
+        return Err(AuthError::Other(
+            "API-key id must be non-empty and contain no ':'".into(),
+        ));
+    }
+    if key.prefix.trim().is_empty() || key.prefix.trim() != key.prefix || key.prefix.contains(':') {
+        return Err(AuthError::Other(
+            "API-key prefix must be non-empty and contain no ':'".into(),
+        ));
+    }
+    if key.scopes.iter().any(|scope| !valid_scope(scope)) {
+        return Err(AuthError::Other(
+            "API-key scopes must be non-empty and contain no whitespace".into(),
+        ));
+    }
+    if let Some(identity) = &key.identity {
+        let normalized = ApiKeyIdentity::new(
+            identity.subject_type.clone(),
+            identity.subject_id.clone(),
+            identity.tenant_id.clone(),
+        )?;
+        if &normalized != identity {
+            return Err(AuthError::Other(
+                "API-key identity fields must be trimmed".into(),
+            ));
+        }
+    }
+
+    let hash = PasswordHash::new(&key.secret_hash)
+        .map_err(|_| AuthError::Other("API-key store contains an invalid password hash".into()))?;
+    let params = &hash.params;
+    let memory_kib = params.get_decimal("m");
+    let iterations = params.get_decimal("t");
+    let parallelism = params.get_decimal("p");
+    if hash.algorithm.as_str() != "argon2id"
+        || hash.version != Some(19)
+        || hash.salt.is_none()
+        || hash.hash.is_none()
+        || memory_kib.is_none_or(|value| !(8..=65_536).contains(&value))
+        || iterations.is_none_or(|value| !(1..=3).contains(&value))
+        || parallelism.is_none_or(|value| !(1..=4).contains(&value))
+        || memory_kib.unwrap_or_default() < parallelism.unwrap_or_default() * 8
+    {
+        return Err(AuthError::Other(
+            "API-key hash must use bounded Argon2id v19 parameters".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn valid_scope(scope: &str) -> bool {
+    !scope.trim().is_empty() && !scope.bytes().any(|byte| byte.is_ascii_whitespace())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,7 +471,9 @@ mod tests {
         let _guard = api_key_test_lock().lock();
         let store = ApiKeyStore::new();
         assert!(store.create("", vec![], None).is_err());
+        assert!(store.create(" ag ", vec![], None).is_err());
         assert!(store.create("bad:prefix", vec![], None).is_err());
+        assert!(store.create("ag", vec!["bad scope".into()], None).is_err());
         assert!(store
             .create("ag", vec![], Some(Duration::from_secs(u64::MAX)))
             .is_err());
@@ -458,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_replaces_keys_only_after_a_valid_snapshot_parses() {
+    fn reload_preserves_last_good_keys_when_replacement_snapshot_is_invalid() {
         let _guard = api_key_test_lock().lock();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("keys.json");
@@ -479,6 +552,28 @@ mod tests {
         assert!(live.reload_from_file(&path).is_err());
         live.verify(&raw)
             .expect("invalid snapshots retain the last known-good key set");
+
+        let mut malformed = admin.list();
+        malformed[0].secret_hash = "not-a-phc-hash".into();
+        std::fs::write(&path, serde_json::to_vec(&malformed).unwrap()).unwrap();
+        assert!(live.reload_from_file(&path).is_err());
+        live.verify(&raw)
+            .expect("malformed hash snapshots retain the last known-good key set");
+
+        let mut unbounded_cost = admin.list();
+        unbounded_cost[0].secret_hash = key.secret_hash.replace("m=65536", "m=65537");
+        assert_ne!(unbounded_cost[0].secret_hash, key.secret_hash);
+        std::fs::write(&path, serde_json::to_vec(&unbounded_cost).unwrap()).unwrap();
+        assert!(live.reload_from_file(&path).is_err());
+        live.verify(&raw)
+            .expect("unbounded hash-cost snapshots retain the last known-good key set");
+
+        let mut duplicate = admin.list();
+        duplicate.push(duplicate[0].clone());
+        std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+        assert!(live.reload_from_file(&path).is_err());
+        live.verify(&raw)
+            .expect("duplicate ids must not overwrite the active key set");
 
         admin.revoke(&key.id).unwrap();
         admin.save_to_file(&path).unwrap();

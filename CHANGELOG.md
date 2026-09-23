@@ -43,6 +43,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and whenever `azp` is present.
 - Surface shared-session revocation failures on logout instead of silently
   treating a failed Redis delete as a successful server-side revocation.
+- Validate API-key snapshots before replacing the active set; reject duplicate
+  ids, malformed records, and Argon2 parameters above the verifier's resource
+  budget while preserving the last-known-good snapshot.
 - Upgrade the optional SPIFFE Workload API client and HTTP TLS server adapter,
   remove the unused gRPC TLS feature, and eliminate the deferred RustSec
   advisory ignores so dependency auditing is blocking without exceptions.
