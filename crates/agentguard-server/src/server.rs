@@ -77,6 +77,27 @@ fn validate_audit_rotation(value: Option<&str>) -> Result<()> {
     }
 }
 
+fn validate_listener_security(
+    listener: &Listener,
+    grpc_listener: Option<std::net::SocketAddr>,
+    auth: &crate::listener::AuthConfig,
+    allow_loopback_bypass: bool,
+) -> Result<()> {
+    if let Some(addr) = grpc_listener {
+        validate_grpc_listener(addr)?;
+    }
+    if matches!(auth, crate::listener::AuthConfig::Disabled)
+        && listener.is_public()
+        && !allow_loopback_bypass
+    {
+        return Err(anyhow!(
+            "auth is disabled but the listener is not loopback-bound; \
+             set AGENTGUARD_AUTH=apikey:<path> or AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1"
+        ));
+    }
+    Ok(())
+}
+
 /// Run the server. Returns when the listener stops (e.g. on SIGTERM/SIGINT).
 /// In-flight requests are allowed to complete before the process exits.
 ///
@@ -91,9 +112,6 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
             return Err(anyhow!("AGENTGUARD_AUDIT_MAX_BYTES is not valid Unicode"));
         }
     }
-    if let Some(addr) = cfg.grpc_listener {
-        validate_grpc_listener(addr)?;
-    }
     // Validate TLS paths early so a bad tls://addr?cert=PATH&key=PATH
     // is reported at startup, not after the policy store loads and
     // the HTTP listener binds.
@@ -103,18 +121,20 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     let allow_loopback_bypass = std::env::var("AGENTGUARD_ALLOW_LOOPBACK_BYPASS")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    if matches!(cfg.auth, crate::listener::AuthConfig::Disabled) && cfg.listener.is_public() {
-        if allow_loopback_bypass {
-            tracing::warn!(
-                "AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1: serving unauthenticated decisions on a public listener; \
-                 this should only happen behind a trusted reverse proxy"
-            );
-        } else {
-            return Err(anyhow!(
-                "auth is disabled but the listener is not loopback-bound; \
-                 set AGENTGUARD_AUTH=apikey:<path> or AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1"
-            ));
-        }
+    validate_listener_security(
+        &cfg.listener,
+        cfg.grpc_listener,
+        &cfg.auth,
+        allow_loopback_bypass,
+    )?;
+    if matches!(cfg.auth, crate::listener::AuthConfig::Disabled)
+        && cfg.listener.is_public()
+        && allow_loopback_bypass
+    {
+        tracing::warn!(
+            "AGENTGUARD_ALLOW_LOOPBACK_BYPASS=1: serving unauthenticated decisions on a public listener; \
+             this should only happen behind a trusted reverse proxy"
+        );
     }
     let auth = AuthLayer::from_config(&cfg.auth, allow_loopback_bypass)
         .map_err(|e| anyhow!("auth layer: {}", e))?;
@@ -469,7 +489,11 @@ type Never = std::convert::Infallible;
 
 #[cfg(test)]
 mod tls_validation_tests {
-    use super::{validate_audit_rotation, validate_grpc_listener, validate_tls_paths};
+    use super::{
+        validate_audit_rotation, validate_grpc_listener, validate_listener_security,
+        validate_tls_paths,
+    };
+    use crate::listener::{AuthConfig, Listener};
     use std::io::Write;
 
     #[test]
@@ -530,5 +554,35 @@ mod tls_validation_tests {
         assert!(validate_audit_rotation(Some("1048576")).is_ok());
         assert!(validate_audit_rotation(Some("0")).is_err());
         assert!(validate_audit_rotation(Some("many")).is_err());
+    }
+
+    #[test]
+    fn unauthenticated_public_listener_requires_explicit_bypass() {
+        let listener = Listener::Tcp("0.0.0.0:8443".parse().unwrap());
+        let error =
+            validate_listener_security(&listener, None, &AuthConfig::Disabled, false).unwrap_err();
+        assert!(error.to_string().contains("auth is disabled"));
+    }
+
+    #[test]
+    fn explicit_bypass_only_relaxes_http_auth_guard() {
+        let listener = Listener::Tcp("0.0.0.0:8443".parse().unwrap());
+        assert!(validate_listener_security(&listener, None, &AuthConfig::Disabled, true).is_ok());
+        assert!(validate_listener_security(
+            &listener,
+            Some("0.0.0.0:9443".parse().unwrap()),
+            &AuthConfig::Disabled,
+            true
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn api_key_auth_allows_public_listener_without_bypass() {
+        let listener = Listener::Tcp("0.0.0.0:8443".parse().unwrap());
+        let auth = AuthConfig::ApiKey {
+            path: "keys.json".into(),
+        };
+        assert!(validate_listener_security(&listener, None, &auth, false).is_ok());
     }
 }
