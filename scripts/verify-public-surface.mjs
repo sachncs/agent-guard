@@ -66,6 +66,7 @@ requireText("frontend/Dockerfile", "USER 10001:10001");
 requireText("frontend/Dockerfile", "node:22.19.0-bookworm-slim");
 requireText(".github/workflows/deploy-site.yml", "uses: pnpm/setup@v3");
 requireText(".github/workflows/deploy-site.yml", "runtime: node@22.19.0");
+requireText(".github/workflows/deploy-site.yml", '- "docs/**"');
 requireText(".github/workflows/ci.yml", "runtime: node@22.19.0");
 requireText("README.md", "embedded library callers");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
