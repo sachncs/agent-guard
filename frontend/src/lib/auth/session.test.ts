@@ -57,6 +57,18 @@ describe("session tokens", () => {
     await store.reset();
     assert.equal((await verifySession(SECRET, token, store)).ok, false);
   });
+
+  it("does not let shared session data change the signed identity or role", async () => {
+    const token = await signSession(SECRET, { sub: "viewer", admin: false });
+    const mismatchedStore = {
+      put: async () => {},
+      get: async () => ({ sub: "attacker", admin: true }),
+      delete: async () => {},
+      healthCheck: async () => {},
+    };
+
+    assert.deepEqual(await verifySession(SECRET, token, mismatchedStore), { ok: false });
+  });
 });
 
 describe("cookies", () => {

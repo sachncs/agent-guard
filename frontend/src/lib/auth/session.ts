@@ -71,8 +71,13 @@ export async function verifySession(
     if (store) {
       if (typeof payload.jti !== "string") return { ok: false };
       const stored = await store.get(payload.jti);
-      if (!stored) return { ok: false };
-      return { ok: true, claims: stored };
+      // The shared store is a revocation index, not a second authority for
+      // identity or roles. Only the signed token may grant a subject/admin
+      // claim; a stale, corrupted, or incorrectly keyed record must fail
+      // closed instead of changing authorization after login.
+      if (!stored || stored.sub !== claims.sub || stored.admin !== claims.admin) {
+        return { ok: false };
+      }
     }
     return {
       ok: true,
