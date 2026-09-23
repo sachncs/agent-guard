@@ -18,7 +18,7 @@ pub mod spiffe;
 
 pub use agentguard_core::auth_keys::{parse_alg, Algorithm, KeyMaterial, KeyRegistry};
 pub use api_key::{ApiKey, ApiKeyIdentity, ApiKeyStore};
-pub use dpop::DpopVerifier;
+pub use dpop::{AsyncDpopReplayStore, DpopReplayStore, DpopVerifier};
 pub use error::AuthError;
 pub use jti::JtiTracker;
 pub use jwt::{JwtConfig, JwtValidator, ValidatedJwt};

@@ -17,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   replay backend without coupling proof verification to a storage adapter.
 - Add `AsyncDpopReplayStore` and `DpopVerifier::verify_async` for remote replay
   backends that must not block async runtime workers.
+- Re-export both DPoP replay-store ports from the auth crate root for downstream
+  adapter implementations.
 
 ### Fixed
 
