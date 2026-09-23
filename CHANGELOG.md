@@ -45,6 +45,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rotation options explicitly rather than reading ambient environment values.
 - Build the console with the CLI binary from the matching PDP image instead of
   recompiling it, reducing release-build time and preventing CLI version skew.
+- Watch the nested policy directory and root Cedar schema for changes, and
+  surface runtime filesystem-watcher errors instead of silently dropping them;
+  standalone startup now fails if watch registration is unavailable.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

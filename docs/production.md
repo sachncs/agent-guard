@@ -48,6 +48,8 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 
 - /healthz is liveness only.
 - /readyz requires a loaded policy store and writable configured audit log.
+- Standalone startup fails if the policy/schema watcher cannot be registered;
+  runtime watcher errors are logged instead of being silently discarded.
 - The audit destination must be a regular file, not a symlink, FIFO, or device
   node. On Unix the server enforces owner-only (`0600`) audit-file permissions
   at open, including for an existing file.

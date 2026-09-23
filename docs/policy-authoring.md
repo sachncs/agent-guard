@@ -45,9 +45,10 @@ entity store.
 
 ## Activation and rollback
 
-The file watcher builds a complete replacement authorizer and swaps it only
-after parsing succeeds. Malformed edits leave the last known-good policy set
-serving. Embedded `Authorizer` values are immutable; rebuild them explicitly
+The standalone file watcher observes `policies/*.cedar` and
+`schema.cedarschema`, builds a complete replacement authorizer, and swaps it
+only after parsing succeeds. Malformed edits leave the last known-good policy
+set serving. Embedded `Authorizer` values are immutable; rebuild them explicitly
 when your application owns the policy lifecycle. For the standalone server,
 restore the reviewed schema/policy files and restart or trigger the documented
 reload path. Keep the previous bundle, decision corpus, and audit records for

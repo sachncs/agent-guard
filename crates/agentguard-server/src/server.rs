@@ -26,7 +26,7 @@ use crate::authzen::{build_state, build_state_with_options, router, AppStateOpti
 use crate::listener::{Listener, ServerConfig};
 use agentguard_core::decision::{cache::DecisionCache, RotationConfig};
 use agentguard_core::decode_chain_secret;
-use agentguard_policy::watcher::watch as policy_watch;
+use agentguard_policy::watcher::{watch as policy_watch, PolicyWatcher};
 use anyhow::{anyhow, Result};
 use axum::serve::serve;
 use std::path::Path;
@@ -167,10 +167,11 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         .await
         .map_err(|e| anyhow!("build state: {}", e))?,
     );
+    let watcher_handle =
+        try_spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>)
+            .map_err(|error| anyhow!("initialize policy watcher: {error}"))?;
     let key_watcher_handle =
         key_watcher_target.map(|(path, store)| spawn_api_key_watcher(path, store));
-    let watcher_handle =
-        spawn_policy_watcher(cfg.store_root.clone(), state.clone() as Arc<dyn ReloadSink>);
     let app = router((*state).clone());
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
@@ -306,34 +307,47 @@ impl ReloadSink for crate::authzen::AppState {
     }
 }
 
-/// Spawn the policy hot-reload watcher. Returns the task handle so the
-/// caller can abort it on shutdown. The task polls the filesystem
-/// every 500 ms, drains the watcher's debounced events, and on each
-/// event invalidates the decision cache and increments
-/// `policy_reload_total`.
-///
-/// `store_root` is the policy directory; we do not deeply watch the
-/// schema or audit log.
+/// Start the policy hot-reload watcher, returning an error if its filesystem
+/// watch cannot be initialized. The task polls every 500 ms and reloads on
+/// relevant policy/schema changes.
+pub fn try_spawn_policy_watcher(
+    store_root: std::path::PathBuf,
+    sink: Arc<dyn ReloadSink>,
+) -> std::io::Result<tokio::task::JoinHandle<()>> {
+    let watcher = policy_watch(&store_root, Duration::from_millis(250))?;
+    Ok(spawn_policy_watcher_task(watcher, sink))
+}
+
+/// Best-effort compatibility wrapper for callers that want watcher setup
+/// failures logged asynchronously instead of returned.
 pub fn spawn_policy_watcher(
     store_root: std::path::PathBuf,
     sink: Arc<dyn ReloadSink>,
 ) -> tokio::task::JoinHandle<()> {
+    match policy_watch(&store_root, Duration::from_millis(250)) {
+        Ok(watcher) => spawn_policy_watcher_task(watcher, sink),
+        Err(error) => tokio::spawn(async move {
+            tracing::error!(
+                store_root = %store_root.display(),
+                error = %error,
+                "policy watcher init failed; hot reload disabled"
+            );
+        }),
+    }
+}
+
+fn spawn_policy_watcher_task(
+    mut watcher: PolicyWatcher,
+    sink: Arc<dyn ReloadSink>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut watcher = match policy_watch(&store_root, Duration::from_millis(250)) {
-            Ok(w) => w,
-            Err(e) => {
-                tracing::error!(
-                    store_root = %store_root.display(),
-                    error = %e,
-                    "policy watcher init failed; hot reload disabled"
-                );
-                return;
-            }
-        };
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         loop {
             interval.tick().await;
             let events = watcher.events();
+            for error in watcher.take_errors() {
+                tracing::error!(%error, "policy filesystem watcher failed");
+            }
             if events.is_empty() {
                 continue;
             }
@@ -494,8 +508,16 @@ mod tls_validation_tests {
         parse_audit_rotation, run, validate_grpc_listener, validate_listener_security,
         validate_tls_paths,
     };
+    use crate::auth_layer::AuthLayer;
     use crate::listener::{AuthConfig, Listener, ServerConfig};
     use std::io::Write;
+    use std::sync::Arc;
+
+    struct NoopReloadSink;
+
+    impl super::ReloadSink for NoopReloadSink {
+        fn reload(&self) {}
+    }
 
     #[tokio::test]
     async fn run_rejects_invalid_tls_material_before_loading_the_policy_store() {
@@ -607,6 +629,50 @@ mod tls_validation_tests {
         );
         assert!(parse_audit_rotation(Some("0")).is_err());
         assert!(parse_audit_rotation(Some("many")).is_err());
+    }
+
+    #[test]
+    fn fallible_policy_watcher_rejects_missing_store_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = super::try_spawn_policy_watcher(
+            dir.path().join("missing-store"),
+            Arc::new(NoopReloadSink),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn filesystem_watcher_reloads_nested_policy_files() {
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = agentguard_core::PolicyStore::open(dir.path()).unwrap();
+        store
+            .write_policy("initial", "permit(principal, action, resource);")
+            .unwrap();
+        let state =
+            crate::authzen::build_state(dir.path().to_path_buf(), None, None, AuthLayer::Disabled)
+                .await
+                .unwrap();
+        assert_eq!(state.authorizer().policy_count(), 1);
+
+        let watcher =
+            super::try_spawn_policy_watcher(dir.path().to_path_buf(), Arc::new(state.clone()))
+                .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        store
+            .write_policy("second", "forbid(principal, action, resource);")
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while state.authorizer().policy_count() != 2 {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("nested policy edit should reload the complete policy snapshot");
+        watcher.abort();
     }
 
     #[test]
