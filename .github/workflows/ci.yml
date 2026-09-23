@@ -8,7 +8,11 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep PR feedback fresh, but don't cancel release-branch test, coverage,
+  # security, container, or Kubernetes jobs when another commit is pushed.
+  # GitHub keeps only the newest pending run, so master eventually gets a
+  # complete verification pass without wasting overlapping runner capacity.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fmt:
