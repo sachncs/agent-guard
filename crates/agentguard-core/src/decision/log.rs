@@ -951,6 +951,59 @@ mod tests {
         assert_eq!(id, log.chain_id().unwrap());
     }
 
+    #[test]
+    fn streaming_chain_verification_handles_a_large_log_and_resumes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large-audit.jsonl");
+        let root_key = b"large-log-test-root";
+        let chain = HashChain::new(root_key);
+        let chain_id = chain.id();
+        let mut writer = BufWriter::new(File::create(&path).unwrap());
+        let timestamp = chrono::Utc::now();
+
+        for index in 0..5_000 {
+            let record = DecisionRecord {
+                id: index.to_string(),
+                timestamp,
+                effect: "deny".into(),
+                policies: vec![],
+                request_id: None,
+                principal: "load-test-agent".into(),
+                action: "ToolCall::read".into(),
+                resource: format!("document-{index}"),
+                reasons: vec![],
+                session_id: None,
+                agent_chain: None,
+                trace_id: None,
+                span_id: None,
+                tenant_id: None,
+                subject_id: None,
+            };
+            let canonical = canonical_json(&record).unwrap();
+            let (prev, hash) = chain.append(&canonical);
+            serde_json::to_writer(
+                &mut writer,
+                &ChainedRecord {
+                    prev_hash: hex::encode(prev),
+                    record_hash: hex::encode(hash),
+                    chain_id,
+                    record,
+                },
+            )
+            .unwrap();
+            writer.write_all(b"\n").unwrap();
+        }
+        writer.flush().unwrap();
+        drop(writer);
+
+        assert_eq!(
+            DecisionLog::verify_chain(&path, root_key).unwrap(),
+            chain_id
+        );
+        let resumed = DecisionLog::open_with_chain(&path, root_key).unwrap();
+        assert_eq!(resumed.chain_id(), Some(chain_id));
+    }
+
     #[cfg(unix)]
     #[test]
     fn failed_audit_write_poisoning_is_reported_not_silently_dropped() {
