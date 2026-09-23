@@ -1,5 +1,6 @@
 import type { DecisionDto } from "@/lib/api_types";
 import { parseJsonBody, authorizeSchema } from "@/lib/api_schemas";
+import { pdpUnavailableResponse } from "@/lib/api_error";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireViewer } from "@/lib/auth/guard";
 import { evaluate } from "@/lib/auth/pdp";
@@ -83,12 +84,6 @@ export async function POST(request: Request) {
     };
     return Response.json(decision satisfies DecisionDto);
   } catch (e) {
-    return Response.json(
-      {
-        error: e instanceof Error ? e.message : String(e),
-        kind: "pdp_unavailable",
-      },
-      { status: 503 }
-    );
+    return pdpUnavailableResponse(e);
   }
 }

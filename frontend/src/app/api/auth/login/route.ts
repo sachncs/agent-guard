@@ -1,4 +1,5 @@
 import { authConfig } from "@/lib/auth/config";
+import { identityProviderUnavailableResponse } from "@/lib/api_error";
 import {
   OIDC_STATE_COOKIE,
   serializeSetCookie,
@@ -30,13 +31,7 @@ export async function GET(request: Request) {
   try {
     ({ authorizeUrl, stateJwt } = await buildLoginRedirect(cfg.config, `${origin}/api/auth/callback`));
   } catch (e) {
-    return Response.json(
-      {
-        error: `identity provider unreachable: ${e instanceof Error ? e.message : e}`,
-        kind: "idp_error",
-      },
-      { status: 502 }
-    );
+    return identityProviderUnavailableResponse(e);
   }
 
   return new Response(null, {

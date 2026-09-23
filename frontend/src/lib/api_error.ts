@@ -16,11 +16,7 @@ export function toApiErrorResponse(error: unknown): Response {
 
   // CLI stderr and arbitrary exception messages can contain paths, policy
   // fragments, or request data. Keep detail in server logs, never in JSON.
-  console.error("AgentGuard API operation failed", {
-    reference,
-    kind: mapped.kind,
-    error,
-  });
+  logInternalError(reference, mapped.kind, error);
 
   const body: ApiErrorBody = {
     error: mapped.message,
@@ -28,6 +24,38 @@ export function toApiErrorResponse(error: unknown): Response {
     reference,
   };
   return Response.json(body, { status: mapped.status });
+}
+
+/** Map PDP failures to a safe service-unavailable response for the simulator. */
+export function pdpUnavailableResponse(error: unknown): Response {
+  const reference = randomUUID();
+  logInternalError(reference, "pdp_unavailable", error);
+  return Response.json(
+    {
+      error: "The authorization service is temporarily unavailable.",
+      kind: "pdp_unavailable",
+      reference,
+    },
+    { status: 503 }
+  );
+}
+
+/** Return a safe response when OIDC discovery or issuer communication fails. */
+export function identityProviderUnavailableResponse(error: unknown): Response {
+  const reference = randomUUID();
+  logInternalError(reference, "idp_error", error);
+  return Response.json(
+    {
+      error: "The identity provider is temporarily unavailable. Try again shortly.",
+      kind: "idp_error",
+      reference,
+    },
+    { status: 502 }
+  );
+}
+
+function logInternalError(reference: string, kind: string, error: unknown): void {
+  console.error("AgentGuard API operation failed", { reference, kind, error });
 }
 
 function mapError(error: unknown): {

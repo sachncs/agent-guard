@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { AgentguardError, CLIUnavailable } from "agentguard";
-import { toApiErrorResponse } from "./api_error.ts";
+import {
+  identityProviderUnavailableResponse,
+  pdpUnavailableResponse,
+  toApiErrorResponse,
+} from "./api_error.ts";
 
 const originalConsoleError = console.error;
 
@@ -42,5 +46,41 @@ describe("toApiErrorResponse", () => {
       assert.equal(body.kind, expectedKind);
       assert.doesNotMatch(body.error, /private|credential|dependency/);
     }
+  });
+
+  it("sanitizes PDP failures while preserving the service-unavailable contract", async () => {
+    console.error = () => {};
+    const response = pdpUnavailableResponse(
+      new Error("PDP unreachable: private-host /internal/policies/secret.cedar")
+    );
+    const body = (await response.json()) as {
+      error: string;
+      kind: string;
+      reference: string;
+    };
+
+    assert.equal(response.status, 503);
+    assert.equal(body.kind, "pdp_unavailable");
+    assert.equal(body.error, "The authorization service is temporarily unavailable.");
+    assert.match(body.reference, /^[0-9a-f-]{36}$/);
+    assert.doesNotMatch(JSON.stringify(body), /private-host|secret\.cedar/);
+  });
+
+  it("sanitizes identity-provider failures returned by the public login route", async () => {
+    console.error = () => {};
+    const response = identityProviderUnavailableResponse(
+      new Error("issuer response exposed /private/tenant/client-secret")
+    );
+    const body = (await response.json()) as {
+      error: string;
+      kind: string;
+      reference: string;
+    };
+
+    assert.equal(response.status, 502);
+    assert.equal(body.kind, "idp_error");
+    assert.equal(body.error, "The identity provider is temporarily unavailable. Try again shortly.");
+    assert.match(body.reference, /^[0-9a-f-]{36}$/);
+    assert.doesNotMatch(JSON.stringify(body), /private|client-secret/);
   });
 });
