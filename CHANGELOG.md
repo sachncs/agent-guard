@@ -13,6 +13,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Concurrent child processes are bounded per client. The console audit and
   delegation routes use these async variants so CLI work does not block the
   Next.js event loop.
+- Add the `DpopReplayStore` port so embedders can inject an atomic shared
+  replay backend without coupling proof verification to a storage adapter.
 
 ### Fixed
 

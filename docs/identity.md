@@ -73,8 +73,11 @@ up to 262,144 live proof identifiers; callers may choose another positive cap
 with `JtiTracker::with_capacity`. At capacity, new proofs fail closed with
 `DpopCapacityExceeded` until old entries expire. The tracker does not share
 replay state across processes and loses it on restart, so deployments requiring
-cluster-wide replay protection must provide a shared replay store in their
-embedding adapter; that backend is not part of the standalone PDP contract.
+cluster-wide replay protection can inject a shared implementation of
+`DpopReplayStore`. It must atomically retain each accepted JTI across the
+deployment scope and fail closed on storage errors. The port is synchronous:
+do not perform blocking remote I/O on an async runtime worker. No shared
+backend is included in the standalone PDP contract.
 
 ## Console OIDC
 

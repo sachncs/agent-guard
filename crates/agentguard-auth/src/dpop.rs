@@ -27,15 +27,32 @@ use std::time::Duration;
 /// asymmetric algorithms; HS* is forbidden.
 const DPOP_ALG_EDDSA: &str = "EdDSA";
 
+/// Atomic replay-state port used by [`DpopVerifier`].
+///
+/// Implementations must make `check_and_record` atomic across every verifier
+/// instance in the deployment scope and retain an accepted identifier for at
+/// least the proof validity window. Storage failures must return an error;
+/// they must never be treated as a fresh proof. This method is synchronous, so
+/// implementations must not block an async runtime worker on remote I/O.
+pub trait DpopReplayStore: Send + Sync {
+    fn check_and_record(&self, jti: &[u8; 16]) -> Result<()>;
+}
+
+impl DpopReplayStore for JtiTracker {
+    fn check_and_record(&self, jti: &[u8; 16]) -> Result<()> {
+        JtiTracker::check_and_record(self, jti)
+    }
+}
+
 /// Verifies DPoP proof JWTs.
 #[derive(Clone)]
 pub struct DpopVerifier {
-    keys: Arc<JtiTracker>,
+    keys: Arc<dyn DpopReplayStore>,
     pub allowed_clock_skew: Duration,
 }
 
 impl DpopVerifier {
-    pub fn new(jti_tracker: Arc<JtiTracker>) -> Self {
+    pub fn new(jti_tracker: Arc<dyn DpopReplayStore>) -> Self {
         Self {
             keys: jti_tracker,
             allowed_clock_skew: Duration::from_secs(30),
@@ -275,6 +292,14 @@ mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
+
+    struct RejectingReplayStore;
+
+    impl DpopReplayStore for RejectingReplayStore {
+        fn check_and_record(&self, _jti: &[u8; 16]) -> Result<()> {
+            Err(AuthError::Other("shared replay store unavailable".into()))
+        }
+    }
 
     fn make_dpop(signer: &SigningKey, jwk_x_b64: &str, jti: &str, claims_extras: &str) -> String {
         let header = serde_json::json!({
@@ -534,6 +559,26 @@ mod tests {
         assert!(matches!(
             verifier.verify(&first, "tok", "POST", "https://example.com/x", &jkt),
             Err(AuthError::DpopReplay(_))
+        ));
+    }
+
+    #[test]
+    fn verifier_propagates_custom_replay_store_failures() {
+        let mut csprng = OsRng;
+        let signer = SigningKey::generate(&mut csprng);
+        let pub_bytes = signer.verifying_key().to_bytes();
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pub_bytes);
+        let jkt = make_jkt(&pub_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(b"tok");
+        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let extras = format!(r#""ath":"{}""#, ath);
+        let dpop = make_dpop(&signer, &x, "store-error-proof", &extras);
+        let verifier = DpopVerifier::new(Arc::new(RejectingReplayStore));
+
+        assert!(matches!(
+            verifier.verify(&dpop, "tok", "POST", "https://example.com/x", &jkt),
+            Err(AuthError::Other(message)) if message == "shared replay store unavailable"
         ));
     }
 
