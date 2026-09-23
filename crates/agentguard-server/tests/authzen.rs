@@ -89,17 +89,30 @@ async fn evaluation_endpoint_returns_decision() {
             "session": {"ip": "10.0.0.1", "user_agent": "x", "mfa": true, "ts": 0}
         }
     });
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/access/v1/evaluation")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Other integration tests intentionally saturate the shared process-wide
+    // PDP work limiter. Retry only its explicit fail-fast response so this
+    // functional assertion tests entity evaluation, not test scheduling.
+    let mut resp = None;
+    for attempt in 0..10 {
+        let result = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/access/v1/evaluation")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        if result.status() != StatusCode::SERVICE_UNAVAILABLE || attempt == 9 {
+            resp = Some(result);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let resp = resp.expect("evaluation should either finish or exhaust saturation retries");
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
