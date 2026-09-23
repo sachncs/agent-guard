@@ -1,7 +1,15 @@
 ---
 import Docs from '@/layouts/docs.astro';
 import { Content as Guide } from '../../../../docs/reference.md';
+const base = import.meta.env.BASE_URL;
+const hasGeneratedRustdoc = import.meta.env.PUBLIC_AGENTGUARD_RUSTDOC === 'true';
 ---
 <Docs title="API and reference" description="Versioned reference entry points for Rust, TypeScript, CLI, HTTP, configuration, and protobuf.">
   <Guide />
+  <h2>Generated Rust API</h2>
+  {hasGeneratedRustdoc ? (
+    <p>The API reference below is generated from the same commit as this documentation site: <a href={`${base}reference/rustdoc/agentguard_core/index.html`}>core</a>, <a href={`${base}reference/rustdoc/agentguard_server/index.html`}>server</a>, <a href={`${base}reference/rustdoc/agentguard/index.html`}>CLI</a>, <a href={`${base}reference/rustdoc/agentguard_auth/index.html`}>identity</a>, <a href={`${base}reference/rustdoc/agentguard_policy/index.html`}>policy operations</a>, and <a href={`${base}reference/rustdoc/agentguard_telemetry/index.html`}>telemetry</a>.</p>
+  ) : (
+    <p>Generate the version-matched Rust API locally with <code>cargo doc --workspace --no-deps --open</code>. The published site includes browsable Rust API documentation for its exact source revision.</p>
+  )}
 </Docs>

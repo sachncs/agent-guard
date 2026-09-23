@@ -1,8 +1,9 @@
 # API and reference map
 
-This page is the stable entry point for the public interfaces. Generated
-artifacts are produced from the checked-in source at release time; examples in
-this repository are the compatibility fixtures.
+This page is the stable entry point for the public interfaces. The canonical
+documentation site's API page links to Rustdoc generated from the exact source
+revision being deployed. TypeScript declarations are built from the package
+source; protobuf and HTTP contracts remain checked in and versioned here.
 
 | Surface | Reference | Scope |
 | --- | --- | --- |
@@ -25,10 +26,11 @@ protoc --descriptor_set_out=/tmp/agentguard.pb \
   crates/agentguard-server/proto/agentguard.proto
 ```
 
-The release CI runs these generation checks without opening a browser and
-fails if the Rust crates, TypeScript declarations, or checked-in protobuf
-contract stop producing reference artifacts. The TypeScript package emits
-declarations from the package source. HTTP clients should treat
+Release CI checks Rustdoc and protobuf generation without opening a browser.
+The site deployment rebuilds Rustdoc whenever workspace Rust sources or the
+toolchain lock change, then publishes it with the matching documentation
+revision. The TypeScript package emits declarations from package source during
+its build. HTTP clients should treat
 non-2xx responses, malformed responses, timeouts, and `decision: false` as
 non-execution conditions. The repository-defined gRPC endpoint is plaintext
 unless the embedding deployment supplies a protected network boundary; it is

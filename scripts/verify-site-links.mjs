@@ -51,7 +51,14 @@ if (!statSync(siteRoot, { throwIfNoEntry: false })?.isDirectory()) {
   process.exit(1);
 }
 
-for (const sourceFile of walk(siteRoot).filter((file) => file.endsWith(".html"))) {
+const authoredHtml = walk(siteRoot)
+  .filter((file) => file.endsWith(".html"))
+  // Rustdoc owns its generated navigation, JavaScript templates, and encoded
+  // implementation anchors; validate its published crate entry points in
+  // stage-rustdoc.mjs and validate links into it from authored site pages here.
+  .filter((file) => !relative(siteRoot, file).split(sep).includes("rustdoc"));
+
+for (const sourceFile of authoredHtml) {
   const html = readFileSync(sourceFile, "utf8");
   for (const match of html.matchAll(/\b(?:href|src)=["']([^"']+)["']/gi)) {
     const rawTarget = decodeAttribute(match[1]);
@@ -107,4 +114,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`built-site links passed (${walk(siteRoot).filter((file) => file.endsWith(".html")).length} HTML pages)`);
+console.log(`built-site links passed (${authoredHtml.length} authored HTML pages; generated Rustdoc entry points checked separately)`);

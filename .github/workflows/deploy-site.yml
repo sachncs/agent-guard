@@ -6,6 +6,10 @@ on:
     paths:
       - "site/**"
       - "docs/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
@@ -38,13 +42,32 @@ jobs:
           cache: true
           cache-dependency-path: site/pnpm-lock.yaml
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.89.0
+
+      - name: Cache Rust API documentation build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: site-rustdoc
+
+      - name: Generate version-matched Rust API docs
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+
       - name: Install dependencies
         working-directory: site
         run: pnpm config set dangerouslyAllowAllBuilds true && pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build and check documentation site
         working-directory: site
+        env:
+          PUBLIC_AGENTGUARD_RUSTDOC: "true"
         run: pnpm check && pnpm build
+
+      - name: Stage generated API reference
+        run: node scripts/stage-rustdoc.mjs
+
+      - name: Verify all published site links
+        run: node scripts/verify-site-links.mjs site/dist
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
