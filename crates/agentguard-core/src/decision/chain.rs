@@ -8,6 +8,7 @@ use hmac::{Hmac, Mac};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::io::BufRead;
 use std::sync::Arc;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -102,15 +103,31 @@ impl HashChain {
         &self,
         path: &std::path::Path,
     ) -> std::result::Result<(), ChainLoadError> {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(ChainLoadError::Io(e)),
+        let file = match std::fs::File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(ChainLoadError::Io(error)),
         };
-        let Some(line) = text.lines().rfind(|l| !l.trim().is_empty()) else {
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = Vec::new();
+        let mut last_nonblank = Vec::new();
+        loop {
+            line.clear();
+            if reader
+                .read_until(b'\n', &mut line)
+                .map_err(ChainLoadError::Io)?
+                == 0
+            {
+                break;
+            }
+            if line.iter().any(|byte| !byte.is_ascii_whitespace()) {
+                last_nonblank.clone_from(&line);
+            }
+        }
+        if last_nonblank.is_empty() {
             return Ok(());
-        };
-        let val: serde_json::Value = serde_json::from_str(line)
+        }
+        let val: serde_json::Value = serde_json::from_slice(&last_nonblank)
             .map_err(|e| ChainLoadError::Corrupt(format!("last line not valid JSON: {e}")))?;
         let hash_str = val
             .get("record_hash")
@@ -489,6 +506,28 @@ mod tests {
             .load_head_from_file(&path)
             .expect("empty file is not corruption");
         assert_eq!(chain.head(), [0u8; 32]);
+    }
+
+    #[test]
+    fn load_head_from_file_uses_last_nonblank_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let id = ChainId::new();
+        let expected_head = [0x5a; HASH_LEN];
+        let earlier = serde_json::json!({
+            "record_hash": hex::encode([0x11; HASH_LEN]),
+            "chain_id": ChainId::new().to_string(),
+        });
+        let last = serde_json::json!({
+            "record_hash": hex::encode(expected_head),
+            "chain_id": id.to_string(),
+        });
+        std::fs::write(&path, format!("{earlier}\n  \n{last}\n  \t\n")).unwrap();
+
+        let chain = HashChain::new(b"root");
+        chain.load_head_from_file(&path).unwrap();
+        assert_eq!(chain.head(), expected_head);
+        assert_eq!(chain.id(), id);
     }
 
     #[test]
