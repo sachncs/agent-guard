@@ -42,6 +42,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Bound console PDP response buffering and normalize malformed or oversized
   upstream responses to a fail-closed unavailable-service result.
+- Share the Redis REST transport between console sessions and rate limits;
+  bound upstream responses, validate command envelopes, and reject unsafe
+  numeric rate-limit counts.
 - Require fresh OIDC ID-token `exp`, `iat`, and valid `sub` claims; validate
   the authorized party against the console client for multi-audience tokens
   and whenever `azp` is present.

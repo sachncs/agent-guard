@@ -1,4 +1,5 @@
 import type { SessionClaims } from "./session";
+import { RedisRestClient } from "../redis_rest.ts";
 
 /** Shared session state used to support revocation and horizontal scaling. */
 export interface SessionStore {
@@ -53,11 +54,8 @@ export class MemorySessionStore implements SessionStore {
 
 /** Redis-compatible REST session store (for example, Upstash Redis). */
 export class RedisSessionStore implements SessionStore {
-  private readonly url: string;
-  private readonly token: string;
   private readonly prefix: string;
-  private readonly fetchImpl: typeof fetch;
-  private readonly timeoutMs: number;
+  private readonly redis: RedisRestClient;
 
   constructor(
     url: string,
@@ -66,31 +64,12 @@ export class RedisSessionStore implements SessionStore {
     prefix = "agentguard:session:",
     timeoutMs = 3_000,
   ) {
-    this.url = url;
-    this.token = token;
-    this.fetchImpl = fetchImpl;
     this.prefix = prefix;
-    this.timeoutMs = timeoutMs;
-  }
-
-  private async command(command: string[]): Promise<unknown> {
-    const response = await this.fetchImpl(this.url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(command),
-      signal: AbortSignal.timeout(this.timeoutMs),
-      redirect: "error",
-    });
-    if (!response.ok) throw new Error(`session store returned ${response.status}`);
-    const payload = (await response.json()) as { result?: unknown };
-    return payload.result;
+    this.redis = new RedisRestClient(url, token, fetchImpl, timeoutMs);
   }
 
   async put(id: string, claims: SessionClaims, ttlSeconds: number): Promise<void> {
-    const result = await this.command([
+    const result = await this.redis.command([
       "SET",
       `${this.prefix}${id}`,
       JSON.stringify(claims),
@@ -101,7 +80,7 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async get(id: string): Promise<SessionClaims | null> {
-    const result = await this.command(["GET", `${this.prefix}${id}`]);
+    const result = await this.redis.command(["GET", `${this.prefix}${id}`]);
     if (result === null) return null;
     if (typeof result !== "string") throw new Error("session store returned invalid data");
     const value = JSON.parse(result) as Partial<SessionClaims>;
@@ -117,12 +96,10 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async delete(id: string): Promise<void> {
-    await this.command(["DEL", `${this.prefix}${id}`]);
+    await this.redis.command(["DEL", `${this.prefix}${id}`]);
   }
 
   async healthCheck(): Promise<void> {
-    if (await this.command(["PING"]) !== "PONG") {
-      throw new Error("session store health check failed");
-    }
+    await this.redis.healthCheck();
   }
 }

@@ -8,6 +8,7 @@
  */
 
 import { isIP } from "node:net";
+import { RedisRestClient } from "./redis_rest.ts";
 import { validateSharedStoreUrl } from "./shared_store_url.ts";
 
 const WINDOW_SECONDS = 60;
@@ -81,10 +82,7 @@ export class MemoryRateLimitStore implements RateLimitStore {
 
 /** Redis-compatible REST store using an atomic INCR + EXPIRE script. */
 export class RedisRateLimitStore implements RateLimitStore {
-  private readonly url: string;
-  private readonly token: string;
-  private readonly fetchImpl: typeof fetch;
-  private readonly timeoutMs: number;
+  private readonly redis: RedisRestClient;
 
   constructor(
     url: string,
@@ -92,41 +90,23 @@ export class RedisRateLimitStore implements RateLimitStore {
     fetchImpl: typeof fetch = fetch,
     timeoutMs = 3_000,
   ) {
-    this.url = url;
-    this.token = token;
-    this.fetchImpl = fetchImpl;
-    this.timeoutMs = timeoutMs;
+    this.redis = new RedisRestClient(url, token, fetchImpl, timeoutMs);
   }
 
   async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
     const script = "local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return count";
-    const response = await this.fetchImpl(this.url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["EVAL", script, "1", key, String(WINDOW_SECONDS)]),
-      signal: AbortSignal.timeout(this.timeoutMs),
-      redirect: "error",
-    });
-    if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
-    const payload = (await response.json()) as { result?: number };
-    if (typeof payload.result !== "number") throw new Error("rate-limit store returned an invalid count");
+    const result = await this.redis.command(["EVAL", script, "1", key, String(WINDOW_SECONDS)]);
+    if (typeof result !== "number" || !Number.isSafeInteger(result) || result < 1) {
+      throw new Error("rate-limit store returned an invalid count");
+    }
     return {
-      allowed: payload.result <= limitPerMinute,
-      remaining: Math.max(0, limitPerMinute - payload.result),
+      allowed: result <= limitPerMinute,
+      remaining: Math.max(0, limitPerMinute - result),
     };
   }
 
   async healthCheck(): Promise<void> {
-    const response = await this.fetchImpl(this.url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(["PING"]),
-      signal: AbortSignal.timeout(this.timeoutMs),
-      redirect: "error",
-    });
-    if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
-    const payload = (await response.json()) as { result?: unknown };
-    if (payload.result !== "PONG") throw new Error("rate-limit store health check failed");
+    await this.redis.healthCheck();
   }
 }
 

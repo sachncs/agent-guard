@@ -60,6 +60,11 @@ describe("session stores", () => {
       "agentguard:test:",
       1,
     );
-    await assert.rejects(store.get("sid"), /timed out|aborted/i);
+    await assert.rejects(store.get("sid"), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /Redis-compatible store request failed/);
+      assert.match(String(error.cause), /timed out|aborted/i);
+      return true;
+    });
   });
 });
