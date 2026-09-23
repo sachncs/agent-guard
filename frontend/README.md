@@ -121,7 +121,9 @@ for the complete contract.
   `AGENTGUARD_RATE_LIMIT_REDIS_URL` and `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN`.
   Production refuses to fall back to memory; store failures fail closed. Both
   adapters share a bounded Redis REST transport that rejects redirects and
-  limits response buffering to 256 KiB.
+  limits response buffering to 256 KiB. The development-only memory session
+  adapter is bounded to 10,000 sessions, prunes expired entries under pressure,
+  and rejects new sessions rather than evicting live ones when full.
 - **Per-request CLI spawns** for log/delegate/verify (no HTTP surface exists
   server-side yet); the simulator already avoids this via the PDP API. The
   production console image includes the pinned `agentguard` CLI. Mount the

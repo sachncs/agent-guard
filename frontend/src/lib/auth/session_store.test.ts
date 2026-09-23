@@ -17,6 +17,30 @@ describe("session stores", () => {
     assert.equal(await store.get("sid"), null);
   });
 
+  it("bounds memory sessions, prunes expired entries, and preserves live entries at capacity", async () => {
+    let now = 0;
+    const store = new MemorySessionStore(() => now, 2);
+    await store.put("expired", claims, 1);
+    await store.put("live", claims, 10);
+    await assert.rejects(store.put("overflow", claims, 10), /capacity reached/);
+    assert.deepEqual(await store.get("live"), claims, "capacity pressure never evicts a live session");
+
+    now = 1_001;
+    await store.put("replacement", claims, 10);
+    assert.equal(await store.get("expired"), null, "expired entries are pruned before admitting a new session");
+    assert.deepEqual(await store.get("live"), claims);
+    assert.deepEqual(await store.get("replacement"), claims);
+    await assert.rejects(store.put("invalid-ttl", claims, 0), /ttlSeconds must be a positive safe duration/);
+    await assert.rejects(
+      store.put("overflow-ttl", claims, Number.MAX_SAFE_INTEGER),
+      /ttlSeconds must be a positive safe duration/,
+    );
+  });
+
+  it("rejects an invalid in-memory session capacity", () => {
+    assert.throws(() => new MemorySessionStore(Date.now, 0), /maxSessions must be a positive safe integer/);
+  });
+
   it("uses Redis-compatible SET/GET/DEL commands", async () => {
     const commands: string[][] = [];
     const redirectModes: (RequestRedirect | undefined)[] = [];

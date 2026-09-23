@@ -14,13 +14,31 @@ interface StoredSession {
   expiresAt: number;
 }
 
+const DEFAULT_MAX_MEMORY_SESSIONS = 10_000;
+
+function sessionTtlMilliseconds(ttlSeconds: number): number {
+  const ttlMs = ttlSeconds * 1_000;
+  if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || !Number.isSafeInteger(ttlMs)) {
+    throw new Error("ttlSeconds must be a positive safe duration");
+  }
+  return ttlMs;
+}
+
 /** Development-only process-local store. It is not safe across replicas. */
 export class MemorySessionStore implements SessionStore {
   private readonly sessions = new Map<string, StoredSession>();
   private now: () => number;
+  private readonly maxSessions: number;
 
-  constructor(now: () => number = () => Date.now()) {
+  constructor(
+    now: () => number = () => Date.now(),
+    maxSessions = DEFAULT_MAX_MEMORY_SESSIONS,
+  ) {
+    if (!Number.isSafeInteger(maxSessions) || maxSessions < 1) {
+      throw new Error("maxSessions must be a positive safe integer");
+    }
     this.now = now;
+    this.maxSessions = maxSessions;
   }
 
   setClock(now: () => number): void {
@@ -32,7 +50,22 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async put(id: string, claims: SessionClaims, ttlSeconds: number): Promise<void> {
-    this.sessions.set(id, { claims, expiresAt: this.now() + ttlSeconds * 1000 });
+    const ttlMs = sessionTtlMilliseconds(ttlSeconds);
+    const now = this.now();
+    const expiresAt = now + ttlMs;
+    if (!Number.isSafeInteger(expiresAt)) throw new Error("session expiration exceeds the clock range");
+    if (!this.sessions.has(id) && this.sessions.size >= this.maxSessions) {
+      for (const [expiredId, session] of this.sessions) {
+        if (session.expiresAt <= now) this.sessions.delete(expiredId);
+      }
+      // Do not evict live sessions to admit new users; reject the new session
+      // until capacity is available so memory stays bounded and revocation
+      // state is never silently lost.
+      if (this.sessions.size >= this.maxSessions) {
+        throw new Error("memory session store capacity reached");
+      }
+    }
+    this.sessions.set(id, { claims, expiresAt });
   }
 
   async get(id: string): Promise<SessionClaims | null> {
@@ -69,6 +102,7 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async put(id: string, claims: SessionClaims, ttlSeconds: number): Promise<void> {
+    sessionTtlMilliseconds(ttlSeconds);
     const result = await this.redis.command([
       "SET",
       `${this.prefix}${id}`,
