@@ -12,6 +12,7 @@ import { validateSharedStoreUrl } from "./shared_store_url.ts";
 
 const WINDOW_SECONDS = 60;
 const WINDOW_MS = WINDOW_SECONDS * 1000;
+const DEFAULT_MAX_BUCKETS = 10_000;
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -32,7 +33,13 @@ export class MemoryRateLimitStore implements RateLimitStore {
   private readonly buckets = new Map<string, Bucket>();
   private nowMs: () => number;
 
-  constructor(now: () => number = () => Date.now()) {
+  constructor(
+    now: () => number = () => Date.now(),
+    private readonly maxBuckets = DEFAULT_MAX_BUCKETS,
+  ) {
+    if (!Number.isSafeInteger(maxBuckets) || maxBuckets < 1) {
+      throw new Error("maxBuckets must be a positive safe integer");
+    }
     this.nowMs = now;
   }
 
@@ -45,9 +52,22 @@ export class MemoryRateLimitStore implements RateLimitStore {
   }
 
   async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
+    if (!Number.isSafeInteger(limitPerMinute) || limitPerMinute < 1) {
+      throw new Error("limitPerMinute must be a positive safe integer");
+    }
     const now = this.nowMs();
     const bucket = this.buckets.get(key);
     if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
+      if (!bucket && this.buckets.size >= this.maxBuckets) {
+        for (const [expiredKey, expired] of this.buckets) {
+          if (now - expired.windowStart >= WINDOW_MS) this.buckets.delete(expiredKey);
+        }
+        // Never evict a live client's budget just to admit a new key. Fail
+        // closed until a bucket expires, keeping development memory bounded.
+        if (this.buckets.size >= this.maxBuckets) {
+          return { allowed: false, remaining: 0 };
+        }
+      }
       this.buckets.set(key, { count: 1, windowStart: now });
       return { allowed: true, remaining: Math.max(0, limitPerMinute - 1) };
     }

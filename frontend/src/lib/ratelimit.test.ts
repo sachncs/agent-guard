@@ -2,6 +2,7 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   clientKey,
+  MemoryRateLimitStore,
   rateLimit,
   RedisRateLimitStore,
   resetRateLimiter,
@@ -13,6 +14,26 @@ describe("rate limiter", () => {
     process.env.AGENTGUARD_RATE_LIMIT_STORE = "memory";
     resetRateLimiter();
     setClock(() => 0);
+  });
+
+  it("bounds development memory and does not evict active budgets", async () => {
+    let now = 0;
+    const store = new MemoryRateLimitStore(() => now, 2);
+    assert.deepEqual(await store.consume("a", 1), { allowed: true, remaining: 0 });
+    assert.deepEqual(await store.consume("b", 1), { allowed: true, remaining: 0 });
+    assert.deepEqual(await store.consume("c", 1), { allowed: false, remaining: 0 });
+    assert.deepEqual(await store.consume("a", 1), { allowed: false, remaining: 0 });
+
+    now = 60_000;
+    assert.deepEqual(await store.consume("c", 1), { allowed: true, remaining: 0 });
+    assert.deepEqual(await store.consume("a", 1), { allowed: true, remaining: 0 });
+  });
+
+  it("rejects invalid limits and bucket capacities", async () => {
+    assert.throws(() => new MemoryRateLimitStore(() => 0, 0), /maxBuckets/);
+    const store = new MemoryRateLimitStore(() => 0, 1);
+    await assert.rejects(store.consume("key", 0), /limitPerMinute/);
+    await assert.rejects(store.consume("key", 1.5), /limitPerMinute/);
   });
 
   it("allows up to the limit within a window", async () => {
