@@ -64,6 +64,19 @@ fn validate_grpc_listener(addr: std::net::SocketAddr) -> Result<()> {
     Ok(())
 }
 
+fn validate_audit_rotation(value: Option<&str>) -> Result<()> {
+    if let Some(value) = value {
+        match value.parse::<u64>() {
+            Ok(bytes) if bytes > 0 => Ok(()),
+            _ => Err(anyhow!(
+                "AGENTGUARD_AUDIT_MAX_BYTES must be a positive integer when set"
+            )),
+        }
+    } else {
+        Ok(())
+    }
+}
+
 /// Run the server. Returns when the listener stops (e.g. on SIGTERM/SIGINT).
 /// In-flight requests are allowed to complete before the process exits.
 ///
@@ -71,6 +84,13 @@ fn validate_grpc_listener(addr: std::net::SocketAddr) -> Result<()> {
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
+    match std::env::var("AGENTGUARD_AUDIT_MAX_BYTES") {
+        Ok(value) => validate_audit_rotation(Some(&value))?,
+        Err(std::env::VarError::NotPresent) => validate_audit_rotation(None)?,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(anyhow!("AGENTGUARD_AUDIT_MAX_BYTES is not valid Unicode"));
+        }
+    }
     if let Some(addr) = cfg.grpc_listener {
         validate_grpc_listener(addr)?;
     }
@@ -449,7 +469,7 @@ type Never = std::convert::Infallible;
 
 #[cfg(test)]
 mod tls_validation_tests {
-    use super::{validate_grpc_listener, validate_tls_paths};
+    use super::{validate_audit_rotation, validate_grpc_listener, validate_tls_paths};
     use std::io::Write;
 
     #[test]
@@ -502,5 +522,13 @@ mod tls_validation_tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("loopback-bound"));
+    }
+
+    #[test]
+    fn audit_rotation_requires_a_positive_integer_when_configured() {
+        assert!(validate_audit_rotation(None).is_ok());
+        assert!(validate_audit_rotation(Some("1048576")).is_ok());
+        assert!(validate_audit_rotation(Some("0")).is_err());
+        assert!(validate_audit_rotation(Some("many")).is_err());
     }
 }
