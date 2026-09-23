@@ -101,13 +101,8 @@ impl AuthLayer {
         match self {
             Self::Disabled => Ok(None),
             Self::ApiKey(store) | Self::ReloadableApiKey { store, .. } => {
-                let token = authorization
-                    .and_then(|value| {
-                        value
-                            .strip_prefix("Bearer ")
-                            .or_else(|| value.strip_prefix("bearer "))
-                    })
-                    .ok_or(AuthenticationFailure::Unauthenticated)?;
+                let token =
+                    bearer_token(authorization).ok_or(AuthenticationFailure::Unauthenticated)?;
                 let key = store
                     .verify(token)
                     .map_err(|_| AuthenticationFailure::Unauthenticated)?;
@@ -163,13 +158,7 @@ impl AuthLayer {
         }
         // Reject absent or structurally malformed credentials before taking
         // a scarce Argon2 slot. This keeps anonymous probes cheap under load.
-        let token = authorization
-            .and_then(|value| {
-                value
-                    .strip_prefix("Bearer ")
-                    .or_else(|| value.strip_prefix("bearer "))
-            })
-            .ok_or(AuthenticationFailure::Unauthenticated)?;
+        let token = bearer_token(authorization).ok_or(AuthenticationFailure::Unauthenticated)?;
         let mut parts = token.split(':');
         if parts.next().is_none_or(str::is_empty)
             || parts.next().is_none_or(str::is_empty)
@@ -191,6 +180,22 @@ impl AuthLayer {
         .await
         .map_err(|_| AuthenticationFailure::Unavailable)?
     }
+}
+
+/// Parse the HTTP authentication scheme without imposing case sensitivity on
+/// the scheme name. Credentials remain opaque and must not contain whitespace.
+fn bearer_token(authorization: Option<&str>) -> Option<&str> {
+    let value = authorization?;
+    let separator = value.find(' ')?;
+    let (scheme, rest) = value.split_at(separator);
+    if !scheme.eq_ignore_ascii_case("Bearer") {
+        return None;
+    }
+    let token = rest.trim_start_matches(' ');
+    if token.is_empty() || token.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return None;
+    }
+    Some(token)
 }
 
 fn has_act_as_scope(scopes: &[String]) -> bool {
@@ -264,6 +269,34 @@ mod async_auth_tests {
     use super::{ApiKeyStore, AuthLayer, AuthenticationFailure};
     use std::sync::Arc;
     use tokio::sync::Semaphore;
+
+    #[test]
+    fn bearer_scheme_is_case_insensitive_and_allows_multiple_spaces() {
+        for header in [
+            "Bearer ag_test:key-id:secret",
+            "bearer ag_test:key-id:secret",
+            "bEaReR  ag_test:key-id:secret",
+        ] {
+            assert_eq!(
+                super::bearer_token(Some(header)),
+                Some("ag_test:key-id:secret")
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_bearer_headers_are_rejected() {
+        for header in [
+            "Basic abc",
+            "Bearer",
+            "Bearer ",
+            "Bearer\tag_test:key-id:secret",
+            "Bearer ag_test:key-id: secret",
+        ] {
+            assert_eq!(super::bearer_token(Some(header)), None, "{header:?}");
+        }
+        assert_eq!(super::bearer_token(None), None);
+    }
 
     #[test]
     fn wildcard_authorization_does_not_implicitly_grant_act_as() {
