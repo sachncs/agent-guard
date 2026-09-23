@@ -1,6 +1,7 @@
 import "server-only";
 
 import { z } from "zod";
+import { readBoundedJson } from "../bounded_json.ts";
 
 /**
  * HTTP client for the agentguard AuthZEN PDP (`agentguard-server`).
@@ -63,58 +64,15 @@ export async function evaluate(
   if (!res.ok) {
     throw new PdpUnavailable(`PDP returned HTTP ${res.status}`);
   }
-  const declaredLength = res.headers.get("content-length");
-  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_PDP_RESPONSE_BYTES) {
-    await res.body?.cancel().catch(() => undefined);
-    throw new PdpUnavailable("PDP response exceeded the size limit");
-  }
-
   let payload: unknown;
   try {
-    payload = JSON.parse(await readBoundedBody(res));
+    payload = await readBoundedJson(res, MAX_PDP_RESPONSE_BYTES, "PDP");
   } catch (error) {
-    if (error instanceof PdpUnavailable) throw error;
-    throw new PdpUnavailable("PDP returned invalid JSON");
+    throw new PdpUnavailable(error instanceof Error ? error.message : "PDP returned an invalid response");
   }
   const parsed = decisionSchema.safeParse(payload);
   if (!parsed.success) {
     throw new PdpUnavailable("PDP returned an invalid decision payload");
   }
   return parsed.data;
-}
-
-async function readBoundedBody(response: Response): Promise<string> {
-  if (!response.body) throw new PdpUnavailable("PDP returned an empty response");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_PDP_RESPONSE_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        throw new PdpUnavailable("PDP response exceeded the size limit");
-      }
-      chunks.push(value);
-    }
-  } catch (error) {
-    if (error instanceof PdpUnavailable) throw error;
-    throw new PdpUnavailable("PDP response body could not be read");
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new PdpUnavailable("PDP returned invalid UTF-8");
-  }
 }
