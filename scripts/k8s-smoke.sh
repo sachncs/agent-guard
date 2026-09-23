@@ -67,8 +67,16 @@ key_json=$(docker run --rm --user "$(id -u):$(id -g)" \
   --output json api-key create \
   --key-store /keys/keys.json \
   --subject-type Agent --subject-id smoke --scope authorize)
-key_id=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).id)' "$key_json")
-raw_key=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).raw_secret)' "$key_json")
+key_id=$(printf '%s' "$key_json" | node -e \
+  'process.stdout.write(JSON.parse(require("node:fs").readFileSync(0, "utf8")).id)')
+raw_key=$(printf '%s' "$key_json" | node -e \
+  'process.stdout.write(JSON.parse(require("node:fs").readFileSync(0, "utf8")).raw_secret)')
+
+# Read the bearer header from curl's stdin config instead of exposing the
+# credential in curl's process arguments, shell history, or command tracing.
+curl_with_bearer() {
+  printf 'header = "authorization: Bearer %s"\n' "$raw_key" | curl --config - "$@"
+}
 kubectl -n "$namespace" create secret generic agentguard-api-keys \
   --from-file=keys.json="$key_store" \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -90,15 +98,13 @@ done
 curl --silent --fail "http://127.0.0.1:$port/healthz" >/dev/null
 curl --silent --fail "http://127.0.0.1:$port/readyz" >/dev/null
 
-response=$(curl --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
+response=$(curl_with_bearer --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $raw_key" \
   -d '{"subject":{"type":"Agent","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}')
 echo "$response" | grep -q '"decision":true'
 
-denied=$(curl --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
+denied=$(curl_with_bearer --silent --fail -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $raw_key" \
   -d '{"subject":{"type":"Agent","id":"smoke"},"action":{"type":"Action","id":"ToolCall::shell_exec"},"resource":{"type":"Repository","id":"demo"},"context":{"cmd":"echo smoke","session":{"ip":"127.0.0.1"}}}')
 echo "$denied" | grep -q '"decision":false'
 
@@ -115,10 +121,9 @@ kubectl -n "$namespace" create secret generic agentguard-api-keys \
 # Kubelet Secret projection is eventually consistent and its sync/cache period
 # can be much longer than the PDP's 250 ms content poll interval.
 for _ in $(seq 1 120); do
-  status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  status=$(curl_with_bearer --silent --output /dev/null --write-out '%{http_code}' \
     -X POST "http://127.0.0.1:$port/access/v1/evaluation" \
     -H 'content-type: application/json' \
-    -H "authorization: Bearer $raw_key" \
     -d '{"subject":{"type":"Agent","id":"smoke"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}')
   if [[ "$status" == 401 ]]; then break; fi
   sleep 1
@@ -127,6 +132,7 @@ done
   echo "revoked API key still accepted (HTTP $status)" >&2
   exit 1
 }
+unset raw_key key_json
 
 pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
 kubectl -n "$namespace" exec "$pod" -- test -s /var/lib/agentguard/audit/decisions.jsonl

@@ -70,7 +70,7 @@ if (failures.length === 0) {
   for (const value of [
     "api-key create",
     'AGENTGUARD_AUTH=disabled',
-    'authorization: Bearer $raw_key',
+    'printf \'header = "authorization: Bearer %s"\\n\' "$raw_key" | curl --config -',
     'api-key revoke',
     '[[ "$status" == 401 ]]',
     "audit_records_before_upgrade=",
@@ -82,6 +82,19 @@ if (failures.length === 0) {
     if (value === 'AGENTGUARD_AUTH=disabled' ? present : !present) {
       failures.push(`k8s-smoke.sh must verify production key auth and live revocation (${value})`);
     }
+  }
+  if (
+    !smoke.includes('printf \'%s\' "$key_json" | node -e') ||
+    !smoke.includes('readFileSync(0, "utf8")') ||
+    !smoke.includes("unset raw_key key_json")
+  ) {
+    failures.push("k8s-smoke.sh must parse and clear one-time key material through stdin");
+  }
+  if (smoke.includes('-H "authorization: Bearer $raw_key"')) {
+    failures.push("k8s-smoke.sh must not expose the raw API key in curl process arguments");
+  }
+  if (/JSON\.parse\(process\.argv\[1\]\).*key_json/.test(smoke)) {
+    failures.push("k8s-smoke.sh must not pass the API-key JSON as a process argument");
   }
   const revocationSmoke = smoke.slice(smoke.indexOf("api-key revoke"));
   if (!revocationSmoke.includes("seq 1 120")) {
