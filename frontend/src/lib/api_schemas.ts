@@ -109,30 +109,3 @@ export const errorResponseSchema = z.object({
   error: z.string().optional(),
   kind: z.string().optional(),
 });
-
-/** Parse a JSON body against a schema; returns a discriminated result. */
-export async function parseJsonBody<S extends z.ZodType>(
-  request: Request,
-  schema: S
-): Promise<
-  | { ok: true; data: z.infer<S> }
-  | { ok: false; status: 400; error: string }
-> {
-  let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    return { ok: false, status: 400, error: "request body must be JSON" };
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue?.path?.length ? `${issue.path.join(".")}: ` : "";
-    return {
-      ok: false,
-      status: 400,
-      error: `${where}${issue?.message ?? "validation failed"}`,
-    };
-  }
-  return { ok: true, data: parsed.data };
-}

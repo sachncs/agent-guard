@@ -5,9 +5,9 @@ import {
   delegateSchema,
   logQuerySchema,
   logResponseSchema,
-  parseJsonBody,
   verifySchema,
 } from "./api_schemas.ts";
+import { MAX_API_REQUEST_BYTES, parseJsonBody } from "./api_request.ts";
 
 const jsonReq = (body: unknown) =>
   new Request("http://x/", {
@@ -96,5 +96,35 @@ describe("schemas", () => {
     const r2 = await parseJsonBody(jsonReq({}), delegateSchema);
     assert.equal(r2.ok, false);
     if (!r2.ok && r2.ok === false && "error" in r2) assert.ok(r2.error.length > 0);
+  });
+
+  it("rejects declared and streamed request bodies above the byte limit", async () => {
+    const declared = new Request("http://x/", {
+      method: "POST",
+      headers: { "content-length": String(MAX_API_REQUEST_BYTES + 1) },
+      body: "{}",
+    });
+    const declaredResult = await parseJsonBody(declared, delegateSchema);
+    assert.deepEqual(declaredResult, {
+      ok: false,
+      status: 413,
+      error: `request body exceeds the ${MAX_API_REQUEST_BYTES}-byte limit`,
+    });
+
+    const body = JSON.stringify({
+      from: "a",
+      to: "b",
+      actions: ["read"],
+      resources: ["Resource::r"],
+      extra: "x".repeat(MAX_API_REQUEST_BYTES),
+    });
+    const streamed = new Request("http://x/", {
+      method: "POST",
+      headers: { "content-length": "1" },
+      body,
+    });
+    const streamedResult = await parseJsonBody(streamed, delegateSchema);
+    assert.equal(streamedResult.ok, false);
+    if (!streamedResult.ok) assert.equal(streamedResult.status, 413);
   });
 });

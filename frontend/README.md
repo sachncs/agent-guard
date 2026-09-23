@@ -30,7 +30,9 @@ the console answers `503` on every route — there is no open mode.
   `X-Frame-Options: DENY`, nosniff, referrer policy; HSTS over https).
 - Mutating routes validate bodies with strict zod schemas (identifiers may
   not look like CLI flags) and use a conservative application-host rate-limit
-  key; spoofable forwarded client headers are ignored.
+  key; spoofable forwarded client headers are ignored. JSON request bodies are
+  capped at 256 KiB before parsing, including when Content-Length is missing or
+  understated; oversized requests receive HTTP 413.
 
 ## Prerequisites
 

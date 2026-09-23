@@ -1,5 +1,6 @@
 import type { DecisionDto } from "@/lib/api_types";
-import { parseJsonBody, authorizeSchema } from "@/lib/api_schemas";
+import { authorizeSchema } from "@/lib/api_schemas";
+import { parseJsonBody } from "@/lib/api_request";
 import { pdpUnavailableResponse } from "@/lib/api_error";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireViewer } from "@/lib/auth/guard";

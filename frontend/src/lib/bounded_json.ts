@@ -5,7 +5,7 @@ export class BoundedJsonResponseError extends Error {}
 
 /** Read, bound, UTF-8 decode, and parse an upstream JSON response. */
 export async function readBoundedJson(
-  response: Response,
+  response: Pick<Response, "headers" | "body">,
   maxBytes: number,
   source: string,
 ): Promise<unknown> {
