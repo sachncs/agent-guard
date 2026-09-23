@@ -35,6 +35,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.89.0
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stable-rust-workspace
       - name: Install protobuf compiler for optional SPIFFE support
         run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -49,6 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stable-rust-workspace
       - run: cargo check --workspace --all-targets
 
   test:
@@ -58,10 +64,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stable-rust-workspace
       - name: Install protobuf compiler for generated API descriptor check
         run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
-      - run: cargo test --workspace
-      - run: cargo test --workspace --all-features
+      # Keep test invocations package-scoped. Besides making failures easier to
+      # attribute, this bounds each command while retaining the full workspace
+      # and all-feature coverage of the previous aggregate commands.
+      - run: cargo test -p agentguard-core
+      - run: cargo test -p agentguard-auth
+      - run: cargo test -p agentguard-policy
+      - run: cargo test -p agentguard-telemetry
+      - run: cargo test -p agentguard
+      - run: cargo test -p agentguard-server
+      - run: cargo test -p rust-embedder
+      - run: cargo test -p agentguard-core --all-features
+      - run: cargo test -p agentguard-auth --all-features
+      - run: cargo test -p agentguard-policy --all-features
+      - run: cargo test -p agentguard-telemetry --all-features
+      - run: cargo test -p agentguard --all-features
+      - run: cargo test -p agentguard-server --all-features
+      - run: cargo test -p rust-embedder --all-features
       # Doctests are run separately so a single failing docstring
       # fails CI even when the lib tests pass. Mirrors `cargo test`
       # output for the lib crate but only runs the doc-tests.
@@ -73,8 +97,14 @@ jobs:
             --include_imports \
             crates/agentguard-server/proto/agentguard.proto
           test -s /tmp/agentguard.pb
-      - run: cargo build --workspace --release
-      - run: cargo bench --workspace --no-run
+      - run: cargo build -p agentguard-core --release
+      - run: cargo build -p agentguard-auth --release
+      - run: cargo build -p agentguard-policy --release
+      - run: cargo build -p agentguard-telemetry --release
+      - run: cargo build -p agentguard --release
+      - run: cargo build -p agentguard-server --release
+      - run: cargo build -p rust-embedder --release
+      - run: cargo bench -p agentguard-core --no-run
 
   ts:
     name: typescript workspace
@@ -242,13 +272,19 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89.0
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --lcov --output-path coverage.lcov
-      - name: enforce 80% line coverage
-        run: |
-          COV=$(cargo llvm-cov report --summary-only | grep -oE '[0-9.]+\.[0-9]+%' | head -1 | tr -d '%')
-          echo "Line coverage: $COV%"
-          awk -v cov="$COV" 'BEGIN { exit !(cov+0 >= 80) }'
-          echo "Coverage gate passed: $COV% >= 80%"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: stable-rust-workspace
+      - run: cargo llvm-cov clean --workspace
+      - run: cargo llvm-cov -p agentguard-core --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-auth --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-policy --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-telemetry --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-server --quiet --summary-only
+      - run: cargo llvm-cov --no-clean -p rust-embedder --quiet --summary-only
+      - name: enforce 80% aggregate line coverage
+        run: cargo llvm-cov report --summary-only --fail-under-lines 80
 
   fuzz:
     name: cargo fuzz (nightly)
