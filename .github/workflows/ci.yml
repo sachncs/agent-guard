@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89.0
-      - name: Install protobuf compiler for optional SPIFFE support
+      - name: Install protobuf compiler for generated API descriptor check
         run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo test --workspace
       - run: cargo test --workspace --all-features
@@ -84,11 +84,12 @@ jobs:
           runtime: node@22.19.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:public
+      - run: pnpm check:workspace
       - run: pnpm check:docs
       - run: node scripts/verify-k8s.mjs
       - name: Check documentation site
         working-directory: site
-        run: pnpm config set dangerouslyAllowAllBuilds true && pnpm install --frozen-lockfile && pnpm check && pnpm build
+        run: pnpm install --frozen-lockfile && pnpm check && pnpm build
       - name: Verify built documentation links
         run: node scripts/verify-site-links.mjs site/dist
       # Build the SDK first so dependents (frontend, examples) can resolve it.

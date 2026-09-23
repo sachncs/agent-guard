@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Make clean-checkout setup work without Corepack by invoking the pinned pnpm
+  release through npm when needed; pin the site workspace to the same pnpm and
+  explicitly allow only its required `esbuild` and `sharp` install scripts.
 - Reject malformed `AGENTGUARD_GRPC_LISTEN` values at startup instead of
   silently disabling the configured gRPC listener.
 - Fail closed after audit-log write or sync errors; attempt to truncate a

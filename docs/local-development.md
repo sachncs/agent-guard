@@ -8,9 +8,15 @@ same pinned toolchain used by CI.
 
 - Rust 1.89, with `rustfmt` and `clippy`
 - Node.js 22.19.0 or a compatible Node.js 20.9+ runtime
-- pnpm 11.22.x through Corepack
-- Protocol Buffers compiler (`protoc`) for the optional SPIFFE feature
+- pnpm 11.22.x (the bootstrap uses Corepack when available, or npm to invoke
+  the pinned release when Corepack is absent)
+- Protocol Buffers compiler (`protoc`) for the optional SPIFFE feature and
+  protobuf descriptor checks
 - Docker for image and Kubernetes smoke tests
+
+The server build uses `protoc-bin-vendored`, but the optional SPIFFE dependency
+uses `protoc` for its generated Workload API client. Set `PROTOC` to an
+executable path if the compiler is not on `PATH`.
 
 Run the checked-in bootstrap script from a clean checkout:
 

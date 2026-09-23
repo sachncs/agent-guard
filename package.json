@@ -6,8 +6,9 @@
   "scripts": {
     "build": "pnpm -r build && pnpm --dir site build && node scripts/verify-site-links.mjs site/dist",
     "test": "pnpm -r test",
-    "check": "pnpm check:public && pnpm check:docs && node scripts/verify-k8s.mjs && pnpm --dir site check && pnpm --filter frontend lint && pnpm --filter frontend typecheck",
+    "check": "pnpm check:public && pnpm check:workspace && pnpm check:docs && node scripts/verify-k8s.mjs && pnpm --dir site check && pnpm --filter frontend lint && pnpm --filter frontend typecheck",
     "check:public": "node scripts/verify-public-surface.mjs && node scripts/verify-design-tokens.mjs",
+    "check:workspace": "node scripts/verify-workspace.mjs",
     "check:docs": "node scripts/verify-doc-links.mjs"
   },
   "engines": {

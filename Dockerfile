@@ -1,7 +1,7 @@
 FROM rust:1.89-bookworm AS builder
 WORKDIR /src
 RUN apt-get update \
-  && apt-get install --no-install-recommends -y protobuf-compiler ca-certificates \
+  && apt-get install --no-install-recommends -y ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN cargo build --locked --release -p agentguard-server -p agentguard

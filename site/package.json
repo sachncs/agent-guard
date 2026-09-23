@@ -2,6 +2,7 @@
   "name": "agent-guard-site",
   "version": "0.2.0",
   "private": true,
+  "packageManager": "pnpm@11.22.0",
   "type": "module",
   "scripts": {
     "dev": "astro dev",

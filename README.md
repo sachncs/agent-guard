@@ -77,12 +77,9 @@ own audit wiring and do not share a physical log automatically:
 ### CLI (Rust)
 
 ```bash
-# agentguard-server's build.rs shells out to protoc to regenerate
-# the gRPC stubs from proto/agentguard.proto. Install protobuf-compiler
-# (or set $PROTOC to its path) before building:
-#   apt:   apt install -y protobuf-compiler
-#   brew:  brew install protobuf
-#   cargo: cargo install protobuf-codegen
+# agentguard-server vendors protoc for its generated gRPC stubs. The optional
+# SPIFFE feature and protobuf descriptor checks need a system protoc; set
+# PROTOC to its executable path if it is not on PATH.
 cargo install --path crates/agentguard-cli
 ```
 
