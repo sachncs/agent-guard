@@ -669,7 +669,14 @@ fn open_existing_audit_file(path: &Path) -> std::io::Result<File> {
 /// FIFOs, sockets, and device nodes instead of treating them as durable files.
 fn open_audit_file(path: &Path) -> std::io::Result<File> {
     validate_audit_path(path)?;
-    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path)?;
     if !file.metadata()?.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
