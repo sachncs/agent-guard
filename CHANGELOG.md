@@ -19,6 +19,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   backends that must not block async runtime workers.
 - Re-export both DPoP replay-store ports from the auth crate root for downstream
   adapter implementations.
+- Expose the PDP's durable audit appender port and allow embedded applications
+  to inject their own healthy, tamper-evident audit backend.
 
 ### Fixed
 

@@ -12,7 +12,7 @@
 //! configuration boundary and `docs/production.md` for the supported
 //! deployment contract.
 
-mod audit;
+pub mod audit;
 pub mod auth_layer;
 pub mod authzen;
 pub mod grpc;
@@ -20,6 +20,7 @@ pub mod listener;
 pub mod proto;
 pub mod server;
 
+pub use audit::AuditAppender;
 pub use auth_layer::AuthLayer;
 pub use authzen::{
     build_request_entities, build_state, build_state_with_cache, build_state_with_options,

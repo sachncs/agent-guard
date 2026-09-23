@@ -234,6 +234,17 @@ This makes it trivial to:
 - Review changes in PRs
 - Migrate from local to hosted by syncing the same files
 
+### Embedded audit storage
+
+Embedded applications can implement the public `AuditAppender` port and
+inject it with `AppState::with_audit_appender` when audit persistence is
+managed outside the local filesystem. The adapter must durably append before
+returning, report health accurately, and report `is_chained` only when stored
+records are tamper-evident. The request path fails closed on append errors,
+and readiness requires a healthy chained adapter. The standalone binary
+continues to use the file-backed `DecisionLog`; a distributed audit backend
+is not included in the supported deployment package.
+
 ## Configuration
 
 All settings have sensible defaults; overrides come from CLI flags

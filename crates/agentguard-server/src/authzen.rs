@@ -304,6 +304,18 @@ impl AuthorizerHandle {
 }
 
 impl AppState {
+    /// Replace the configured audit writer with an embedder-provided durable
+    /// adapter. Use this with `build_state` and `audit_log: None` when audit
+    /// persistence is managed outside the local filesystem.
+    ///
+    /// Readiness requires the adapter to report both healthy and chained.
+    /// Every successful authorization is returned only after the adapter
+    /// confirms its append; append failures fail closed.
+    pub fn with_audit_appender(mut self, appender: Arc<dyn AuditAppender>) -> Self {
+        self.audit_appender = Arc::new(Some(appender));
+        self
+    }
+
     /// The authorization engine. Cheap to clone (already an `Arc`).
     pub fn authorizer(&self) -> &AuthorizerHandle {
         &self.authorizer
