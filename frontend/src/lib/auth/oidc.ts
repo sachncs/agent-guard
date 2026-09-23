@@ -293,6 +293,13 @@ export async function completeLogin(
   } catch {
     throw new LoginFailed("ID token validation failed");
   }
+  const multipleAudiences = Array.isArray(claims.aud) && claims.aud.length > 1;
+  if (
+    (multipleAudiences && claims.azp !== config.oidc.clientId) ||
+    (claims.azp !== undefined && claims.azp !== config.oidc.clientId)
+  ) {
+    throw new LoginFailed("ID token authorized party mismatch");
+  }
   if (claims.nonce !== stateClaims.nonce) {
     throw new LoginFailed("nonce mismatch");
   }

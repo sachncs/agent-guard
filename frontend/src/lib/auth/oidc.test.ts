@@ -132,6 +132,8 @@ describe("OIDC discovery", () => {
     const nonces: string[] = [];
     let tokenCalls = 0;
     let jwksCalls = 0;
+    let tokenAudience: string | string[] = config.oidc.clientId;
+    let tokenAzp: string | undefined;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -143,10 +145,15 @@ describe("OIDC discovery", () => {
       }
       if (url.pathname === "/token" && init?.method === "POST") {
         const nonce = nonces[tokenCalls++];
-        const idToken = await new SignJWT({ sub: "oidc-user", nonce })
+        const claims = {
+          sub: "oidc-user",
+          nonce,
+          ...(tokenAzp === undefined ? {} : { azp: tokenAzp }),
+        };
+        const idToken = await new SignJWT(claims)
           .setProtectedHeader({ alg: "RS256", kid: "oidc-test-key" })
           .setIssuer(config.oidc.issuer)
-          .setAudience(config.oidc.clientId)
+          .setAudience(tokenAudience)
           .setIssuedAt()
           .setExpirationTime("5m")
           .sign(privateKey);
@@ -180,7 +187,31 @@ describe("OIDC discovery", () => {
     };
     assert.equal((await complete(first, "first-code")).sub, "oidc-user");
     assert.equal((await complete(second, "second-code")).sub, "oidc-user");
-    assert.equal(tokenCalls, 2);
+
+    const multiAudienceLogin = await buildLoginRedirect(config, redirectUri);
+    const multiAudienceState = (await jwtVerify(multiAudienceLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(multiAudienceState.nonce));
+    tokenAudience = [config.oidc.clientId, "another-client"];
+    await assert.rejects(complete(multiAudienceLogin, "missing-azp"), /authorized party mismatch/);
+
+    const mismatchedAzpLogin = await buildLoginRedirect(config, redirectUri);
+    const mismatchedAzpState = (await jwtVerify(mismatchedAzpLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(mismatchedAzpState.nonce));
+    tokenAzp = "another-client";
+    await assert.rejects(complete(mismatchedAzpLogin, "mismatched-azp"), /authorized party mismatch/);
+
+    const singleAudienceLogin = await buildLoginRedirect(config, redirectUri);
+    const singleAudienceState = (await jwtVerify(singleAudienceLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(singleAudienceState.nonce));
+    tokenAudience = config.oidc.clientId;
+    await assert.rejects(complete(singleAudienceLogin, "single-audience-mismatched-azp"), /authorized party mismatch/);
+
+    const validAzpLogin = await buildLoginRedirect(config, redirectUri);
+    const validAzpState = (await jwtVerify(validAzpLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(validAzpState.nonce));
+    tokenAzp = config.oidc.clientId;
+    assert.equal((await complete(validAzpLogin, "valid-azp")).sub, "oidc-user");
+    assert.equal(tokenCalls, 6);
     assert.equal(jwksCalls, 1, "the cached jose resolver reuses the fetched key set");
   });
 });
