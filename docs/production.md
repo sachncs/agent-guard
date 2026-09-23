@@ -53,6 +53,9 @@ upgrades. The full smoke-test, backup, and rollback procedure is in
 - The audit destination must be a regular file, not a symlink, FIFO, or device
   node. On Unix the server enforces owner-only (`0600`) audit-file permissions
   at open, including for an existing file.
+- Chained audit startup and append require durable chain-identity metadata;
+  failure to persist its owner-only sidecar fails startup or withdraws
+  readiness rather than silently opening a new chain identity.
 - A configured audit append failure returns an error instead of allowing the
   decision to continue silently.
 - Policy evaluation and audit append/fsync run on a bounded blocking pool. At

@@ -18,7 +18,7 @@ async fn api_key_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
 }
 
 async fn make_app() -> axum::Router {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = std::sync::Arc::new(tempfile::tempdir().unwrap());
     let store = PolicyStore::open(dir.path()).unwrap();
     store
         .write_policy(
@@ -29,6 +29,8 @@ async fn make_app() -> axum::Router {
     // Open a per-test audit log so /readyz sees a configured log.
     let audit_path = dir.path().join("audit.jsonl");
     let audit = agentguard_core::decision::DecisionLog::open(&audit_path).unwrap();
+    // Keep policy/audit files available for the router lifetime; deleting the
+    // temp directory while the server holds file handles is not durable storage.
     let state: AppState = build_state(
         dir.path().to_path_buf(),
         Some(audit_path),
@@ -37,8 +39,13 @@ async fn make_app() -> axum::Router {
     )
     .await
     .unwrap();
-    drop(audit); // state owns its own copy via Arc
-    router(state)
+    drop(audit); // state owns its own copy via Arc.
+    router(state).layer(axum::middleware::from_fn(
+        move |request: axum::extract::Request, next: axum::middleware::Next| {
+            let _keep_tempdir_alive = dir.clone();
+            async move { next.run(request).await }
+        },
+    ))
 }
 
 async fn make_app_shared() -> axum::Router {
@@ -113,8 +120,14 @@ async fn evaluation_endpoint_returns_decision() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     let resp = resp.expect("evaluation should either finish or exhaust saturation retries");
-    assert_eq!(resp.status(), StatusCode::OK);
+    let status = resp.status();
     let bytes = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(v["decision"], true);
 }
@@ -181,8 +194,14 @@ async fn evaluation_deny_path() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    let status = resp.status();
     let bytes = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(v["decision"], false);
 }
@@ -341,7 +360,7 @@ use agentguard_server::AuthLayer as _AuthLayer;
 use std::sync::Arc;
 
 async fn make_app_with_auth(auth: _AuthLayer) -> axum::Router {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = std::sync::Arc::new(tempfile::tempdir().unwrap());
     let store = PolicyStore::open(dir.path()).unwrap();
     store
         .write_policy(
@@ -358,7 +377,12 @@ async fn make_app_with_auth(auth: _AuthLayer) -> axum::Router {
     )
     .await
     .unwrap();
-    router(state)
+    router(state).layer(axum::middleware::from_fn(
+        move |request: axum::extract::Request, next: axum::middleware::Next| {
+            let _keep_tempdir_alive = dir.clone();
+            async move { next.run(request).await }
+        },
+    ))
 }
 
 fn api_key_payload() -> serde_json::Value {

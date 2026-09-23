@@ -197,7 +197,12 @@ impl DecisionLog {
                     chain.adopt_id(id);
                 } else {
                     let id = chain.id();
-                    let _ = write_chain_id_sidecar(&chain_id_path, id);
+                    write_chain_id_sidecar(&chain_id_path, id).map_err(|error| {
+                        Error::Io(format!(
+                            "persist audit chain id {}: {error}",
+                            chain_id_path.display()
+                        ))
+                    })?;
                 }
                 Ok(Self {
                     mode: LogMode::Chained {
@@ -392,9 +397,19 @@ impl DecisionLog {
                 // inside `try_append_with_io`); ordering is
                 // file -> chain so the call graph cannot deadlock.
                 let chain_id = chain.id();
-                // Persist the chain_id to the sidecar file on first
-                // use so subsequent restarts adopt the same id.
-                let _ = write_chain_id_sidecar(&self.chain_id_path, chain_id);
+                // Rotation moves the sidecar alongside the previous segment,
+                // so create it for the new active segment. Avoid an extra
+                // file and directory fsync for every normal append.
+                if read_chain_id_sidecar(&self.chain_id_path) != Some(chain_id) {
+                    if let Err(error) = write_chain_id_sidecar(&self.chain_id_path, chain_id) {
+                        let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
+                        *guard = None;
+                        return Err(Error::Io(format!(
+                            "persist audit chain id {}: {error}",
+                            self.chain_id_path.display()
+                        )));
+                    }
+                }
                 let mut guard = file.lock().unwrap_or_else(|e| e.into_inner());
                 let Some(f) = guard.as_mut() else {
                     return Err(Error::Io(
@@ -791,25 +806,28 @@ fn read_chain_id_sidecar(path: &Path) -> Option<ChainId> {
     Some(ChainId(uuid))
 }
 
-/// Atomically write the chain id to the sidecar file. Errors are
-/// swallowed: a missing sidecar is a "no prior chain" hint, not a
-/// correctness violation. The chain itself remains consistent
-/// regardless.
+/// Atomically and durably write the chain id sidecar. Failure is fatal to
+/// opening/appending a chained log: without this metadata a restart could
+/// resume the hash head under a different chain identity.
 fn write_chain_id_sidecar(path: &Path, id: ChainId) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
-        ".{}.new",
+        ".{}.{}.new",
         path.file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("chainid"),
+        uuid::Uuid::now_v7(),
     ));
     let body = format!("{}\n", id.0);
     {
-        let f = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&tmp)?;
+        let mut options = OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let f = options.open(&tmp)?;
         let mut w = BufWriter::new(f);
         std::io::Write::write_all(&mut w, body.as_bytes())?;
         w.flush()?;
@@ -819,6 +837,8 @@ fn write_chain_id_sidecar(path: &Path, id: ChainId) -> std::io::Result<()> {
         inner.sync_all()?;
     }
     std::fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    File::open(parent)?.sync_all()?;
     Ok(())
 }
 
@@ -851,6 +871,55 @@ mod tests {
         let path = dir.path().join("chained.jsonl");
         let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
         assert!(log.chain_id().is_some());
+    }
+
+    #[test]
+    fn chained_log_refuses_to_open_when_chain_id_cannot_be_persisted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        std::fs::create_dir(chain_id_sidecar_path(&path)).unwrap();
+
+        let result = DecisionLog::open_with_chain(&path, b"root");
+
+        assert!(
+            result.is_err(),
+            "a chained log must not open without durable chain identity"
+        );
+    }
+
+    #[test]
+    fn chained_append_with_unwritable_chain_id_sidecar_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+        let sidecar = chain_id_sidecar_path(&path);
+        std::fs::remove_file(&sidecar).unwrap();
+        std::fs::create_dir(sidecar).unwrap();
+        let rec = DecisionRecord {
+            id: "a".into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "send".into(),
+            resource: "doc".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+        };
+
+        assert!(log.append(&rec).is_err());
+        assert!(
+            !log.is_healthy(),
+            "failed metadata persistence withdraws readiness"
+        );
+        assert!(log.append(&rec).is_err());
+        assert_eq!(std::fs::metadata(path).unwrap().len(), 0);
     }
 
     #[test]
