@@ -89,20 +89,28 @@ impl AuthConfig {
     /// Read `AGENTGUARD_AUTH` from the environment. Format:
     /// `disabled` (default) or `apikey:<path>`.
     pub fn from_env() -> Result<Self, String> {
-        match std::env::var("AGENTGUARD_AUTH").ok().as_deref() {
-            None | Some("") | Some("disabled") => Ok(AuthConfig::Disabled),
-            Some(s) => {
-                if let Some(rest) = s.strip_prefix("apikey:") {
-                    Ok(AuthConfig::ApiKey {
-                        path: PathBuf::from(rest),
-                    })
-                } else {
-                    Err(format!(
-                        "AGENTGUARD_AUTH must be 'disabled' or 'apikey:<path>', got {:?}",
-                        s
-                    ))
-                }
+        match std::env::var("AGENTGUARD_AUTH") {
+            Ok(value) => Self::parse_env_value(Some(&value)),
+            Err(std::env::VarError::NotPresent) => Self::parse_env_value(None),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                Err("AGENTGUARD_AUTH is not valid Unicode".to_string())
             }
+        }
+    }
+
+    fn parse_env_value(value: Option<&str>) -> Result<Self, String> {
+        match value {
+            None | Some("") | Some("disabled") => Ok(AuthConfig::Disabled),
+            Some(value) => match value.strip_prefix("apikey:") {
+                Some(path) if !path.is_empty() => Ok(AuthConfig::ApiKey {
+                    path: PathBuf::from(path),
+                }),
+                Some(_) => Err("AGENTGUARD_AUTH=apikey: requires a non-empty path".to_string()),
+                None => Err(format!(
+                    "AGENTGUARD_AUTH must be 'disabled' or 'apikey:<path>', got {:?}",
+                    value
+                )),
+            },
         }
     }
 }
@@ -185,6 +193,43 @@ mod grpc_listener_tests {
         let error = parse_grpc_listener(Some("localhost:broken".into())).unwrap_err();
         assert!(error.contains("AGENTGUARD_GRPC_LISTEN"));
         assert!(error.contains("localhost:broken"));
+    }
+}
+
+#[cfg(test)]
+mod auth_config_tests {
+    use super::AuthConfig;
+    use std::path::Path;
+
+    #[test]
+    fn auth_environment_defaults_to_disabled_only_when_unset_or_explicit() {
+        assert!(matches!(
+            AuthConfig::parse_env_value(None),
+            Ok(AuthConfig::Disabled)
+        ));
+        assert!(matches!(
+            AuthConfig::parse_env_value(Some("")),
+            Ok(AuthConfig::Disabled)
+        ));
+        assert!(matches!(
+            AuthConfig::parse_env_value(Some("disabled")),
+            Ok(AuthConfig::Disabled)
+        ));
+    }
+
+    #[test]
+    fn auth_environment_accepts_a_nonempty_api_key_store_path() {
+        assert!(matches!(
+            AuthConfig::parse_env_value(Some("apikey:/etc/agentguard/keys.json")),
+            Ok(AuthConfig::ApiKey { path }) if path == Path::new("/etc/agentguard/keys.json")
+        ));
+    }
+
+    #[test]
+    fn auth_environment_rejects_malformed_and_empty_api_key_paths() {
+        assert!(AuthConfig::parse_env_value(Some("apikey:")).is_err());
+        assert!(AuthConfig::parse_env_value(Some("apikey")).is_err());
+        assert!(AuthConfig::parse_env_value(Some("unknown")).is_err());
     }
 }
 
