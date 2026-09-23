@@ -21,7 +21,6 @@ command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "node is required" >&2; exit 1; }
 
 key_dir=$(mktemp -d "$PWD/.k8s-smoke.XXXXXX")
-chmod 0777 "$key_dir"
 key_store="$key_dir/keys.json"
 
 cleanup() {
@@ -61,7 +60,7 @@ kubectl -n "$namespace" create configmap agentguard-policies \
 # Start the production-authenticated workload with a real identity-bound key.
 # Generate the credential using the release CLI in the same image that will
 # run in Kubernetes, then mount its persisted hash as a Secret.
-key_json=$(docker run --rm --user 0:0 \
+key_json=$(docker run --rm --user "$(id -u):$(id -g)" \
   --volume "$key_dir:/keys" \
   --entrypoint /usr/local/bin/agentguard "$image" \
   --output json api-key create \
@@ -105,7 +104,7 @@ echo "$denied" | grep -q '"decision":false'
 # Revoke the key in the source store and update the mounted Secret. The
 # running PDP must observe the Kubernetes projected-volume update without a
 # rollout, then reject the same credential at the HTTP authentication layer.
-docker run --rm --user 0:0 \
+docker run --rm --user "$(id -u):$(id -g)" \
   --volume "$key_dir:/keys" \
   --entrypoint /usr/local/bin/agentguard "$image" \
   api-key revoke --key-store /keys/keys.json "$key_id"

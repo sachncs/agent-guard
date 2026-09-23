@@ -37,6 +37,12 @@ if (failures.length === 0) {
   }
 
   const smoke = readFileSync("scripts/k8s-smoke.sh", "utf8");
+  if (!smoke.includes('--user "$(id -u):$(id -g)"')) {
+    failures.push("k8s-smoke.sh must run key-store writes as the host uid/gid for kubectl access");
+  }
+  if (smoke.includes('chmod 0777 "$key_dir"')) {
+    failures.push("k8s-smoke.sh must keep its temporary key directory private");
+  }
   if (!smoke.includes('"session":{"ip":"127.0.0.1"}')) {
     failures.push("k8s-smoke.sh must provide the required session record");
   }
