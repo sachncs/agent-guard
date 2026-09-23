@@ -10,6 +10,7 @@ import {
   logResponseSchema,
 } from "@/lib/api_schemas";
 import { fetchApi } from "@/lib/fetch_api";
+import { LatestRequest } from "@/lib/latest_request";
 import { CliAlert } from "@/components/cli_alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,15 +45,18 @@ export default function DashboardPage() {
   const [principalFilter, setPrincipalFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [latestRequest] = useState(() => new LatestRequest());
 
   const load = useCallback(
     async (p = principalFilter, a = actionFilter) => {
+      const request = latestRequest.begin();
       try {
         const qs = new URLSearchParams({ n: "100" });
         if (p) qs.set("principal", p);
         if (a) qs.set("action", a);
-        const res = await fetchApi(`/api/log?${qs}`);
+        const res = await fetchApi(`/api/log?${qs}`, { signal: request.signal });
         const body: unknown = await res.json();
+        if (!request.isCurrent()) return;
         if (!res.ok) {
           const err = errorResponseSchema.safeParse(body);
           setError(
@@ -70,20 +74,27 @@ export default function DashboardPage() {
         setError(null);
         setCliMissing(false);
       } catch {
+        if (request.signal.aborted || !request.isCurrent()) return;
         setError("Unable to reach the console backend. Check the PDP and audit configuration.");
         setCliMissing(false);
         toast.error("Network error while loading the audit log");
       } finally {
-        setLoading(false);
+        if (request.isCurrent()) {
+          request.finish();
+          setLoading(false);
+        }
       }
     },
-    [principalFilter, actionFilter]
+    [principalFilter, actionFilter, latestRequest]
   );
 
   useEffect(() => {
     // Initial fetch on mount; state updates happen after await inside load().
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    return () => {
+      latestRequest.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -95,11 +106,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    timer.current = setInterval(() => void load(), REFRESH_MS);
+    timer.current = setInterval(() => {
+      if (!latestRequest.active) void load();
+    }, REFRESH_MS);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [autoRefresh, load]);
+  }, [autoRefresh, load, latestRequest]);
 
   const allowed = records.filter((r) => r.effect === "allow").length;
   const denied = records.length - allowed;
