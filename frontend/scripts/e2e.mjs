@@ -55,6 +55,11 @@ function createTestTls(tlsDir) {
   return { key: readFileSync(keyPath), cert: readFileSync(certPath), certPath };
 }
 
+function assertLabelTargetsControl(html, id, message) {
+  assert.match(html, new RegExp(`<label\\b[^>]*\\bfor="${id}"`), `${message}: label`);
+  assert.match(html, new RegExp(`\\bid="${id}"`), `${message}: control`);
+}
+
 // ---------------------------------------------------------------- fake IdP
 
 const idpCodes = new Map(); // code -> { claims, nonce }
@@ -614,6 +619,21 @@ async function main() {
     assert.equal(html.includes(pdp.bearer), false, "PDP credential is never rendered into browser HTML");
     assert.doesNotMatch(html, />admin</, "no admin badge for viewer");
 
+    const simulatorPage = await req(viewer, "/simulator");
+    assert.equal(simulatorPage.status, 200, "viewer can open the simulator");
+    const simulatorHtml = await simulatorPage.text();
+    for (const [id, label] of [
+      ["principal-type", "principal type"],
+      ["principal-uid", "principal UID"],
+      ["action-tool", "tool"],
+      ["resource-type", "resource type"],
+      ["resource-id", "resource ID"],
+      ["request-args", "arguments context"],
+      ["request-session", "session context"],
+    ]) {
+      assertLabelTargetsControl(simulatorHtml, id, `simulator ${label} is accessible`);
+    }
+
     // --- 3. RBAC ---------------------------------------------------------
     const viewerLog = await req(viewer, "/api/log?n=5");
     assert.equal(viewerLog.status, 200, "viewer can read audit tail");
@@ -776,10 +796,17 @@ async function main() {
     assert.equal((await okDelegate.json()).token, "fake.jwt.token");
     const delegationPage = await req(admin, "/delegation");
     assert.equal(delegationPage.status, 200, "admin can open delegation tools");
-    assert.match(
-      await delegationPage.text(),
-      /they do not authorize a tool call or enforce/
-    );
+    const delegationHtml = await delegationPage.text();
+    assert.match(delegationHtml, /they do not authorize a tool call or enforce/);
+    for (const [id, label] of [
+      ["delegate-from", "delegation parent"],
+      ["delegate-to", "delegation sub-agent"],
+      ["delegate-actions", "delegation actions"],
+      ["delegate-resources", "delegation resources"],
+      ["delegate-ttl", "delegation TTL"],
+    ]) {
+      assertLabelTargetsControl(delegationHtml, id, `${label} is accessible`);
+    }
 
     const badTtl = await req(admin, "/api/delegate", {
       method: "POST",
