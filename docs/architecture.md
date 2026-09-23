@@ -53,6 +53,13 @@
 
 ## The server
 
+The standalone `run` entry point reads supported tuning values from the
+process environment and translates them into explicit runtime options. The
+embedded `build_state` and `build_router` APIs do not read environment
+variables: use `build_state_with_options` to supply cache and audit-rotation
+configuration. This keeps library behavior deterministic and leaves process
+configuration at the application boundary.
+
 `agentguard-server` is an AuthZEN-compatible HTTP PDP with an optional
 repository-defined gRPC mirror. It exposes:
 
@@ -240,8 +247,10 @@ or environment variables. The full table is in
 - `AGENTGUARD_AUTH_KEY_FILE` — companion to `--auth apikey`
 - `AGENTGUARD_GRPC_LISTEN` — optional gRPC listen address
 - `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` — escape hatch for embedders
-- `AGENTGUARD_CACHE_TTL` — decision cache TTL (humantime, default 60 s)
-- `AGENTGUARD_CACHE_CAPACITY` — decision cache size (default 10 000)
+- `AGENTGUARD_CACHE_TTL` / `AGENTGUARD_DENY_CACHE_TTL` — allow/deny
+  decision cache TTLs (humantime, defaults 60 s / 5 s)
+- `AGENTGUARD_CACHE_CAPACITY` — decision cache size (default 10 000);
+  malformed or non-positive configured values fail standalone startup
 - `AGENTGUARD_JWKS_REFRESH` — JWKS refresh interval (humantime, default 30 s)
 
 ## Operational concerns

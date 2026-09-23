@@ -4,10 +4,7 @@
 
 use crate::audit::AuditAppender;
 use agentguard_core::authorize::entities::build_entities;
-use agentguard_core::decision::{
-    cache::{CacheConfig, DecisionCache},
-    DecisionLog, RotationConfig,
-};
+use agentguard_core::decision::{cache::CacheConfig, DecisionLog, RotationConfig};
 use agentguard_core::observability::TraceContext;
 use agentguard_core::{AgentRequest, Authorizer, Effect, PolicyStore};
 use agentguard_telemetry::Metrics;
@@ -77,20 +74,14 @@ pub(crate) fn report_pdp_work_failure(
     }
 }
 
-fn pdp_work_slots() -> Arc<Semaphore> {
-    static SLOTS: std::sync::OnceLock<Arc<Semaphore>> = std::sync::OnceLock::new();
-    SLOTS
-        .get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PDP_WORK_ITEMS)))
-        .clone()
-}
-
 pub(crate) async fn authorize_and_persist_decision(
+    slots: Arc<Semaphore>,
     authorizer: Arc<Authorizer>,
     request: AgentRequest,
     entity_values: Vec<serde_json::Value>,
     audit: Arc<Option<Arc<dyn AuditAppender>>>,
 ) -> Result<(agentguard_core::Decision, std::time::Duration), PdpWorkError> {
-    run_bounded_pdp_work(pdp_work_slots(), move || {
+    run_bounded_pdp_work(slots, move || {
         let entities = build_request_entities(&entity_values).map_err(PdpWorkError::Entities)?;
         let started = Instant::now();
         let decision = authorizer
@@ -222,6 +213,22 @@ pub struct AppState {
     /// Metrics registry. Always populated; even with no exporter
     /// wired, `/metrics` returns the current snapshot.
     pub metrics: Arc<Metrics>,
+    /// Bounds blocking policy/audit work for this app instance. Cloned state
+    /// shares the limit; independent embedded routers remain isolated.
+    pub(crate) pdp_work_slots: Arc<Semaphore>,
+}
+
+/// Runtime dependencies and tuning for an [`AppState`].
+///
+/// Embedded applications pass this explicitly so state construction does not
+/// depend on ambient process environment. The standalone server translates its
+/// environment configuration into this value at the application boundary.
+#[derive(Debug, Clone, Default)]
+pub struct AppStateOptions {
+    /// Decision-cache configuration. `None` disables caching.
+    pub cache: Option<CacheConfig>,
+    /// Optional audit-log rotation threshold.
+    pub audit_rotation: Option<RotationConfig>,
 }
 
 /// Concurrent policy snapshot with an explicit reload boundary.
@@ -579,6 +586,7 @@ async fn evaluation(
     };
     let action_label = format!("{}", agent_req.action);
     let outcome = authorize_and_persist_decision(
+        state.pdp_work_slots.clone(),
         state.authorizer.snapshot(),
         agent_req,
         per_request_entities,
@@ -667,6 +675,7 @@ async fn evaluations(
             }
         };
         match authorize_and_persist_decision(
+            state.pdp_work_slots.clone(),
             authorizer.clone(),
             agent_req,
             per_request_entities,
@@ -717,12 +726,21 @@ pub async fn build_state(
     chain_secret: Option<Vec<u8>>,
     auth: crate::auth_layer::AuthLayer,
 ) -> Result<AppState, String> {
-    build_state_with_cache(store_root, audit_log, chain_secret, auth, None).await
+    build_state_with_options(
+        store_root,
+        audit_log,
+        chain_secret,
+        auth,
+        AppStateOptions {
+            cache: Some(CacheConfig::default()),
+            audit_rotation: None,
+        },
+    )
+    .await
 }
 
-/// Like [`build_state`] but takes an explicit `CacheConfig`. Passing
-/// `None` reads `AGENTGUARD_CACHE_TTL`/`AGENTGUARD_CACHE_CAPACITY`
-/// from the environment (defaulting to the built-in values).
+/// Like [`build_state`] but takes an explicit `CacheConfig`. Passing `None`
+/// disables caching. This function never reads process environment.
 pub async fn build_state_with_cache(
     store_root: std::path::PathBuf,
     audit_log: Option<std::path::PathBuf>,
@@ -730,15 +748,31 @@ pub async fn build_state_with_cache(
     auth: crate::auth_layer::AuthLayer,
     cache: Option<CacheConfig>,
 ) -> Result<AppState, String> {
-    let audit_rotation = RotationConfig::try_from_env()
-        .map_err(|error| format!("AGENTGUARD_AUDIT_MAX_BYTES {error}"))?;
-    let authorizer = AuthorizerHandle::new(
+    build_state_with_options(
         store_root,
-        Some(cache.unwrap_or_else(DecisionCache::config_from_env)),
-    )?;
+        audit_log,
+        chain_secret,
+        auth,
+        AppStateOptions {
+            cache,
+            audit_rotation: None,
+        },
+    )
+    .await
+}
+
+/// Construct app state with explicit cache and audit-rotation options.
+pub async fn build_state_with_options(
+    store_root: std::path::PathBuf,
+    audit_log: Option<std::path::PathBuf>,
+    chain_secret: Option<Vec<u8>>,
+    auth: crate::auth_layer::AuthLayer,
+    options: AppStateOptions,
+) -> Result<AppState, String> {
+    let authorizer = AuthorizerHandle::new(store_root, options.cache)?;
     let audit = match audit_log {
         Some(path) => {
-            let log = match (chain_secret, audit_rotation) {
+            let log = match (chain_secret, options.audit_rotation) {
                 (Some(secret), Some(rotation)) => {
                     DecisionLog::open_with_rotation(&path, Some(&secret), rotation)
                         .map_err(|e| format!("open rotating chained audit log: {}", e))?
@@ -766,12 +800,15 @@ pub async fn build_state_with_cache(
         audit_appender: Arc::new(audit_appender),
         auth,
         metrics: Arc::new(Metrics::new()),
+        pdp_work_slots: Arc::new(Semaphore::new(MAX_CONCURRENT_PDP_WORK_ITEMS)),
     })
 }
 
 #[cfg(test)]
 mod summarize_tests {
-    use super::{router, summarize_authorize_error};
+    use super::{
+        router, summarize_authorize_error, AppStateOptions, MAX_CONCURRENT_PDP_WORK_ITEMS,
+    };
     use crate::audit::AuditAppender;
     use agentguard_core::{Decision, Error, PolicyStore};
     use axum::body::Body;
@@ -834,6 +871,49 @@ mod summarize_tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn embedded_state_accepts_explicit_runtime_options() {
+        let dir = tempdir().unwrap();
+        let audit_path = dir.path().join("audit.jsonl");
+        let state = super::build_state_with_options(
+            dir.path().to_path_buf(),
+            Some(audit_path.clone()),
+            None,
+            crate::auth_layer::AuthLayer::Disabled,
+            AppStateOptions {
+                cache: None,
+                audit_rotation: Some(agentguard_core::decision::RotationConfig { max_bytes: 1024 }),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(state.audit().unwrap().path(), audit_path);
+
+        let clone = state.clone();
+        let permits = state
+            .pdp_work_slots
+            .clone()
+            .try_acquire_many_owned(MAX_CONCURRENT_PDP_WORK_ITEMS as u32)
+            .unwrap();
+        assert!(clone.pdp_work_slots.clone().try_acquire_owned().is_err());
+
+        let independent = super::build_state(
+            dir.path().to_path_buf(),
+            None,
+            None,
+            crate::auth_layer::AuthLayer::Disabled,
+        )
+        .await
+        .unwrap();
+        assert!(independent
+            .pdp_work_slots
+            .clone()
+            .try_acquire_owned()
+            .is_ok());
+        drop(permits);
     }
 
     #[test]

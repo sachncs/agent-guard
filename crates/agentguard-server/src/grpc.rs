@@ -148,6 +148,7 @@ impl AccessEvaluation for AccessEvaluationService {
         let action_label = format!("{}", agent_req.action);
 
         let (decision, elapsed) = crate::authzen::authorize_and_persist_decision(
+            self.state.pdp_work_slots.clone(),
             self.state.authorizer().snapshot(),
             agent_req,
             per_request_entities,

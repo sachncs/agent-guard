@@ -26,10 +26,10 @@ or environment variables. The full table:
 | `AGENTGUARD_AUTH` | `--auth` | `disabled` | `disabled` or `apikey:<path>` (point at the JSON key store) |
 | `AGENTGUARD_GRPC_LISTEN` | `--grpc-listen` | (empty → disabled) | Optional plaintext gRPC mirror; loopback-only |
 | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | — | `0` | Allow auth-disabled on public listener |
-| `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache allow TTL (humantime) |
-| `AGENTGUARD_DENY_CACHE_TTL` | — | `5s` | Decision cache deny TTL (humantime) |
-| `AGENTGUARD_CACHE_CAPACITY` | — | `10000` | Decision cache size |
-| `AGENTGUARD_AUDIT_MAX_BYTES` | — | (unset → no rotation) | Positive integer byte threshold; invalid or zero values fail standalone and embedded server initialization |
+| `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache allow TTL (humantime); malformed values fail standalone startup |
+| `AGENTGUARD_DENY_CACHE_TTL` | — | `5s` | Decision cache deny TTL (humantime); malformed values fail standalone startup |
+| `AGENTGUARD_CACHE_CAPACITY` | — | `10000` | Positive decision-cache capacity; malformed or zero values fail standalone startup |
+| `AGENTGUARD_AUDIT_MAX_BYTES` | — | (unset → no rotation) | Standalone positive integer rotation threshold; invalid or zero values fail standalone startup. Embedders pass `RotationConfig` explicitly. |
 | `AGENTGUARD_JWKS_REFRESH` | — | `30s` | JWKS refresh interval (humantime) |
 
 ## Deployment

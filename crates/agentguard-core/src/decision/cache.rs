@@ -359,12 +359,59 @@ impl DecisionCache {
     ///   integer).
     ///
     /// Falls back to defaults when unset or unparseable.
+    #[deprecated(note = "use try_config_from_env to reject malformed settings")]
     pub fn config_from_env() -> CacheConfig {
         Self::config_from_overrides(
             std::env::var("AGENTGUARD_CACHE_TTL").ok(),
             std::env::var("AGENTGUARD_DENY_CACHE_TTL").ok(),
             std::env::var("AGENTGUARD_CACHE_CAPACITY").ok(),
         )
+    }
+
+    /// Parse cache settings from the process environment, rejecting malformed
+    /// values rather than silently changing the requested operating limits.
+    pub fn try_config_from_env() -> std::result::Result<CacheConfig, String> {
+        fn read(name: &str) -> std::result::Result<Option<String>, String> {
+            match std::env::var(name) {
+                Ok(value) => Ok(Some(value)),
+                Err(std::env::VarError::NotPresent) => Ok(None),
+                Err(std::env::VarError::NotUnicode(_)) => {
+                    Err(format!("{name} must be valid Unicode"))
+                }
+            }
+        }
+        Self::try_config_from_overrides(
+            read("AGENTGUARD_CACHE_TTL")?.as_deref(),
+            read("AGENTGUARD_DENY_CACHE_TTL")?.as_deref(),
+            read("AGENTGUARD_CACHE_CAPACITY")?.as_deref(),
+        )
+    }
+
+    /// Parse optional environment-style cache overrides strictly.
+    pub fn try_config_from_overrides(
+        cache_ttl: Option<&str>,
+        deny_ttl: Option<&str>,
+        capacity: Option<&str>,
+    ) -> std::result::Result<CacheConfig, String> {
+        let mut cfg = CacheConfig::default();
+        if let Some(ttl) = cache_ttl {
+            cfg.allow_ttl = crate::ttl::parse_duration(ttl)
+                .map_err(|error| format!("AGENTGUARD_CACHE_TTL: {error}"))?;
+        }
+        if let Some(ttl) = deny_ttl {
+            cfg.deny_ttl = crate::ttl::parse_duration(ttl)
+                .map_err(|error| format!("AGENTGUARD_DENY_CACHE_TTL: {error}"))?;
+        }
+        if let Some(capacity) = capacity {
+            cfg.capacity = capacity
+                .parse::<usize>()
+                .ok()
+                .filter(|capacity| *capacity > 0)
+                .ok_or_else(|| {
+                    "AGENTGUARD_CACHE_CAPACITY must be a positive integer when set".to_owned()
+                })?;
+        }
+        Ok(cfg)
     }
 
     /// Same as [`Self::config_from_env`] but accepts explicit
@@ -666,5 +713,31 @@ mod tests {
         );
         assert_eq!(cfg.allow_ttl, Duration::from_secs(600));
         assert_eq!(cfg.deny_ttl, Duration::from_secs(2));
+    }
+
+    #[test]
+    fn strict_config_parser_rejects_invalid_ttls_and_capacity() {
+        assert!(
+            DecisionCache::try_config_from_overrides(Some("soon"), None, None)
+                .unwrap_err()
+                .contains("AGENTGUARD_CACHE_TTL")
+        );
+        assert!(
+            DecisionCache::try_config_from_overrides(None, Some("soon"), None)
+                .unwrap_err()
+                .contains("AGENTGUARD_DENY_CACHE_TTL")
+        );
+        for capacity in ["0", "-1", "many"] {
+            assert!(DecisionCache::try_config_from_overrides(None, None, Some(capacity)).is_err());
+        }
+    }
+
+    #[test]
+    fn strict_config_parser_applies_explicit_overrides() {
+        let cfg =
+            DecisionCache::try_config_from_overrides(Some("600s"), Some("2s"), Some("42")).unwrap();
+        assert_eq!(cfg.allow_ttl, Duration::from_secs(600));
+        assert_eq!(cfg.deny_ttl, Duration::from_secs(2));
+        assert_eq!(cfg.capacity, 42);
     }
 }

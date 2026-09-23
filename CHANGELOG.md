@@ -37,6 +37,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Run policy evaluation and audit appends/fsync off Tokio workers with four
   bounded PDP work slots; return retryable overload responses rather than
   starving async workers or queueing unbounded work.
+- Scope PDP work slots to each shared `AppState`, preventing independent
+  embedded routers from consuming one another's capacity under load.
+- Reject malformed standalone cache TTL/capacity and audit-rotation settings
+  at startup instead of silently falling back or disabling rotation.
+- Keep embedded state construction deterministic by passing cache and audit
+  rotation options explicitly rather than reading ambient environment values.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

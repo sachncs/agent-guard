@@ -22,7 +22,8 @@ pub mod server;
 
 pub use auth_layer::AuthLayer;
 pub use authzen::{
-    build_request_entities, evaluation_request_to_agent, AppState, MAX_BATCH_EVALUATIONS,
+    build_request_entities, build_state, build_state_with_cache, build_state_with_options,
+    evaluation_request_to_agent, AppState, AppStateOptions, MAX_BATCH_EVALUATIONS,
 };
 pub use listener::{AuthConfig, ServerConfig};
 pub use server::{build_router, run};

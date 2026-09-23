@@ -22,8 +22,9 @@
 //! ```
 
 use crate::auth_layer::AuthLayer;
-use crate::authzen::{build_state, router};
+use crate::authzen::{build_state, build_state_with_options, router, AppStateOptions};
 use crate::listener::{Listener, ServerConfig};
+use agentguard_core::decision::{cache::DecisionCache, RotationConfig};
 use agentguard_core::decode_chain_secret;
 use agentguard_policy::watcher::watch as policy_watch;
 use anyhow::{anyhow, Result};
@@ -64,14 +65,11 @@ fn validate_grpc_listener(addr: std::net::SocketAddr) -> Result<()> {
     Ok(())
 }
 
-fn validate_audit_rotation(value: Option<&str>) -> Result<()> {
-    if let Some(value) = value {
-        agentguard_core::decision::RotationConfig::parse(value)
-            .map(|_| ())
-            .map_err(|error| anyhow!("AGENTGUARD_AUDIT_MAX_BYTES {error}"))
-    } else {
-        Ok(())
-    }
+fn parse_audit_rotation(value: Option<&str>) -> Result<Option<RotationConfig>> {
+    value
+        .map(RotationConfig::parse)
+        .transpose()
+        .map_err(|error| anyhow!("AGENTGUARD_AUDIT_MAX_BYTES {error}"))
 }
 
 fn validate_listener_security(
@@ -102,13 +100,15 @@ fn validate_listener_security(
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
-    match std::env::var("AGENTGUARD_AUDIT_MAX_BYTES") {
-        Ok(value) => validate_audit_rotation(Some(&value))?,
-        Err(std::env::VarError::NotPresent) => validate_audit_rotation(None)?,
+    let cache_config = DecisionCache::try_config_from_env()
+        .map_err(|error| anyhow!("invalid decision cache configuration: {error}"))?;
+    let audit_rotation = match std::env::var("AGENTGUARD_AUDIT_MAX_BYTES") {
+        Ok(value) => parse_audit_rotation(Some(&value))?,
+        Err(std::env::VarError::NotPresent) => parse_audit_rotation(None)?,
         Err(std::env::VarError::NotUnicode(_)) => {
-            return Err(anyhow!("AGENTGUARD_AUDIT_MAX_BYTES is not valid Unicode"));
+            return Err(anyhow!("AGENTGUARD_AUDIT_MAX_BYTES must be valid Unicode"));
         }
-    }
+    };
     // Validate TLS paths early so a bad tls://addr?cert=PATH&key=PATH
     // is reported at startup, not after the policy store loads and
     // the HTTP listener binds.
@@ -154,11 +154,15 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
         }
     };
     let state = Arc::new(
-        build_state(
+        build_state_with_options(
             cfg.store_root.clone(),
             cfg.audit_log.clone(),
             chain_secret,
             auth,
+            AppStateOptions {
+                cache: Some(cache_config),
+                audit_rotation,
+            },
         )
         .await
         .map_err(|e| anyhow!("build state: {}", e))?,
@@ -487,7 +491,7 @@ type Never = std::convert::Infallible;
 #[cfg(test)]
 mod tls_validation_tests {
     use super::{
-        run, validate_audit_rotation, validate_grpc_listener, validate_listener_security,
+        parse_audit_rotation, run, validate_grpc_listener, validate_listener_security,
         validate_tls_paths,
     };
     use crate::listener::{AuthConfig, Listener, ServerConfig};
@@ -593,10 +597,16 @@ mod tls_validation_tests {
 
     #[test]
     fn audit_rotation_requires_a_positive_integer_when_configured() {
-        assert!(validate_audit_rotation(None).is_ok());
-        assert!(validate_audit_rotation(Some("1048576")).is_ok());
-        assert!(validate_audit_rotation(Some("0")).is_err());
-        assert!(validate_audit_rotation(Some("many")).is_err());
+        assert!(parse_audit_rotation(None).unwrap().is_none());
+        assert_eq!(
+            parse_audit_rotation(Some("1048576"))
+                .unwrap()
+                .unwrap()
+                .max_bytes,
+            1_048_576
+        );
+        assert!(parse_audit_rotation(Some("0")).is_err());
+        assert!(parse_audit_rotation(Some("many")).is_err());
     }
 
     #[test]
