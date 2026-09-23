@@ -7,6 +7,7 @@ cd "$repo_root"
 command -v rustup >/dev/null || { echo "rustup is required" >&2; exit 1; }
 command -v cargo >/dev/null || { echo "cargo is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "Node.js 20.9+ is required" >&2; exit 1; }
+node scripts/check-node-version.mjs || exit 1
 if [[ -n "${PROTOC:-}" ]]; then
   [[ -x "$PROTOC" ]] || command -v "$PROTOC" >/dev/null || {
     echo "PROTOC must point to an executable" >&2

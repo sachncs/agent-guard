@@ -5,6 +5,7 @@ const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
 const sitePackage = JSON.parse(readFileSync("site/package.json", "utf8"));
 const siteWorkspace = readFileSync("site/pnpm-workspace.yaml", "utf8");
 const setup = readFileSync("scripts/setup.sh", "utf8");
+const nodeVersionCheck = readFileSync("scripts/check-node-version.mjs", "utf8");
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const release = readFileSync(".github/workflows/release.yml", "utf8");
 const consoleDockerfile = readFileSync("frontend/Dockerfile", "utf8");
@@ -39,6 +40,12 @@ if (/dangerouslyAllowAllBuilds/.test(setup) || /dangerouslyAllowAllBuilds/.test(
 }
 if (!setup.includes("npm exec --yes --package=pnpm@11.22.0 -- pnpm")) {
   failures.push("bootstrap must support pinned pnpm when Corepack is unavailable");
+}
+if (
+  !setup.includes("node scripts/check-node-version.mjs") ||
+  !nodeVersionCheck.includes("MINIMUM_NODE = { major: 20, minor: 9 }")
+) {
+  failures.push("bootstrap must reject Node.js versions older than the declared 20.9 minimum");
 }
 if (
   !consoleDockerfile.includes("ARG AGENTGUARD_CLI_IMAGE") ||
