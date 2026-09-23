@@ -33,7 +33,7 @@ export interface AuthConfig {
   pdpUrl: string;
   /** Bearer token sent with PDP requests, if the PDP requires one. */
   pdpBearer?: string;
-  /** Whether the configured reverse proxy is trusted to overwrite X-Forwarded-For. */
+  /** Whether the configured reverse proxy is trusted to overwrite forwarded client/origin headers. */
   trustProxyHeaders: boolean;
   /** Allow cookies without Secure (local/e2e over plain HTTP only). */
   insecureCookie: boolean;
@@ -139,7 +139,7 @@ function readEnv(): AuthConfigResult {
     return {
       valid: false,
       reason:
-        "production console requires AGENTGUARD_TRUST_PROXY_HEADERS=1 behind a proxy that overwrites X-Forwarded-For",
+        "production console requires AGENTGUARD_TRUST_PROXY_HEADERS=1 behind a proxy that overwrites X-Forwarded-For, X-Forwarded-Host, and X-Forwarded-Proto",
     };
   }
   if (process.env.NODE_ENV === "production" && !process.env.AGENTGUARD_PDP_BEARER) {

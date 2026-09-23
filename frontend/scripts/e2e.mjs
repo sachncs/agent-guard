@@ -456,6 +456,10 @@ class Jar {
 
 async function req(jar, path, init = {}) {
   const headers = { ...(init.headers ?? {}) };
+  if (init.method && init.method !== "GET" &&
+      !Object.keys(headers).some((name) => name.toLowerCase() === "origin")) {
+    headers.Origin = BASE;
+  }
   if (!Object.keys(headers).some((name) => name.toLowerCase() === "x-forwarded-for")) {
     // Model the trusted ingress replacing the untrusted incoming header.
     headers["X-Forwarded-For"] = TEST_CLIENT_IP;
@@ -833,7 +837,20 @@ async function main() {
     }
 
     // --- 7. logout ---------------------------------------------------------
-    const logout = await req(admin, "/api/auth/logout");
+    const getLogout = await req(admin, "/api/auth/logout");
+    assert.equal(getLogout.status, 405, "GET cannot perform the logout state change");
+    const stillAuthenticated = await req(admin, "/api/log");
+    assert.notEqual(stillAuthenticated.status, 401, "GET does not revoke the session");
+
+    const crossSiteLogout = await req(admin, "/api/auth/logout", {
+      method: "POST",
+      headers: { Origin: "https://attacker.example" },
+    });
+    assert.equal(crossSiteLogout.status, 403, "cross-site logout is rejected");
+    assert.notEqual((await req(admin, "/api/log")).status, 401,
+      "cross-site logout does not revoke the session");
+
+    const logout = await req(admin, "/api/auth/logout", { method: "POST" });
     assert.equal(logout.status, 302);
     const afterLogout = await req(admin, "/api/log");
     assert.equal(afterLogout.status, 401, "session dead after logout");

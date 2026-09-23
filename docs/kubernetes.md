@@ -125,8 +125,10 @@ intermediate JSON is logged and the last-known-good key set remains active
 until a valid snapshot is detected.
 
 The console production config requires the trusted-proxy flag. The ingress
-must remove any incoming `X-Forwarded-For` value and replace it with exactly
-one validated client address; do not enable the flag when the console can be
+must remove incoming `X-Forwarded-For`, `X-Forwarded-Host`, and
+`X-Forwarded-Proto` values and replace them with exactly one validated client address,
+the public host, and the external scheme. These headers drive rate limiting
+and same-origin CSRF checks; do not enable the flag when the console can be
 reached directly by untrusted clients.
 
 The delegation key is a persistent Ed25519 private key used by the admin

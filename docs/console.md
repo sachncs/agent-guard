@@ -63,9 +63,11 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_INSECURE_COOKIE` | Local HTTP only; never set in production |
 
 Terminate TLS before the console and preserve `X-Forwarded-Proto`. In
-production, set `AGENTGUARD_TRUST_PROXY_HEADERS=1` only if the proxy removes any
-client-supplied `X-Forwarded-For` and replaces it with exactly one validated
-client address. The console uses that address for per-client rate limiting;
+production, set `AGENTGUARD_TRUST_PROXY_HEADERS=1` only if the proxy removes
+client-supplied `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`
+and replaces them with one validated client address, the public host, and the
+external scheme. The console uses those values for per-client rate limiting
+and same-origin CSRF checks;
 otherwise all users behind one ingress share a bucket. The console uses secure
 cookies when the request is HTTPS and sends restrictive security headers. The
 console-to-PDP credential is server-only. Use an identity-bound `authorize:any`

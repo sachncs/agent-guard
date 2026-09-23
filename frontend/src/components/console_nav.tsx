@@ -41,12 +41,14 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
               {user.email ?? user.name ?? user.sub}
             </span>
             <Badge variant={user.admin ? "default" : "outline"}>{user.admin ? "admin" : "viewer"}</Badge>
-            <a
-              href="/api/auth/logout"
-              className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Sign out
-            </a>
+            <form action="/api/auth/logout" method="post">
+              <button
+                type="submit"
+                className="rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
         )}
         <div className={user ? undefined : "ml-auto"}>

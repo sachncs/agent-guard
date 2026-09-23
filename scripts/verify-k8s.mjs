@@ -84,7 +84,7 @@ if (failures.length === 0) {
   for (const value of [
     "AGENTGUARD_TRUST_PROXY_HEADERS='1'",
     "AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL='1'",
-    "remove any incoming `X-Forwarded-For`",
+    "must remove incoming `X-Forwarded-For`, `X-Forwarded-Host`, and",
   ]) if (!operationsGuide.includes(value)) {
     failures.push(`docs/kubernetes.md missing trusted-proxy requirement: ${value}`);
   }

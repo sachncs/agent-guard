@@ -77,7 +77,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `memory` in development, `redis` in production | Shared rate-limit backend mode |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
-| `AGENTGUARD_TRUST_PROXY_HEADERS` | `0` in development; `1` required in production | Trust a reverse proxy that overwrites `X-Forwarded-For` with one client IP |
+| `AGENTGUARD_TRUST_PROXY_HEADERS` | `0` in development; `1` required in production | Trust a reverse proxy that overwrites `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto` with validated values |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |
 | `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` (development) | AuthZEN PDP base URL (`agentguard-server`); required in production and HTTPS unless the private-network exception below is explicitly enabled |
@@ -119,10 +119,13 @@ for the complete contract.
   production console image includes the pinned `agentguard` CLI. Mount the
   policy directory and audit file read-only, as the Kubernetes reference does.
 - **TLS termination** is expected at your reverse proxy; set
-  `X-Forwarded-Proto` so HSTS and secure cookies engage.
-  In production, set `AGENTGUARD_TRUST_PROXY_HEADERS=1` only when that proxy
-  replaces (does not append to) incoming `X-Forwarded-For` with a single
-  validated client address. Otherwise the console fails closed at startup.
+  `X-Forwarded-Proto` so HSTS and secure cookies engage. In production, set
+  `AGENTGUARD_TRUST_PROXY_HEADERS=1` only when that proxy replaces (does not
+  append to) incoming `X-Forwarded-For` with exactly one validated client address
+  and overwrites `X-Forwarded-Host` and `X-Forwarded-Proto` with the public
+  host and external scheme. These values support rate limiting and same-origin
+  CSRF checks; otherwise the console fails closed at startup or rejects the
+  state-changing request.
 - CSP allows `'unsafe-inline'` scripts because the App Router hydration
   bootstrap requires it.
 
