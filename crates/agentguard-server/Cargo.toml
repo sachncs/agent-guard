@@ -17,6 +17,7 @@ agentguard-telemetry = { path = "../agentguard-telemetry", version = "0.2.0" }
 
 serde.workspace = true
 serde_json.workspace = true
+async-trait.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

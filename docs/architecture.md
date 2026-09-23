@@ -236,14 +236,20 @@ This makes it trivial to:
 
 ### Embedded audit storage
 
-Embedded applications can implement the public `AuditAppender` port and
-inject it with `AppState::with_audit_appender` when audit persistence is
-managed outside the local filesystem. The adapter must durably append before
-returning, report health accurately, and report `is_chained` only when stored
-records are tamper-evident. The request path fails closed on append errors,
-and readiness requires a healthy chained adapter. The standalone binary
-continues to use the file-backed `DecisionLog`; a distributed audit backend
-is not included in the supported deployment package.
+Embedded applications can implement the public `AuditAppender` or
+`AsyncAuditAppender` port and inject it with `AppState::with_audit_appender`
+or `AppState::with_async_audit_appender` when audit persistence is managed
+outside the local filesystem. Adapters must durably append before returning,
+report health accurately, and report `is_chained` only when stored records
+are tamper-evident. The request path fails closed on append errors and holds a
+bounded per-state work permit until persistence completes; readiness requires
+a healthy chained adapter. Async adapters do not occupy blocking workers
+during remote I/O. Async appends have a five-second deadline and readiness
+checks have a two-second deadline. A timed-out append fails closed; because a
+remote commit can have an uncertain outcome, adapters should use idempotent
+record identities. The standalone binary continues to use the file-backed
+`DecisionLog`; a distributed audit backend is not included in the supported
+deployment package.
 
 ## Configuration
 

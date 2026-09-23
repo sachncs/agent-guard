@@ -2,7 +2,7 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
-use crate::audit::AuditAppender;
+use crate::audit::{AsyncAuditAppender, AuditAppender, AuditWriter};
 use agentguard_core::authorize::entities::build_entities;
 use agentguard_core::decision::{cache::CacheConfig, DecisionLog, RotationConfig};
 use agentguard_core::observability::TraceContext;
@@ -18,12 +18,14 @@ use cedar_policy::Entities;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 
 /// Bound policy evaluation and audit fsync work so they cannot block Tokio
 /// workers or create an unbounded blocking-task queue.
 const MAX_CONCURRENT_PDP_WORK_ITEMS: usize = 4;
+const AUDIT_READINESS_TIMEOUT: Duration = Duration::from_secs(2);
+const AUDIT_APPEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub(crate) enum PdpWorkError {
@@ -79,26 +81,53 @@ pub(crate) async fn authorize_and_persist_decision(
     authorizer: Arc<Authorizer>,
     request: AgentRequest,
     entity_values: Vec<serde_json::Value>,
-    audit: Arc<Option<Arc<dyn AuditAppender>>>,
+    audit: Arc<Option<AuditWriter>>,
 ) -> Result<(agentguard_core::Decision, std::time::Duration), PdpWorkError> {
-    run_bounded_pdp_work(slots, move || {
+    let ((decision, elapsed), permit) = run_bounded_pdp_work(slots, move || {
         let entities = build_request_entities(&entity_values).map_err(PdpWorkError::Entities)?;
         let started = Instant::now();
         let decision = authorizer
             .authorize(&request, &entities)
             .map_err(PdpWorkError::Authorize)?;
         let elapsed = started.elapsed();
-        if let Some(audit) = audit.as_ref() {
-            audit
-                .append_decision(&decision)
-                .map_err(PdpWorkError::Audit)?;
-        }
         Ok((decision, elapsed))
     })
-    .await
+    .await?;
+
+    match audit.as_ref() {
+        Some(AuditWriter::Sync(appender)) => {
+            let appender = appender.clone();
+            tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                appender
+                    .append_decision(&decision)
+                    .map_err(PdpWorkError::Audit)?;
+                Ok((decision, elapsed))
+            })
+            .await
+            .map_err(PdpWorkError::Join)?
+        }
+        Some(AuditWriter::Async(appender)) => {
+            let _permit = permit;
+            tokio::time::timeout(AUDIT_APPEND_TIMEOUT, appender.append_decision(&decision))
+                .await
+                .map_err(|_| {
+                    PdpWorkError::Audit(agentguard_core::Error::Io("audit append timed out".into()))
+                })?
+                .map_err(PdpWorkError::Audit)?;
+            Ok((decision, elapsed))
+        }
+        None => {
+            drop(permit);
+            Ok((decision, elapsed))
+        }
+    }
 }
 
-async fn run_bounded_pdp_work<T, F>(slots: Arc<Semaphore>, operation: F) -> Result<T, PdpWorkError>
+async fn run_bounded_pdp_work<T, F>(
+    slots: Arc<Semaphore>,
+    operation: F,
+) -> Result<(T, tokio::sync::OwnedSemaphorePermit), PdpWorkError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, PdpWorkError> + Send + 'static,
@@ -106,12 +135,10 @@ where
     let permit = slots
         .try_acquire_owned()
         .map_err(|_| PdpWorkError::Saturated)?;
-    tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        operation()
-    })
-    .await
-    .map_err(PdpWorkError::Join)?
+    let (result, permit) = tokio::task::spawn_blocking(move || (operation(), permit))
+        .await
+        .map_err(PdpWorkError::Join)?;
+    result.map(|value| (value, permit))
 }
 
 /// Maximum number of evaluations accepted in a single
@@ -206,7 +233,7 @@ pub struct AppState {
     /// here. `None` only when the operator explicitly opts out (the
     /// CLI `--skip-audit` flag).
     audit: Arc<Option<Arc<DecisionLog>>>,
-    audit_appender: Arc<Option<Arc<dyn AuditAppender>>>,
+    audit_appender: Arc<Option<AuditWriter>>,
     /// Authentication layer. `Disabled` allows any caller; `ApiKey`
     /// validates `Authorization: Bearer <raw>`.
     pub auth: crate::auth_layer::AuthLayer,
@@ -312,7 +339,15 @@ impl AppState {
     /// Every successful authorization is returned only after the adapter
     /// confirms its append; append failures fail closed.
     pub fn with_audit_appender(mut self, appender: Arc<dyn AuditAppender>) -> Self {
-        self.audit_appender = Arc::new(Some(appender));
+        self.audit_appender = Arc::new(Some(AuditWriter::Sync(appender)));
+        self
+    }
+
+    /// Inject an async durable audit adapter. The per-state PDP work permit
+    /// remains held until persistence completes, applying bounded backpressure
+    /// without occupying a Tokio blocking worker during remote I/O.
+    pub fn with_async_audit_appender(mut self, appender: Arc<dyn AsyncAuditAppender>) -> Self {
+        self.audit_appender = Arc::new(Some(AuditWriter::Async(appender)));
         self
     }
 
@@ -327,7 +362,7 @@ impl AppState {
         self.audit.as_ref().as_deref()
     }
 
-    pub(crate) fn audit_handle(&self) -> Arc<Option<Arc<dyn AuditAppender>>> {
+    pub(crate) fn audit_handle(&self) -> Arc<Option<AuditWriter>> {
         self.audit_appender.clone()
     }
 
@@ -430,8 +465,24 @@ async fn readyz(State(state): State<AppState>) -> Response {
     // an active writer handle. A permanent append failure poisons that handle
     // so the orchestrator can stop routing new decisions to this instance.
     match state.audit_appender.as_ref() {
-        Some(audit) if !audit.is_healthy() => return readyz_unavailable("audit log unavailable"),
-        Some(audit) if audit.is_chained() => (),
+        Some(AuditWriter::Sync(audit)) if !audit.is_healthy() => {
+            return readyz_unavailable("audit log unavailable")
+        }
+        Some(AuditWriter::Sync(audit)) if audit.is_chained() => (),
+        Some(AuditWriter::Async(audit)) => {
+            let healthy = tokio::time::timeout(AUDIT_READINESS_TIMEOUT, audit.is_healthy())
+                .await
+                .unwrap_or(false);
+            if !healthy {
+                return readyz_unavailable("audit log unavailable");
+            }
+            let chained = tokio::time::timeout(AUDIT_READINESS_TIMEOUT, audit.is_chained())
+                .await
+                .unwrap_or(false);
+            if !chained {
+                return readyz_unavailable("audit log not opened");
+            }
+        }
         Some(_) => return readyz_unavailable("audit log not opened"),
         None => return readyz_unavailable("audit log not configured"),
     }
@@ -802,10 +853,10 @@ pub async fn build_state_with_options(
         None => None,
     };
     let audit = audit.map(Arc::new);
-    let audit_appender: Option<Arc<dyn AuditAppender>> = audit
+    let audit_appender: Option<AuditWriter> = audit
         .as_ref()
         .map(Arc::clone)
-        .map(|log| log as Arc<dyn AuditAppender>);
+        .map(|log| AuditWriter::Sync(log as Arc<dyn AuditAppender>));
     Ok(AppState {
         authorizer,
         audit: Arc::new(audit),
@@ -819,7 +870,8 @@ pub async fn build_state_with_options(
 #[cfg(test)]
 mod summarize_tests {
     use super::{
-        router, summarize_authorize_error, AppStateOptions, MAX_CONCURRENT_PDP_WORK_ITEMS,
+        router, summarize_authorize_error, AppStateOptions, AuditWriter,
+        MAX_CONCURRENT_PDP_WORK_ITEMS,
     };
     use crate::audit::AuditAppender;
     use agentguard_core::{Decision, Error, PolicyStore};
@@ -861,7 +913,7 @@ mod summarize_tests {
         )
         .await
         .unwrap();
-        state.audit_appender = Arc::new(Some(Arc::new(FailingAuditAppender)));
+        state.audit_appender = Arc::new(Some(AuditWriter::Sync(Arc::new(FailingAuditAppender))));
 
         let app = router(state);
         let response = app

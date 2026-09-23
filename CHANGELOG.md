@@ -21,6 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   adapter implementations.
 - Expose the PDP's durable audit appender port and allow embedded applications
   to inject their own healthy, tamper-evident audit backend.
+- Add an async PDP audit adapter port so shared stores can persist decisions
+  without blocking Tokio workers while retaining bounded in-flight work.
+- Bound async audit append and readiness calls; stalled backends fail closed
+  instead of permanently consuming PDP capacity or hanging Kubernetes probes.
 
 ### Fixed
 

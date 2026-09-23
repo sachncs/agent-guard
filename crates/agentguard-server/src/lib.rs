@@ -20,7 +20,7 @@ pub mod listener;
 pub mod proto;
 pub mod server;
 
-pub use audit::AuditAppender;
+pub use audit::{AsyncAuditAppender, AuditAppender};
 pub use auth_layer::AuthLayer;
 pub use authzen::{
     build_request_entities, build_state, build_state_with_cache, build_state_with_options,

@@ -112,6 +112,7 @@ dependencies = [
  "agentguard-policy",
  "agentguard-telemetry",
  "anyhow",
+ "async-trait",
  "axum 0.7.9",
  "axum-server",
  "cedar-policy",
