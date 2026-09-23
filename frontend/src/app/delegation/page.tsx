@@ -46,7 +46,13 @@ export default function DelegationPage() {
         audience, sender binding, and action/resource scope before execution.
       </div>
 
-      {cliMissing && error && <CliAlert message={error} />}
+      {cliMissing && error ? (
+        <CliAlert message={error} />
+      ) : error ? (
+        <p role="alert" className="rounded-md border border-deny/40 bg-deny/5 px-3 py-2 text-sm text-deny">
+          {error}
+        </p>
+      ) : null}
 
       <Tabs defaultValue="issue">
         <TabsList>
@@ -55,6 +61,10 @@ export default function DelegationPage() {
         </TabsList>
         <TabsContent value="issue">
           <IssueForm
+            onClearError={() => {
+              setError(null);
+              setCliMissing(false);
+            }}
             onError={(msg, cli) => {
               setError(msg);
               setCliMissing(cli);
@@ -63,6 +73,10 @@ export default function DelegationPage() {
         </TabsContent>
         <TabsContent value="verify">
           <VerifyForm
+            onClearError={() => {
+              setError(null);
+              setCliMissing(false);
+            }}
             onError={(msg, cli) => {
               setError(msg);
               setCliMissing(cli);
@@ -76,8 +90,10 @@ export default function DelegationPage() {
 
 function IssueForm({
   onError,
+  onClearError,
 }: {
   onError: (message: string, cliMissing: boolean) => void;
+  onClearError: () => void;
 }) {
   const [from, setFrom] = useState('Agent::"research"');
   const [to, setTo] = useState('Agent::"summarizer"');
@@ -89,6 +105,8 @@ function IssueForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    onClearError();
+    setToken(null);
     setBusy(true);
     try {
       const res = await fetchApi("/api/delegate", {
@@ -121,7 +139,7 @@ function IssueForm({
       setToken(ok.data.token);
       toast.success("Delegation token issued");
     } catch {
-      toast.error("Network error while issuing token");
+      onError("Could not reach the delegation service. Check the console backend and try again.", false);
     } finally {
       setBusy(false);
     }
@@ -129,8 +147,12 @@ function IssueForm({
 
   async function copy() {
     if (!token) return;
-    await navigator.clipboard.writeText(token);
-    toast.success("Token copied to clipboard");
+    try {
+      await navigator.clipboard.writeText(token);
+      toast.success("Token copied to clipboard");
+    } catch {
+      toast.error("Clipboard access failed. Select and copy the token manually.");
+    }
   }
 
   return (
@@ -145,20 +167,21 @@ function IssueForm({
       <CardContent>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="From (parent)">
-              <Input className="font-mono" value={from} onChange={(e) => setFrom(e.target.value)} required />
+            <Field label="From (parent)" htmlFor="delegate-from">
+              <Input id="delegate-from" className="font-mono" value={from} onChange={(e) => setFrom(e.target.value)} required />
             </Field>
-            <Field label="To (sub-agent)">
-              <Input className="font-mono" value={to} onChange={(e) => setTo(e.target.value)} required />
+            <Field label="To (sub-agent)" htmlFor="delegate-to">
+              <Input id="delegate-to" className="font-mono" value={to} onChange={(e) => setTo(e.target.value)} required />
             </Field>
-            <Field label="Actions (comma-separated)">
-              <Input className="font-mono" value={actions} onChange={(e) => setActions(e.target.value)} required />
+            <Field label="Actions (comma-separated)" htmlFor="delegate-actions">
+              <Input id="delegate-actions" className="font-mono" value={actions} onChange={(e) => setActions(e.target.value)} required />
             </Field>
-            <Field label="Resources (comma-separated)">
-              <Input className="font-mono" value={resources} onChange={(e) => setResources(e.target.value)} required />
+            <Field label="Resources (comma-separated)" htmlFor="delegate-resources">
+              <Input id="delegate-resources" className="font-mono" value={resources} onChange={(e) => setResources(e.target.value)} required />
             </Field>
-            <Field label="TTL (seconds)">
+            <Field label="TTL (seconds)" htmlFor="delegate-ttl">
               <Input
+                id="delegate-ttl"
                 type="number"
                 min={1}
                 value={ttl}
@@ -175,12 +198,12 @@ function IssueForm({
         {token && (
           <div className="mt-6 space-y-2">
             <div className="flex items-center justify-between">
-              <Label>JWS compact token</Label>
+              <Label htmlFor="issued-token">JWS compact token</Label>
               <Button type="button" variant="ghost" size="sm" onClick={() => void copy()}>
                 <Copy /> Copy
               </Button>
             </div>
-            <Textarea readOnly rows={5} value={token} className="font-mono text-xs break-all" />
+            <Textarea id="issued-token" readOnly rows={5} value={token} className="font-mono text-xs break-all" />
           </div>
         )}
       </CardContent>
@@ -190,8 +213,10 @@ function IssueForm({
 
 function VerifyForm({
   onError,
+  onClearError,
 }: {
   onError: (message: string, cliMissing: boolean) => void;
+  onClearError: () => void;
 }) {
   const [token, setToken] = useState("");
   const [keysFile, setKeysFile] = useState(".agentguard/delegate.pub");
@@ -200,6 +225,8 @@ function VerifyForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    onClearError();
+    setResult(null);
     setBusy(true);
     try {
       const res = await fetchApi("/api/verify", {
@@ -216,7 +243,7 @@ function VerifyForm({
       setResult(body.result);
       toast.success("Token verified — see claims below");
     } catch {
-      toast.error("Network error while verifying token");
+      onError("Could not reach the verification service. Check the console backend and try again.", false);
     } finally {
       setBusy(false);
     }
@@ -262,7 +289,7 @@ function VerifyForm({
 
         {result !== null && (
           <div className="space-y-2">
-            <Label>Verified claims</Label>
+            <h2 className="text-sm font-medium">Verified claims</h2>
             <pre className="bg-muted max-h-64 overflow-auto rounded-md p-3 font-mono text-xs">
               {JSON.stringify(result, null, 2)}
             </pre>
@@ -275,14 +302,16 @@ function VerifyForm({
 
 function Field({
   label,
+  htmlFor,
   children,
 }: {
   label: string;
+  htmlFor: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   );

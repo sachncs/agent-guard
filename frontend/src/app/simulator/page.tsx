@@ -8,6 +8,7 @@ import {
   errorResponseSchema,
 } from "@/lib/api_schemas";
 import { fetchApi } from "@/lib/fetch_api";
+import { parseJsonObject } from "@/lib/json_object";
 import { CliAlert } from "@/components/cli_alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,18 +44,28 @@ export default function SimulatorPage() {
     useState('{ "ip": "10.0.0.1", "mfa": true }');
   const [decision, setDecision] = useState<DecisionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [invalidContextField, setInvalidContextField] = useState<"args" | "session" | null>(null);
   const [cliMissing, setCliMissing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    let args: unknown;
-    let session: unknown;
-    try {
-      args = argsJson.trim() ? JSON.parse(argsJson) : {};
-      session = sessionJson.trim() ? JSON.parse(sessionJson) : {};
-    } catch (err) {
-      toast.error(`Invalid JSON: ${err instanceof Error ? err.message : err}`);
+    setValidationError(null);
+    setInvalidContextField(null);
+    setDecision(null);
+    setError(null);
+    setCliMissing(false);
+    const parsedArgs = parseJsonObject(argsJson, "Arguments");
+    if (!parsedArgs.ok) {
+      setValidationError(parsedArgs.error);
+      setInvalidContextField("args");
+      return;
+    }
+    const parsedSession = parseJsonObject(sessionJson, "Session");
+    if (!parsedSession.ok) {
+      setValidationError(parsedSession.error);
+      setInvalidContextField("session");
       return;
     }
 
@@ -70,8 +81,8 @@ export default function SimulatorPage() {
           operation: operation || undefined,
           resourceType,
           resourceId,
-          args,
-          session,
+          args: parsedArgs.value,
+          session: parsedSession.value,
         }),
       });
       const body: unknown = await res.json();
@@ -86,8 +97,8 @@ export default function SimulatorPage() {
       }
       const ok = decisionResponseSchema.safeParse(body);
       if (!ok.success) {
-        setDecision(null);
         setError("PDP returned an unexpected payload");
+        setCliMissing(false);
         return;
       }
       setDecision(ok.data);
@@ -99,7 +110,9 @@ export default function SimulatorPage() {
         toast.error("Denied");
       }
     } catch {
-      toast.error("Network error while authorizing");
+      setDecision(null);
+      setError("Could not reach the authorization service. Check the console backend and PDP, then try again.");
+      setCliMissing(false);
     } finally {
       setBusy(false);
     }
@@ -127,8 +140,8 @@ export default function SimulatorPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Principal type">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Principal type" htmlFor="principal-type">
                   <Select value={principalType} onValueChange={setPrincipalType}>
                     <SelectTrigger id="principal-type" className="w-full">
                       <SelectValue />
@@ -139,8 +152,9 @@ export default function SimulatorPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="UID">
+                <Field label="UID" htmlFor="principal-uid">
                   <Input
+                    id="principal-uid"
                     className="font-mono"
                     value={uid}
                     onChange={(e) => setUid(e.target.value)}
@@ -162,17 +176,19 @@ export default function SimulatorPage() {
 
               <Separator />
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Tool">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Tool" htmlFor="action-tool">
                   <Input
+                    id="action-tool"
                     className="font-mono"
                     value={tool}
                     onChange={(e) => setTool(e.target.value)}
                     required
                   />
                 </Field>
-                <Field label="Operation (optional)">
+                <Field label="Operation (optional)" htmlFor="action-operation">
                   <Input
+                    id="action-operation"
                     className="font-mono"
                     value={operation}
                     onChange={(e) => setOperation(e.target.value)}
@@ -182,17 +198,19 @@ export default function SimulatorPage() {
 
               <Separator />
 
-              <div className="grid grid-cols-[8rem_1fr] gap-4">
-                <Field label="Resource type">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[8rem_1fr]">
+                <Field label="Resource type" htmlFor="resource-type">
                   <Input
+                    id="resource-type"
                     className="font-mono"
                     value={resourceType}
                     onChange={(e) => setResourceType(e.target.value)}
                     required
                   />
                 </Field>
-                <Field label="Resource ID">
+                <Field label="Resource ID" htmlFor="resource-id">
                   <Input
+                    id="resource-id"
                     className="font-mono"
                     value={resourceId}
                     onChange={(e) => setResourceId(e.target.value)}
@@ -203,24 +221,36 @@ export default function SimulatorPage() {
 
               <Separator />
 
-              <Field label='Context · args (JSON object)'>
+              <Field label="Arguments · JSON object" htmlFor="request-args">
                 <Textarea
+                  id="request-args"
                   rows={3}
                   className="font-mono text-xs"
                   value={argsJson}
+                  aria-invalid={invalidContextField === "args"}
+                  aria-describedby={invalidContextField === "args" ? "request-context-error" : undefined}
                   onChange={(e) => setArgsJson(e.target.value)}
                 />
               </Field>
-              <Field label='Context · session (JSON object)'>
+              <Field label="Session · JSON object" htmlFor="request-session">
                 <Textarea
+                  id="request-session"
                   rows={3}
                   className="font-mono text-xs"
                   value={sessionJson}
+                  aria-invalid={invalidContextField === "session"}
+                  aria-describedby={invalidContextField === "session" ? "request-context-error" : undefined}
                   onChange={(e) => setSessionJson(e.target.value)}
                 />
               </Field>
 
-              <Button type="submit" disabled={busy}>
+              {validationError && (
+                <p id="request-context-error" role="alert" className="text-sm text-deny">
+                  {validationError}
+                </p>
+              )}
+
+              <Button type="submit" disabled={busy} aria-busy={busy}>
                 {busy ? "Evaluating…" : "Evaluate"}
               </Button>
             </form>
@@ -231,19 +261,22 @@ export default function SimulatorPage() {
           <CardHeader>
             <CardTitle>Decision</CardTitle>
             {error && !cliMissing && (
-              <CardDescription className="text-deny">
+              <CardDescription role="alert" aria-live="assertive" className="text-deny">
                 {error}
               </CardDescription>
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            {!decision && !error && (
+            {busy ? (
+              <p role="status" aria-live="polite" className="text-muted-foreground text-sm">
+                Evaluating this request against the configured policies…
+              </p>
+            ) : !decision && !error ? (
               <p className="text-muted-foreground text-sm">
                 Submit a request to see the Allow / Deny decision, the policies
                 that matched, and any step-up requirements.
               </p>
-            )}
-            {decision && <DecisionResult decision={decision} />}
+            ) : decision ? <DecisionResult decision={decision} /> : null}
           </CardContent>
         </Card>
       </div>
@@ -325,14 +358,16 @@ function DecisionResult({ decision }: { decision: DecisionDto }) {
 
 function Field({
   label,
+  htmlFor,
   children,
 }: {
   label: string;
+  htmlFor: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   );
