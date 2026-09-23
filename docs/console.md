@@ -59,6 +59,7 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `redis` in production; `memory` only for development/e2e |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting; endpoint must use HTTPS and credentials must be supplied separately |
+| `AGENTGUARD_RATE_LIMIT_REDIS_PREFIX` | Optional key namespace, default `agentguard:ratelimit:`; configure a distinct prefix for each environment sharing one Redis database |
 | `AGENTGUARD_TRUST_PROXY_HEADERS` | `1` in production, only behind the trusted reverse proxy |
 | `AGENTGUARD_INSECURE_COOKIE` | Local HTTP only; never set in production |
 

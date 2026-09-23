@@ -80,6 +80,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `memory` in development, `redis` in production | Shared rate-limit backend mode |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
+| `AGENTGUARD_RATE_LIMIT_REDIS_PREFIX` | `agentguard:ratelimit:` | Optional 1–128 character Redis key namespace; use a distinct prefix when environments share one Redis database |
 | `AGENTGUARD_TRUST_PROXY_HEADERS` | `0` in development; `1` required in production | Trust a reverse proxy that overwrites `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto` with validated values |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |

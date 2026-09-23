@@ -105,7 +105,77 @@ describe("rate limiter", () => {
     assert.deepEqual(await store.consume("delegate:x", 5), { allowed: true, remaining: 3 });
     assert.equal(request?.headers.get("authorization"), "Bearer secret");
     assert.equal(redirect, "error", "credential-bearing store requests must reject redirects");
-    assert.match(await request!.text(), /EVAL/);
+    const command = JSON.parse(await request!.text()) as string[];
+    assert.equal(command[0], "EVAL");
+    assert.equal(command[3], "agentguard:ratelimit:delegate:x");
+  });
+
+  it("isolates Redis rate-limit keys with a caller-supplied namespace", async () => {
+    let command: string[] = [];
+    const store = new RedisRateLimitStore(
+      "https://redis.example",
+      "secret",
+      async (_url, init) => {
+        command = JSON.parse(String(init?.body)) as string[];
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      },
+      3_000,
+      "staging:console:",
+    );
+    await store.consume("login:ip:203.0.113.1", 10);
+    assert.equal(command[3], "staging:console:login:ip:203.0.113.1");
+  });
+
+  it("applies the configured Redis namespace through the production rate limiter", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previous = {
+      nodeEnv: env.NODE_ENV,
+      store: env.AGENTGUARD_RATE_LIMIT_STORE,
+      url: env.AGENTGUARD_RATE_LIMIT_REDIS_URL,
+      token: env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN,
+      prefix: env.AGENTGUARD_RATE_LIMIT_REDIS_PREFIX,
+    };
+    const originalFetch = globalThis.fetch;
+    let command: string[] = [];
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_RATE_LIMIT_STORE = "redis";
+    env.AGENTGUARD_RATE_LIMIT_REDIS_URL = "https://redis.example";
+    env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN = "secret";
+    env.AGENTGUARD_RATE_LIMIT_REDIS_PREFIX = "production:console:";
+    globalThis.fetch = async (_input, init) => {
+      command = JSON.parse(String(init?.body)) as string[];
+      return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+    };
+    resetRateLimiter();
+
+    try {
+      assert.deepEqual(await rateLimit("login:ip:203.0.113.1", 10), { allowed: true, remaining: 9 });
+      assert.equal(command[3], "production:console:login:ip:203.0.113.1");
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of [
+        ["NODE_ENV", previous.nodeEnv],
+        ["AGENTGUARD_RATE_LIMIT_STORE", previous.store],
+        ["AGENTGUARD_RATE_LIMIT_REDIS_URL", previous.url],
+        ["AGENTGUARD_RATE_LIMIT_REDIS_TOKEN", previous.token],
+        ["AGENTGUARD_RATE_LIMIT_REDIS_PREFIX", previous.prefix],
+      ] as const) {
+        if (value === undefined) delete env[key];
+        else env[key] = value;
+      }
+      resetRateLimiter();
+    }
+  });
+
+  it("rejects unsafe or oversized Redis rate-limit namespaces", () => {
+    assert.throws(
+      () => new RedisRateLimitStore("https://redis.example", "secret", fetch, 3_000, "bad prefix/"),
+      /rate-limit Redis key prefix/,
+    );
+    assert.throws(
+      () => new RedisRateLimitStore("https://redis.example", "secret", fetch, 3_000, "x".repeat(129)),
+      /rate-limit Redis key prefix/,
+    );
   });
 
   it("checks Redis connectivity without consuming a rate-limit slot", async () => {

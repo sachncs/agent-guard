@@ -89,13 +89,23 @@ export class RedisRateLimitStore implements RateLimitStore {
     token: string,
     fetchImpl: typeof fetch = fetch,
     timeoutMs = 3_000,
+    private readonly keyPrefix = "agentguard:ratelimit:",
   ) {
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(keyPrefix)) {
+      throw new Error("rate-limit Redis key prefix must contain 1-128 safe characters");
+    }
     this.redis = new RedisRestClient(url, token, fetchImpl, timeoutMs);
   }
 
   async consume(key: string, limitPerMinute: number): Promise<RateLimitResult> {
     const script = "local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return count";
-    const result = await this.redis.command(["EVAL", script, "1", key, String(WINDOW_SECONDS)]);
+    const result = await this.redis.command([
+      "EVAL",
+      script,
+      "1",
+      `${this.keyPrefix}${key}`,
+      String(WINDOW_SECONDS),
+    ]);
     if (typeof result !== "number" || !Number.isSafeInteger(result) || result < 1) {
       throw new Error("rate-limit store returned an invalid count");
     }
@@ -137,10 +147,14 @@ function activeStore(): RateLimitStore {
   }
   const url = process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
   const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
+  const keyPrefix = process.env.AGENTGUARD_RATE_LIMIT_REDIS_PREFIX || "agentguard:ratelimit:";
   if (!url || !token) throw new Error("Redis rate limiting is not configured");
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(keyPrefix)) {
+    throw new Error("AGENTGUARD_RATE_LIMIT_REDIS_PREFIX must contain 1-128 safe characters");
+  }
   const issue = validateSharedStoreUrl(url);
   if (issue) throw new Error(`AGENTGUARD_RATE_LIMIT_REDIS_URL ${issue}`);
-  configuredStore = new RedisRateLimitStore(url, token);
+  configuredStore = new RedisRateLimitStore(url, token, fetch, 3_000, keyPrefix);
   return configuredStore;
 }
 
