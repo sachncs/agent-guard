@@ -487,7 +487,14 @@ async function main() {
       }),
     });
     assert.equal(unavailablePdp.status, 503, "PDP HTTP failures return service unavailable");
-    assert.equal((await unavailablePdp.json()).kind, "pdp_unavailable");
+    const unavailableBody = await unavailablePdp.json();
+    assert.equal(unavailableBody.kind, "pdp_unavailable");
+    assert.equal(
+      unavailableBody.error,
+      "The authorization service is temporarily unavailable."
+    );
+    assert.match(unavailableBody.reference, /^[0-9a-f-]{36}$/);
+    assert.doesNotMatch(JSON.stringify(unavailableBody), /maintenance|PDP returned HTTP/);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
       "readiness fails when the required PDP is unavailable");
 
@@ -500,7 +507,13 @@ async function main() {
       }),
     });
     assert.equal(invalidPdp.status, 503, "malformed PDP decisions fail closed");
-    assert.equal((await invalidPdp.json()).kind, "pdp_unavailable");
+    const invalidPdpBody = await invalidPdp.json();
+    assert.equal(invalidPdpBody.kind, "pdp_unavailable");
+    assert.equal(
+      invalidPdpBody.error,
+      "The authorization service is temporarily unavailable."
+    );
+    assert.match(invalidPdpBody.reference, /^[0-9a-f-]{36}$/);
     pdp.setResponseMode("decision");
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
       "readiness recovers when the PDP recovers");
