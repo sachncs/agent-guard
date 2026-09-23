@@ -40,6 +40,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Set the Kubernetes PDP readiness-probe deadline above the server's bounded
+  audit-health check so valid storage latency does not cause premature probe
+  failures; make the timing relationship a checked manifest contract.
 - Bound console PDP response buffering and normalize malformed or oversized
   upstream responses to a fail-closed unavailable-service result.
 - Share the Redis REST transport between console sessions and rate limits;

@@ -32,6 +32,23 @@ if (failures.length === 0) {
     "key: 20_agents.cedar, path: policies/20_agents.cedar",
   ]) if (!pdp.includes(value)) failures.push(`pdp.yaml missing ${value}`);
 
+  const serverAuthzen = readFileSync("crates/agentguard-server/src/authzen.rs", "utf8");
+  const auditReadinessTimeout = serverAuthzen.match(
+    /const AUDIT_READINESS_TIMEOUT: Duration = Duration::from_secs\((\d+)\);/,
+  );
+  const kubernetesReadinessTimeout = pdp.match(
+    /readinessProbe: \{httpGet: \{path: \/readyz, port: http\}, periodSeconds: \d+, timeoutSeconds: (\d+)/,
+  );
+  if (!auditReadinessTimeout) failures.push("server audit readiness timeout must be explicit");
+  if (!kubernetesReadinessTimeout) failures.push("PDP readiness probe must set timeoutSeconds explicitly");
+  if (
+    auditReadinessTimeout &&
+    kubernetesReadinessTimeout &&
+    Number(kubernetesReadinessTimeout[1]) <= Number(auditReadinessTimeout[1])
+  ) {
+    failures.push("PDP readiness probe timeout must exceed the bounded audit readiness timeout");
+  }
+
   const configmap = read("configmap.yaml");
   for (const value of ["schema.cedarschema:", "entity User;", "entity Agent", "20_agents.cedar:"]) {
     if (!configmap.includes(value)) failures.push(`configmap.yaml missing ${value}`);

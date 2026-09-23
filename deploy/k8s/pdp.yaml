@@ -32,7 +32,7 @@ spec:
             - {name: audit, mountPath: /var/lib/agentguard/audit}
             - {name: secrets, mountPath: /etc/agentguard/secrets, readOnly: true}
             - {name: keys, mountPath: /etc/agentguard/keys, readOnly: true}
-          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
           startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 30, periodSeconds: 2}
           resources:

@@ -49,6 +49,10 @@ The images run as non-root users and expose `/healthz` and `/readyz` on the
 PDP. Kubernetes enforces a 30-second termination grace period while the
 server drains in-flight requests. The PDP image includes the `agentguard` CLI
 for audit-chain verification. Scan both images before promotion.
+The PDP readiness probe allows five seconds, exceeding the server's bounded
+two-second durable-audit health check so transient storage latency within the
+server contract does not cause premature probe failures. The liveness and
+startup probes use the inexpensive `/healthz` endpoint instead.
 Both pods set `fsGroup: 10001` with `fsGroupChangePolicy: OnRootMismatch` so
 the non-root PDP can create and append its audit file on a newly provisioned
 volume. Confirm that the selected CSI driver honors Kubernetes fsGroup
