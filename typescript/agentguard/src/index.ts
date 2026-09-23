@@ -115,6 +115,16 @@ export interface ClientOptions {
   maxConcurrentCliProcesses?: number;
 }
 
+/** Options shared by synchronous and asynchronous authorization methods. */
+export interface AuthorizationOptions {
+  /** Skip writing the decision to the local audit log. Defaults to false. */
+  audit?: boolean;
+  /** Throw on deny; a step-up denial follows `onStepUp`. */
+  check?: boolean;
+  /** Raise `StepUpRequired` (default) or return the step-up denial decision. */
+  onStepUp?: "raise" | "return";
+}
+
 const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_CONCURRENT_CLI_PROCESSES = 8;
 const MAX_CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -180,7 +190,7 @@ export class Client {
    * Run a CLI operation without blocking the Node.js event loop. Prefer these
    * variants in web servers and other concurrent Node applications.
    */
-  private runAsync(args: string[]): Promise<string> {
+  private runAsync(args: string[], stdin?: string): Promise<string> {
     if (this.activeAsyncProcesses >= this.maxConcurrentCliProcesses) {
       return Promise.reject(new CLIUnavailable(
         `agentguard CLI concurrency limit reached (${this.maxConcurrentCliProcesses})`
@@ -233,7 +243,7 @@ export class Client {
       };
       child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
       child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
-      child.stdin.end();
+      child.stdin.end(stdin);
       child.once("error", (error) => finish(() => reject(
         new CLIUnavailable(`agentguard CLI failed to spawn: ${error.message}`)
       )));
@@ -264,8 +274,43 @@ export class Client {
     action: AgentAction,
     resource: Resource,
     context: AgentContext = {},
-    opts: { audit?: boolean; check?: boolean; onStepUp?: "raise" | "return" } = {}
+    opts: AuthorizationOptions = {},
   ): Decision {
+    const out = this.run(
+      this.authorizationArgs(opts),
+      this.authorizationInput(principal, action, resource, context),
+    );
+    return this.finishAuthorization(this.parseDecision(out), opts);
+  }
+
+  /**
+   * Evaluate an authorization request without blocking the Node.js event loop.
+   * Use this method in web servers and other concurrent Node.js applications.
+   *
+   * @returns The decision. With `check: true`, throws
+   * {@link StepUpRequired} or {@link AuthorizationDenied} instead of
+   * returning a deny decision (unless `onStepUp` is `"return"`).
+   */
+  async authorizeAsync(
+    principal: Principal,
+    action: AgentAction,
+    resource: Resource,
+    context: AgentContext = {},
+    opts: AuthorizationOptions = {},
+  ): Promise<Decision> {
+    const out = await this.runAsync(
+      this.authorizationArgs(opts),
+      this.authorizationInput(principal, action, resource, context),
+    );
+    return this.finishAuthorization(this.parseDecision(out), opts);
+  }
+
+  private authorizationInput(
+    principal: Principal,
+    action: AgentAction,
+    resource: Resource,
+    context: AgentContext,
+  ): string {
     const req: Record<string, unknown> = {
       principal: {
         type: principal.type,
@@ -287,11 +332,17 @@ export class Client {
         // ignore malformed traceparent
       }
     }
-    const stdin = JSON.stringify(req);
+    return JSON.stringify(req);
+  }
+
+  private authorizationArgs(opts: Pick<AuthorizationOptions, "audit">): string[] {
     const audit = opts.audit ?? true;
     const args = ["--output", "json", "authorize", "-"];
     if (!audit) args.push("--no-audit");
-    const out = this.run(args, stdin);
+    return args;
+  }
+
+  private parseDecision(out: string): Decision {
     const data = JSON.parse(out);
     const stepUp = data.step_up
       ? { acr_values: data.step_up.acr_values, amr_values: data.step_up.amr_values }
@@ -307,9 +358,19 @@ export class Client {
       tenant_id: data.tenant_id,
       step_up: stepUp,
     };
+    return decision;
+  }
+
+  private finishAuthorization(
+    decision: Decision,
+    opts: Pick<AuthorizationOptions, "check" | "onStepUp">,
+  ): Decision {
     if (opts.check && decision.effect === "deny") {
-      if (stepUp && (opts.onStepUp ?? "raise") === "raise") {
-        throw new StepUpRequired(stepUp, decision);
+      if (decision.step_up) {
+        if ((opts.onStepUp ?? "raise") === "raise") {
+          throw new StepUpRequired(decision.step_up, decision);
+        }
+        return decision;
       }
       throw new AuthorizationDenied(decision);
     }
@@ -324,6 +385,16 @@ export class Client {
     context: AgentContext = {}
   ): Decision {
     return this.authorize(principal, action, resource, context, { check: true });
+  }
+
+  /** Like {@link Client.authorizeAsync} with `check: true`: throws on deny. */
+  checkAsync(
+    principal: Principal,
+    action: AgentAction,
+    resource: Resource,
+    context: AgentContext = {},
+  ): Promise<Decision> {
+    return this.authorizeAsync(principal, action, resource, context, { check: true });
   }
 
   /**

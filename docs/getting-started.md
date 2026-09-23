@@ -137,8 +137,10 @@ client.check(
 ```
 
 The SDK is CLI-backed and evaluates against the local policy store; it does
-not discover or call a remote PDP. `Client.check` is synchronous, so do not
-call it from latency-sensitive or concurrent server handlers. The SDK does not
+not discover or call a remote PDP. The synchronous `Client.check` blocks the
+Node.js event loop; use `Client.checkAsync` (or `authorizeAsync`) in
+latency-sensitive or concurrent server handlers. Async CLI calls use the
+configured timeout and per-client concurrency/output limits. The SDK does not
 automatically intercept framework tools: call it in your tool handler, or
 implement an adapter that guards every execution path.
 

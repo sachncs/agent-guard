@@ -38,9 +38,10 @@ unless the embedding deployment supplies a protected network boundary; it is
 not a standardized AuthZEN gRPC protocol.
 
 The SDK's synchronous CLI methods block the calling thread and should not be
-used from concurrent web-server handlers. Use `Client.logTailAsync` and
-`Client.delegateAsync` for non-blocking audit and delegation routes; async
-operations have a configurable timeout and bounded output.
-They also cap concurrent CLI children per `Client`; saturation fails fast
-with `CLIUnavailable` so callers can return a service-unavailable response
-instead of accumulating unbounded child processes.
+used from concurrent web-server handlers. Use `Client.authorizeAsync` or
+`Client.checkAsync` for non-blocking authorization, `Client.logTailAsync` for
+audit reads, and `Client.delegateAsync` for delegation. Async operations have
+a configurable timeout and bounded output. They also cap concurrent CLI
+children per `Client`; saturation fails fast with `CLIUnavailable` so callers
+can return a service-unavailable response instead of accumulating unbounded
+child processes.

@@ -190,6 +190,12 @@ client.delegate(
 );
 ```
 
+The SDK runs the local CLI; it is not a remote PDP client. The synchronous
+`check` shown above is suitable for scripts. In Node.js request handlers use
+`await client.checkAsync(...)` or `authorizeAsync(...)` so CLI work does not
+block the event loop. Async calls have per-client concurrency, timeout, and
+output bounds.
+
 Minting or signature verification alone does **not** authorize a tool call or
 enforce the grant's scope. The standalone PDP does not consume delegation
 tokens; the integration at the tool boundary must verify expiry, audience,

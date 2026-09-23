@@ -30,6 +30,10 @@ case "\$FAKE_AGENTGUARD_MODE" in
       *delegate*) echo 'fake.jwt.token' ;;
       *) echo '{}' ;;
     esac ;;
+  asyncauthorize)
+    read -r request
+    sleep 0.18
+    printf '{"effect":"allow","policies":["p-async"],"reasons":[],"request":%s}' "$request" ;;
   hang)
     exec sleep 5 ;;
   fail)
@@ -137,6 +141,15 @@ describe("Client", () => {
           return true;
         }
       );
+      const decision = client.authorize(
+        { type: "user", uid: "alice" },
+        { tool: "send_email" },
+        { entity_type: "Resource", uid: "agent" },
+        {},
+        { check: true, onStepUp: "return" },
+      );
+      assert.equal(decision.effect, "deny");
+      assert.equal(decision.step_up?.acr_values, "mfa");
     } finally {
       delete process.env.FAKE_AGENTGUARD_MODE;
     }
@@ -235,6 +248,63 @@ describe("Client", () => {
       assert.ok(ticks >= 3, `event loop should continue ticking during CLI work (ticks=${ticks})`);
     } finally {
       clearInterval(interval);
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("authorizes asynchronously, forwards the request, and keeps the event loop responsive", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "asyncauthorize";
+    const client = new Client({ cliBin: fakeCli, timeoutMs: 2_000 });
+    let ticks = 0;
+    const interval = setInterval(() => ticks += 1, 30);
+    try {
+      const decision = await client.authorizeAsync(
+        { type: "agent", uid: "alice", attrs: { team: "security" } },
+        { tool: "repo_read" },
+        { entity_type: "Repository", uid: "demo" },
+        { args: { repo: "demo" }, session: { mfa: true } },
+        { audit: false },
+      );
+      assert.equal(decision.effect, "allow");
+      assert.equal(decision.policies[0], "p-async");
+      assert.deepEqual(decision.request, {
+        principal: { type: "agent", uid: "alice", attrs: { team: "security" } },
+        action: { tool: "repo_read" },
+        resource: { entity_type: "Repository", uid: "demo", attrs: {} },
+        context: { args: { repo: "demo" }, session: { mfa: true } },
+      });
+      assert.ok(ticks >= 3, `event loop should continue ticking during authorization (ticks=${ticks})`);
+    } finally {
+      clearInterval(interval);
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("applies checkAsync deny and step-up behavior consistently", async () => {
+    const client = new Client({ cliBin: fakeCli });
+    const input = [
+      { type: "user", uid: "alice" } as const,
+      { tool: "repo_read" },
+      { entity_type: "Repository", uid: "demo" },
+    ] as const;
+    process.env.FAKE_AGENTGUARD_MODE = "deny";
+    try {
+      await assert.rejects(client.checkAsync(...input), AuthorizationDenied);
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+
+    process.env.FAKE_AGENTGUARD_MODE = "stepup";
+    try {
+      await assert.rejects(client.checkAsync(...input), StepUpRequired);
+      const decision = await client.authorizeAsync(
+        ...input,
+        {},
+        { check: true, onStepUp: "return" },
+      );
+      assert.equal(decision.effect, "deny");
+      assert.equal(decision.step_up?.acr_values, "mfa");
+    } finally {
       delete process.env.FAKE_AGENTGUARD_MODE;
     }
   });

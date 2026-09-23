@@ -15,11 +15,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Record the authenticated PDP service identity, API-key id, tenant, and act-as
   state separately from the evaluated principal; preserve these fields in the
   JSONL, CEF, LEEF, and ECS audit formats.
-- Add non-blocking `Client.logTailAsync` and `Client.delegateAsync` methods to
-  the TypeScript SDK, with configurable execution timeout and bounded output.
-  Concurrent child processes are bounded per client. The console audit and
-  delegation routes use these async variants so CLI work does not block the
-  Next.js event loop.
+- Add non-blocking `Client.authorizeAsync`, `Client.checkAsync`,
+  `Client.logTailAsync`, and `Client.delegateAsync` methods to the TypeScript
+  SDK, with configurable execution timeout, bounded output, and per-client
+  process limits. The console audit and delegation routes use async methods so
+  CLI work does not block the Next.js event loop. Keep synchronous methods for
+  scripts; use async authorization in concurrent Node.js servers.
+- Make `onStepUp: "return"` return the step-up denial decision consistently
+  instead of throwing `AuthorizationDenied` in the SDK.
 - Add the `DpopReplayStore` port so embedders can inject an atomic shared
   replay backend without coupling proof verification to a storage adapter.
 - Add `AsyncDpopReplayStore` and `DpopVerifier::verify_async` for remote replay
