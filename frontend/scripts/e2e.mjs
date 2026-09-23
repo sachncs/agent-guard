@@ -587,6 +587,12 @@ async function main() {
   console.log("starting production build…");
   const build = spawnSync("pnpm", ["exec", "next", "build", "--webpack"], { cwd: process.cwd(), stdio: "inherit" });
   assert.equal(build.status, 0, "next build succeeds");
+  const standalonePublic = join(process.cwd(), ".next/standalone/frontend/public");
+  mkdirSync(standalonePublic, { recursive: true });
+  copyFileSync(
+    join(process.cwd(), "public/agentguard-mark.svg"),
+    join(standalonePublic, "agentguard-mark.svg"),
+  );
 
   FRONTEND_PORT = await findAvailablePort();
   BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
@@ -629,6 +635,11 @@ async function main() {
 
     // --- 1. unauthenticated posture -------------------------------------
     const anonJar = new Jar();
+    const publicBrandMark = await req(anonJar, "/agentguard-mark.svg");
+    assert.equal(publicBrandMark.status, 200, "the public login brand mark does not require a session");
+    assert.match(publicBrandMark.headers.get("content-type") ?? "", /image\/svg\+xml/);
+    assert.match(await publicBrandMark.text(), /AgentGuard/);
+
     const rootRes = await req(anonJar, "/", { headers: {} });
     assert.equal(rootRes.status, 307, "unauthenticated page redirects");
     assert.equal(new URL(rootRes.headers.get("location"), BASE).pathname, "/login");

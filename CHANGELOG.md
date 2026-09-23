@@ -38,6 +38,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Serve the console's public AgentGuard mark without requiring an authenticated
+  session, so branded login and static asset requests remain available.
 - Make clean-checkout setup work without Corepack by invoking the pinned pnpm
   release through npm when needed; pin the site workspace to the same pnpm and
   explicitly allow only its required `esbuild` and `sharp` install scripts.

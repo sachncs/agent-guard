@@ -25,6 +25,7 @@ export async function proxy(request: NextRequest) {
   const isStatic =
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico" ||
+    pathname === "/agentguard-mark.svg" ||
     pathname === "/robots.txt" ||
     pathname.startsWith("/icons/");
 
