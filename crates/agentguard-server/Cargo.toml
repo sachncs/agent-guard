@@ -25,12 +25,12 @@ tracing-subscriber.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 axum = "0.7"
 tower = "0.5"
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 cedar-policy.workspace = true
 
 # gRPC: tonic + prost for the AccessEvaluation service. The build
 # script regenerates the Rust types from proto/agentguard.proto.
-tonic = { version = "0.12", default-features = false, features = ["transport", "server", "tls", "codegen", "prost"] }
+tonic = { version = "0.12", default-features = false, features = ["transport", "server", "codegen", "prost"] }
 prost = "0.13"
 
 [build-dependencies]

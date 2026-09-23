@@ -9,6 +9,9 @@ use crate::error::{AuthError, Result};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(feature = "spiffe")]
+const WORKLOAD_API_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Trust domain allowlist and optional workload endpoint.
 #[derive(Debug, Clone)]
 pub struct SpiffeValidator {
@@ -58,28 +61,28 @@ impl SpiffeValidator {
     #[cfg(feature = "spiffe")]
     pub async fn fetch_svid(&self) -> Result<SpiffeId> {
         use rust_spiffe::workload_api::client::WorkloadApiClient;
-        // ponytail: bound the connect so a misconfigured endpoint
-        // can't park the auth middleware indefinitely. 5 s is generous
-        // for a local Unix socket; for HTTPS work, raise in
-        // deployment-specific config.
-        let connect_fut = WorkloadApiClient::new_from_path(&self.workload_endpoint);
-        let mut client = tokio::time::timeout(Duration::from_secs(5), connect_fut)
-            .await
-            .map_err(|_| {
-                AuthError::SpiffeFetch(format!(
-                    "timed out connecting to SPIFFE Workload API at {}",
-                    self.workload_endpoint
-                ))
-            })?
-            .map_err(|e| AuthError::SpiffeFetch(format!("workload api connect: {}", e)))?;
-        let x509_svid = client
-            .fetch_x509_svid()
-            .await
-            .map_err(|e| AuthError::SpiffeFetch(format!("fetch x509-svid: {}", e)))?;
+        // Bound the full connect + RPC operation; bounding only channel
+        // creation still allowed an unresponsive Workload API to hang callers.
+        let x509_svid = tokio::time::timeout(WORKLOAD_API_TIMEOUT, async {
+            let client = WorkloadApiClient::connect_to(&self.workload_endpoint)
+                .await
+                .map_err(|e| AuthError::SpiffeFetch(format!("workload api connect: {e}")))?;
+            client
+                .fetch_x509_svid()
+                .await
+                .map_err(|e| AuthError::SpiffeFetch(format!("fetch x509-svid: {e}")))
+        })
+        .await
+        .map_err(|_| {
+            AuthError::SpiffeFetch(format!(
+                "timed out fetching SVID from SPIFFE Workload API at {}",
+                self.workload_endpoint
+            ))
+        })??;
         // Validate the leaf certificate's validity window. rust-spiffe
         // exposes the DER certificate but not its validity timestamps, so
         // parse the already-validated leaf with the pinned X.509 parser.
-        let (_, certificate) = x509_parser::parse_x509_certificate(x509_svid.leaf().content())
+        let (_, certificate) = x509_parser::parse_x509_certificate(x509_svid.leaf().as_bytes())
             .map_err(|e| AuthError::SpiffeFetch(format!("parse SVID certificate: {}", e)))?;
         let now = chrono::Utc::now();
         let skew =
@@ -157,5 +160,17 @@ mod tests {
         v.validate_spiffe_id("spiffe://acme.com/x").unwrap();
         v.validate_spiffe_id("spiffe://partner.com/y").unwrap();
         assert!(v.validate_spiffe_id("spiffe://other.com/z").is_err());
+    }
+
+    #[cfg(feature = "spiffe")]
+    #[tokio::test]
+    async fn fetch_svid_fails_cleanly_when_workload_socket_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("missing.sock");
+        let mut validator = SpiffeValidator::new("acme.com");
+        validator.workload_endpoint = format!("unix://{}", socket.display());
+
+        let error = validator.fetch_svid().await.unwrap_err();
+        assert!(error.to_string().contains("workload api connect"));
     }
 }

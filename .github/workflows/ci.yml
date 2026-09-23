@@ -282,9 +282,8 @@ jobs:
       # Bans + licenses + sources are blocking: we own the surface and
       # can fix violations directly.
       - run: cargo deny check bans licenses sources
-      # Advisories are blocking. The deny.toml ignore list reflects
-      # the only known transitive vulnerabilities (ring <0.17, see
-      # CHANGELOG.md for the v0.3 follow-up).
+      # Advisory checks are blocking; production builds must have no
+      # ignored RustSec advisories.
       - run: cargo deny check advisories
 
   audit:
@@ -298,16 +297,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.89.0
       - run: cargo install cargo-audit --locked
       # Hard gate: any unignored advisory fails CI.
-      # The optional SPIFFE client currently pins jsonwebtoken 8 / tonic 0.11,
-      # which pull the archived ring 0.16, rustls-pemfile, and h2 0.3 trees.
-      # These are not used by the default build; keep the audit gate strict
-      # for all other advisories until that upstream feature is updated.
-      - run: >-
-          cargo audit --deny warnings
-          --ignore RUSTSEC-2025-0009
-          --ignore RUSTSEC-2025-0010
-          --ignore RUSTSEC-2025-0134
-          --ignore RUSTSEC-2026-0258
+      - run: cargo audit --deny warnings
 
   coverage:
     name: cargo llvm-cov

@@ -10,19 +10,9 @@ all-features = false
 
 [advisories]
 # Fail the build on any advisory from the RustSec database.
-# Active advisories on the current dependency tree (transitive, no
-# direct upgrade path without bumping cedar-policy / aws-lc-rs).
-# Tracked as a v0.3 follow-up.
+# Checks the full resolved dependency graph, including optional features.
 version = 2
-ignore = [
-    # ring <0.17 unmaintained (transitive via aws-lc-rs / rustls).
-    # The two ring advisories were merged in newer RustSec releases
-    # under different IDs — keep this as the catch-all placeholder
-    # for the v0.3 follow-up.
-    "RUSTSEC-2025-0010",
-    # rustls-pemfile archived (transitive via axum-server, tonic).
-    "RUSTSEC-2025-0134",
-]
+ignore = []
 
 [licenses]
 version = 2

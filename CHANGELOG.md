@@ -38,6 +38,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Upgrade the optional SPIFFE Workload API client and HTTP TLS server adapter,
+  remove the unused gRPC TLS feature, and eliminate the deferred RustSec
+  advisory ignores so dependency auditing is blocking without exceptions.
 - Serve the console's public AgentGuard mark without requiring an authenticated
   session, so branded login and static asset requests remain available.
 - Make clean-checkout setup work without Corepack by invoking the pinned pnpm
@@ -538,20 +541,15 @@ CLI changes:
   its formatter dep. Documenting rather than fixing because
   forcing uniqueness requires forking cedar-policy.
 
-#### Known upstream advisories (v0.3 follow-up)
+#### Previously known upstream advisories (resolved in Unreleased)
 
-- **RUSTSEC-2025-0009 / RUSTSEC-2025-0010** (`ring <0.17`):
-  AES overflow-panic advisory + unmaintained-warn. Transitive
-  via `aws-lc-rs` / `rustls` / `reqwest`. Fix requires either
-  pinning a newer `aws-lc-rs` (which would cascade into a
-  rustls upgrade) or waiting for `cedar-policy` to bump its
-  rustls dependency. Documented and ignored in `deny.toml`;
-  resolved when `cedar-policy` bumps `rustls-pki-types` ≥ 1.9.
-- **RUSTSEC-2025-0134** (`rustls-pemfile 2.x`): unmaintained.
-  Transitive via `axum-server` and `tonic`. The crate is now a
-  thin wrapper around the `PemObject` trait in `rustls-pki-types`
-  ≥ 1.9 — same migration target as above. Documented and
-  ignored in `deny.toml`.
+The v0.2.1 dependency graph carried **RUSTSEC-2025-0009 / 0010** (`ring`
+<0.17), **RUSTSEC-2025-0134** (`rustls-pemfile` 2.x), and a transitive
+`h2` advisory through the old optional SPIFFE client. The Unreleased changes
+upgrade the SPIFFE client and HTTP TLS adapter and remove tonic's unused TLS
+feature. Those vulnerable dependency versions are no longer in `Cargo.lock`;
+`cargo audit --deny warnings` and `cargo deny check advisories` now run with
+no advisory exceptions.
 
 ## [0.2.0] - 2026-07-14
 
