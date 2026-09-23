@@ -12,6 +12,7 @@
 //! configuration boundary and `docs/production.md` for the supported
 //! deployment contract.
 
+mod audit;
 pub mod auth_layer;
 pub mod authzen;
 pub mod grpc;

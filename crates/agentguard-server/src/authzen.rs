@@ -2,6 +2,7 @@
 //!
 //! Reference: <https://openid.github.io/authzen/> (OpenID AuthZEN WG draft).
 
+use crate::audit::AuditAppender;
 use agentguard_core::authorize::entities::build_entities;
 use agentguard_core::decision::{
     cache::{CacheConfig, DecisionCache},
@@ -87,7 +88,7 @@ pub(crate) async fn authorize_and_persist_decision(
     authorizer: Arc<Authorizer>,
     request: AgentRequest,
     entity_values: Vec<serde_json::Value>,
-    audit: Arc<Option<DecisionLog>>,
+    audit: Arc<Option<Arc<dyn AuditAppender>>>,
 ) -> Result<(agentguard_core::Decision, std::time::Duration), PdpWorkError> {
     run_bounded_pdp_work(pdp_work_slots(), move || {
         let entities = build_request_entities(&entity_values).map_err(PdpWorkError::Entities)?;
@@ -213,7 +214,8 @@ pub struct AppState {
     /// Audit log writer. Every authorization decision is appended
     /// here. `None` only when the operator explicitly opts out (the
     /// CLI `--skip-audit` flag).
-    audit: Arc<Option<DecisionLog>>,
+    audit: Arc<Option<Arc<DecisionLog>>>,
+    audit_appender: Arc<Option<Arc<dyn AuditAppender>>>,
     /// Authentication layer. `Disabled` allows any caller; `ApiKey`
     /// validates `Authorization: Bearer <raw>`.
     pub auth: crate::auth_layer::AuthLayer,
@@ -303,11 +305,11 @@ impl AppState {
     /// The audit log writer, if configured. `None` when the operator
     /// disabled audit logging.
     pub fn audit(&self) -> Option<&DecisionLog> {
-        self.audit.as_ref().as_ref()
+        self.audit.as_ref().as_deref()
     }
 
-    pub(crate) fn audit_handle(&self) -> Arc<Option<DecisionLog>> {
-        self.audit.clone()
+    pub(crate) fn audit_handle(&self) -> Arc<Option<Arc<dyn AuditAppender>>> {
+        self.audit_appender.clone()
     }
 
     /// The metrics registry. The same handle is used by `/metrics`,
@@ -408,9 +410,9 @@ async fn readyz(State(state): State<AppState>) -> Response {
     // 2. Audit log must be configured, have a chained identity, and retain
     // an active writer handle. A permanent append failure poisons that handle
     // so the orchestrator can stop routing new decisions to this instance.
-    match state.audit() {
+    match state.audit_appender.as_ref() {
         Some(audit) if !audit.is_healthy() => return readyz_unavailable("audit log unavailable"),
-        Some(audit) if audit.chain_id().is_some() => (),
+        Some(audit) if audit.is_chained() => (),
         Some(_) => return readyz_unavailable("audit log not opened"),
         None => return readyz_unavailable("audit log not configured"),
     }
@@ -580,7 +582,7 @@ async fn evaluation(
         state.authorizer.snapshot(),
         agent_req,
         per_request_entities,
-        state.audit.clone(),
+        state.audit_appender.clone(),
     )
     .await;
     match outcome {
@@ -668,7 +670,7 @@ async fn evaluations(
             authorizer.clone(),
             agent_req,
             per_request_entities,
-            state.audit.clone(),
+            state.audit_appender.clone(),
         )
         .await
         {
@@ -751,9 +753,15 @@ pub async fn build_state_with_cache(
         }
         None => None,
     };
+    let audit = audit.map(Arc::new);
+    let audit_appender: Option<Arc<dyn AuditAppender>> = audit
+        .as_ref()
+        .map(Arc::clone)
+        .map(|log| log as Arc<dyn AuditAppender>);
     Ok(AppState {
         authorizer,
         audit: Arc::new(audit),
+        audit_appender: Arc::new(audit_appender),
         auth,
         metrics: Arc::new(Metrics::new()),
     })
@@ -761,11 +769,70 @@ pub async fn build_state_with_cache(
 
 #[cfg(test)]
 mod summarize_tests {
-    use super::summarize_authorize_error;
-    use agentguard_core::Error;
-    use agentguard_core::PolicyStore;
+    use super::{router, summarize_authorize_error};
+    use crate::audit::AuditAppender;
+    use agentguard_core::{Decision, Error, PolicyStore};
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use std::sync::Arc;
     use tempfile::tempdir;
     use tokio::sync::Semaphore;
+    use tower::ServiceExt;
+
+    struct FailingAuditAppender;
+
+    impl AuditAppender for FailingAuditAppender {
+        fn append_decision(&self, _decision: &Decision) -> agentguard_core::Result<()> {
+            Err(Error::Io("disk full".into()))
+        }
+
+        fn is_healthy(&self) -> bool {
+            false
+        }
+
+        fn is_chained(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn audit_write_failure_fails_closed_and_marks_readiness_unhealthy() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        store
+            .write_policy("allow", "permit(principal, action, resource);")
+            .unwrap();
+        let mut state = super::build_state(
+            dir.path().to_path_buf(),
+            Some(dir.path().join("audit.jsonl")),
+            Some(b"test-key".to_vec()),
+            crate::auth_layer::AuthLayer::Disabled,
+        )
+        .await
+        .unwrap();
+        state.audit_appender = Arc::new(Some(Arc::new(FailingAuditAppender)));
+
+        let app = router(state);
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/access/v1/evaluation")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"subject":{"type":"User","id":"alice"},"action":{"type":"Action","id":"read"},"resource":{"type":"Document","id":"doc"},"context":{}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let response = app
+            .oneshot(Request::get("/readyz").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 
     #[test]
     fn invalid_context_summary_does_not_leak_message() {
