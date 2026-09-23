@@ -24,6 +24,8 @@ if (failures.length === 0) {
     "terminationGracePeriodSeconds: 30",
     "automountServiceAccountToken: false",
     "runAsNonRoot: true",
+    "fsGroup: 10001",
+    "fsGroupChangePolicy: OnRootMismatch",
     "readOnlyRootFilesystem: true",
     "claimName: agentguard-audit",
     "key: 20_agents.cedar, path: policies/20_agents.cedar",
@@ -97,6 +99,8 @@ if (failures.length === 0) {
     "terminationGracePeriodSeconds: 30",
     "automountServiceAccountToken: false",
     "runAsNonRoot: true",
+    "fsGroup: 10001",
+    "fsGroupChangePolicy: OnRootMismatch",
     "readOnlyRootFilesystem: true",
   ]) if (!console.includes(value)) failures.push(`console.yaml missing ${value}`);
 }

@@ -41,6 +41,12 @@ The images run as non-root users and expose `/healthz` and `/readyz` on the
 PDP. Kubernetes enforces a 30-second termination grace period while the
 server drains in-flight requests. The PDP image includes the `agentguard` CLI
 for audit-chain verification. Scan both images before promotion.
+Both pods set `fsGroup: 10001` with `fsGroupChangePolicy: OnRootMismatch` so
+the non-root PDP can create and append its audit file on a newly provisioned
+volume. Confirm that the selected CSI driver honors Kubernetes fsGroup
+ownership handling; if it does not, provision the volume with group `10001`
+and writable group permissions before deployment. The console uses the same
+UID and mounts the audit directory read-only.
 
 ## Secrets and policy state
 
