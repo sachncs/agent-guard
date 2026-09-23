@@ -4,6 +4,7 @@ import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import { remarkDocLinks } from './remark-doc-links.mjs';
+import { cedarLanguage } from './src/languages/cedar.mjs';
 
 export default defineConfig({
   site: 'https://sachncs.github.io',
@@ -13,6 +14,10 @@ export default defineConfig({
   integrations: [react(), sitemap()],
   markdown: {
     remarkPlugins: [remarkDocLinks],
+    shikiConfig: {
+      langs: [cedarLanguage],
+      langAlias: { cedarschema: 'cedar' },
+    },
   },
   vite: {
     plugins: [tailwindcss()],

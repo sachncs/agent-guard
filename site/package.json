@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "test": "node --test remark-doc-links.test.mjs",
+    "test": "node --test *.test.mjs",
     "preview": "astro preview",
     "check": "astro check",
     "astro": "astro"
