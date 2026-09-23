@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 
-const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "BRAND.md", "frontend/README.md", "examples/README.md", "examples/strands-tool-authz/src/main.ts"];
+const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "RELEASE.md", "BRAND.md", "frontend/README.md", "examples/README.md", "examples/strands-tool-authz/src/main.ts"];
 const forbidden = ["agentguard_console", "agentguard_ console"];
 const forbiddenProductCopy = ["agent-guard docs", "Contributing to agent-guard", "interest in agent-guard", "agent-guard and its users"];
 const failures = [];
@@ -110,6 +110,16 @@ requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
 requireText("README.md", "not standardized AuthZEN gRPC");
 requireText("docs/architecture.md", "repository-defined gRPC mirror");
 requireText("site/src/lib/content.ts", "repository-defined plaintext gRPC mirror");
+requireText("RELEASE.md", "CI builds and scans the Docker images as test");
+requireText("RELEASE.md", "does not publish container images to a registry");
+requireText("RELEASE.md", "registry-reported image digests");
+if (readFileSync(".github/workflows/ci.yml", "utf8").includes("docker push") &&
+    !readFileSync("RELEASE.md", "utf8").includes("CI publishes the release images")) {
+  failures.push("RELEASE.md: document registry publishing when CI starts publishing images");
+}
+if (readFileSync("RELEASE.md", "utf8").includes("digest produced by the container pipeline")) {
+  failures.push("RELEASE.md: container CI does not publish registry digests");
+}
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

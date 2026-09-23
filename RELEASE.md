@@ -24,6 +24,10 @@ The `release.yml` workflow validates that the tag exists before starting the
 release gate, checks out that exact tag in every CI job, and publishes the same
 tag only after the gate succeeds. A manual dispatch can validate and publish an
 existing tag by supplying its exact value; the workflow does not test the
-dispatch branch as a substitute. The workflow does not build or publish mutable
-`latest` images; deploy the immutable image digest produced by the container
-pipeline through the Kubernetes change process.
+dispatch branch as a substitute. CI builds and scans the Docker images as test
+artifacts but does not publish container images to a registry. Build and push
+both release images to the operator-selected registry using the procedure in
+[Kubernetes operations](docs/kubernetes.md#build-and-publish), then record the
+registry-reported image digests in the deployment change. The GitHub release
+workflow publishes source release notes only; it does not build, sign, or
+publish OCI images. Never deploy mutable `latest` tags.
