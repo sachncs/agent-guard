@@ -396,10 +396,13 @@ so no branch-based publishing is involved.
 
 ```bash
 cd site
-pnpm install --ignore-workspace   # site/ is not part of the pnpm workspace
+pnpm install --frozen-lockfile
 pnpm build                         # → site/dist/
 pnpm preview                       # local preview
 ```
+
+The repository bootstrap (`./scripts/setup.sh`) installs both the root
+workspace and this separately locked site workspace.
 
 Local development requires Node.js ≥ 20.9 and pnpm 11.22.x.
 

@@ -18,34 +18,33 @@ and pnpm toolchains, verifies `protoc`, and installs both the root and Astro
 site lockfiles. Copy `frontend/.env.example` to `frontend/.env.local` when
 running the console locally.
 
-```
-rustup toolchain install stable
-# Required by crates/agentguard-server/build.rs to regenerate gRPC
-# stubs from proto/agentguard.proto:
-#   apt:   apt install -y protobuf-compiler
-#   brew:  brew install protobuf
-# Or set $PROTOC to its path.
-```
-
-The workspace declares `rust-version = "1.89"` in `[workspace.package]`.
-CI verifies the workspace builds under that toolchain (see the `msrv`
-job in `.github/workflows/ci.yml`). Use only stable APIs available in
-1.89; if you need a newer one, bump `rust-version` in the same commit
-and add a CHANGELOG entry.
+The workspace declares `rust-version = "1.89"` in `[workspace.package]`,
+and `rust-toolchain.toml` pins Rust 1.89.0. The setup script installs that
+toolchain with `rustfmt` and `clippy`; install `protobuf-compiler` (or set
+`PROTOC`) for all-feature SPIFFE builds and descriptor checks. CI verifies the
+MSRV. Use only stable APIs available in 1.89; if you need a newer one, bump
+`rust-version` and the pinned toolchain in the same change.
 
 ## Tests
 
 ```
 cargo test --workspace
 cargo test --workspace --all-features
+pnpm --filter frontend test
+pnpm --dir site test
 ```
 
 ## Lint / format
 
 ```
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+pnpm check
+pnpm build
 ```
+
+For the console production-build auth and PDP integration flow, run
+`pnpm --filter frontend exec node scripts/e2e.mjs` (Docker is required).
 
 ## Pull request flow
 
