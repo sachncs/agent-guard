@@ -550,9 +550,24 @@ impl DecisionLog {
 
 fn verify_chain_paths(paths: &[PathBuf], root_key: &[u8]) -> Result<ChainId> {
     let mut chain_id = None;
-    let mut entries = Vec::new();
+    let mut expected_prev = [0u8; HASH_LEN];
+    let mut record_number = 0usize;
+    let chain = HashChain::new(root_key);
     for path in paths {
-        for record in DecisionLog::read_all_chained(path)? {
+        let file = open_existing_audit_file(path)?;
+        let reader = BufReader::new(file);
+        for (line_number, line) in reader.lines().enumerate() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let record: ChainedRecord = serde_json::from_str(&line).map_err(|error| {
+                Error::Json(format!(
+                    "{} line {}: {error}",
+                    path.display(),
+                    line_number + 1
+                ))
+            })?;
             if let Some(expected) = chain_id {
                 if record.chain_id != expected {
                     return Err(Error::Other(format!(
@@ -568,16 +583,22 @@ fn verify_chain_paths(paths: &[PathBuf], root_key: &[u8]) -> Result<ChainId> {
             let canonical = canonical_json(&record.record)?;
             let prev = parse_hex32(&record.prev_hash)?;
             let hash = parse_hex32(&record.record_hash)?;
-            entries.push((canonical, prev, hash));
+            if prev != expected_prev {
+                return Err(Error::Other(format!(
+                    "record {}: prev_hash mismatch: expected {}, got {}",
+                    record_number,
+                    hex::encode(expected_prev),
+                    hex::encode(prev)
+                )));
+            }
+            chain
+                .verify(&canonical, &prev, &hash)
+                .map_err(|error| Error::Other(format!("record {}: {error}", record_number)))?;
+            expected_prev = hash;
+            record_number += 1;
         }
     }
-    let id = chain_id.unwrap_or_default();
-    let head = entries
-        .last()
-        .map(|(_, _, hash)| *hash)
-        .unwrap_or([0u8; HASH_LEN]);
-    HashChain::resume(root_key, head, id).verify_chain(&entries)?;
-    Ok(id)
+    Ok(chain_id.unwrap_or_default())
 }
 
 fn parse_hex32(s: &str) -> Result<[u8; HASH_LEN]> {
