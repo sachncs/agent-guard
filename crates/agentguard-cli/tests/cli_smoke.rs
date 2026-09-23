@@ -163,6 +163,28 @@ fn sim_allows_starter_agent_policy_and_authorize_denial_is_audited() {
 }
 
 #[test]
+fn authorize_allow_can_skip_audit_and_renders_human_readable_output() {
+    let dir = tempfile::tempdir().unwrap();
+    initialize(&dir);
+    let request = write_request(&dir, "agent", "research");
+    let out = agentguard_bin()
+        .args(["authorize", &request, "--skip-audit"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("ALLOW"), "got: {stdout}");
+    assert!(stdout.contains("principal:"), "got: {stdout}");
+    assert!(!dir.path().join(".audit/decisions.jsonl").exists());
+}
+
+#[test]
 fn delegated_token_can_be_verified_with_the_reported_public_key() {
     let dir = tempfile::tempdir().unwrap();
     let minted = agentguard_bin()

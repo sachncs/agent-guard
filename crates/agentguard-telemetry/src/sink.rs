@@ -181,3 +181,49 @@ pub trait Sink: Send + Sync {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SinkEvent, SinkEventKind};
+
+    #[test]
+    fn decision_event_builders_attach_trace_tenant_and_cache_metadata() {
+        let event = SinkEvent::decision("allow", "agent", "read", "repo", vec![], vec![], 12)
+            .with_trace("trace-id".into(), "span-id".into())
+            .with_tenant("tenant-a".into(), Some("subject-a".into()))
+            .mark_cached();
+        let SinkEventKind::Decision {
+            trace_id,
+            span_id,
+            tenant_id,
+            subject_id,
+            cached,
+            ..
+        } = event.kind
+        else {
+            panic!("decision constructor returned another event kind");
+        };
+        assert_eq!(trace_id.as_deref(), Some("trace-id"));
+        assert_eq!(span_id.as_deref(), Some("span-id"));
+        assert_eq!(tenant_id.as_deref(), Some("tenant-a"));
+        assert_eq!(subject_id.as_deref(), Some("subject-a"));
+        assert!(cached);
+    }
+
+    #[test]
+    fn decision_metadata_builders_leave_other_event_kinds_unchanged() {
+        let event = SinkEvent {
+            id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            kind: SinkEventKind::PdpError {
+                error: "unavailable".into(),
+                fallback: "deny".into(),
+            },
+        }
+        .with_trace("trace-id".into(), "span-id".into())
+        .with_tenant("tenant-a".into(), Some("subject-a".into()))
+        .mark_cached();
+
+        assert!(matches!(event.kind, SinkEventKind::PdpError { .. }));
+    }
+}

@@ -490,11 +490,57 @@ type Never = std::convert::Infallible;
 #[cfg(test)]
 mod tls_validation_tests {
     use super::{
-        validate_audit_rotation, validate_grpc_listener, validate_listener_security,
+        run, validate_audit_rotation, validate_grpc_listener, validate_listener_security,
         validate_tls_paths,
     };
-    use crate::listener::{AuthConfig, Listener};
+    use crate::listener::{AuthConfig, Listener, ServerConfig};
     use std::io::Write;
+
+    #[tokio::test]
+    async fn run_rejects_invalid_tls_material_before_loading_the_policy_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = ServerConfig {
+            listener: Listener::Tls {
+                addr: "127.0.0.1:0".parse().unwrap(),
+                cert: dir.path().join("missing-cert.pem"),
+                key: dir.path().join("missing-key.pem"),
+            },
+            store_root: dir.path().join("missing-policy-store"),
+            audit_log: None,
+            chain_secret: None,
+            auth: AuthConfig::Disabled,
+            grpc_listener: None,
+        };
+
+        let error = run(cfg).await.unwrap_err().to_string();
+        assert!(
+            error.contains("tls cert"),
+            "unexpected startup error: {error}"
+        );
+        assert!(!dir.path().join("missing-policy-store").exists());
+    }
+
+    #[tokio::test]
+    async fn run_rejects_empty_audit_chain_secret_before_loading_the_policy_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = dir.path().join("chain-secret");
+        std::fs::write(&secret, b"").unwrap();
+        let cfg = ServerConfig {
+            listener: Listener::Tcp("127.0.0.1:0".parse().unwrap()),
+            store_root: dir.path().join("missing-policy-store"),
+            audit_log: Some(dir.path().join("audit.jsonl")),
+            chain_secret: Some(secret),
+            auth: AuthConfig::Disabled,
+            grpc_listener: None,
+        };
+
+        let error = run(cfg).await.unwrap_err().to_string();
+        assert!(
+            error.contains("chain secret file"),
+            "unexpected startup error: {error}"
+        );
+        assert!(!dir.path().join("missing-policy-store").exists());
+    }
 
     #[test]
     fn missing_cert_reports_helpful_error() {
