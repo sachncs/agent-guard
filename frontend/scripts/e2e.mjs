@@ -15,6 +15,8 @@
  *   4. Validation errors return 400, rate limits return 429
  *   5. Simulator decisions come from the PDP over HTTP
  *   6. Without auth configuration the whole console fails closed (503)
+ *   7. Chromium verifies the public brand mark, responsive navigation, dark
+ *      theme, viewport overflow, and reduced-motion behavior in production
  *
  * Run: pnpm --filter frontend exec node scripts/e2e.mjs
  */
@@ -29,6 +31,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { chromium } from "playwright";
 
 let FRONTEND_PORT;
 let IDP_PORT;
@@ -627,8 +630,31 @@ async function main() {
     stdio: ["ignore", "pipe", "pipe"],
   });
   app.stderr.on("data", (d) => process.env.E2E_DEBUG && process.stderr.write(d));
+  let browser;
+  let browserContext;
+  let browserPage;
   try {
     await waitForApp();
+
+    browser = await chromium.launch({ headless: true });
+    browserContext = await browser.newContext({
+      colorScheme: "dark",
+      ignoreHTTPSErrors: true,
+      reducedMotion: "reduce",
+      viewport: { width: 1280, height: 900 },
+    });
+    browserPage = await browserContext.newPage();
+    await browserPage.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+    assert.equal(await browserPage.title(), "AgentGuard Console");
+    await browserPage.waitForFunction(() => {
+      const mark = [...document.images].find((image) => image.src.endsWith("/agentguard-mark.svg"));
+      return mark?.complete && mark.naturalWidth > 0;
+    });
+    assert.equal(
+      await browserPage.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+      true,
+      "the production browser context honors reduced motion",
+    );
 
     assert.equal((await fetch(`${BASE}/api/health/live`)).status, 200);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200);
@@ -669,6 +695,57 @@ async function main() {
     // --- 2. viewer login -------------------------------------------------
     const viewer = new Jar();
     await login(null, viewer, tls.cert);
+    const browserSession = viewer.cookies.get("ag_session");
+    assert.ok(browserSession, "the API OIDC flow issues a browser session for the visual smoke");
+    await browserContext.addCookies([{
+      name: "ag_session",
+      value: browserSession,
+      domain: "127.0.0.1",
+      path: "/",
+      httpOnly: true,
+      secure: false,
+      sameSite: "Lax",
+    }]);
+    await browserPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await browserPage.getByRole("heading", { name: "Authorization overview" }).waitFor();
+    for (const width of [320, 375, 768, 1280]) {
+      await browserPage.setViewportSize({ width, height: 900 });
+      const layout = await browserPage.evaluate(() => ({
+        document: document.documentElement.scrollWidth,
+        body: document.body.scrollWidth,
+        dark: document.documentElement.classList.contains("dark"),
+      }));
+      assert.ok(layout.document <= width, `document fits the ${width}px viewport`);
+      assert.ok(layout.body <= width, `body fits the ${width}px viewport`);
+      assert.equal(layout.dark, true, "the console keeps its branded dark theme");
+      if (width < 640) {
+        const mobileNavigation = browserPage.getByRole("navigation", {
+          name: "Mobile console navigation",
+        });
+        assert.equal(await mobileNavigation.isVisible(), false);
+        await browserPage.getByText("Menu", { exact: true }).click();
+        assert.equal(await mobileNavigation.isVisible(), true, "mobile navigation opens by keyboard/mouse");
+        assert.equal(await mobileNavigation.getByRole("link", { name: "Policy Simulator" }).isVisible(), true);
+        await browserPage.getByText("Menu", { exact: true }).click();
+      } else {
+        assert.equal(
+          await browserPage.getByRole("navigation", { name: "Console navigation" }).isVisible(),
+          true,
+          "desktop navigation remains visible",
+        );
+      }
+    }
+    const reducedMotionDuration = await browserPage
+      .locator('a[aria-current="page"]')
+      .first()
+      .evaluate((element) => getComputedStyle(element).transitionDuration);
+    assert.ok(
+      reducedMotionDuration.split(",").every((duration) => parseFloat(duration) <= 0.0001),
+      `reduced-motion transition duration is bounded (${reducedMotionDuration})`,
+    );
+    await browser.close();
+    browser = undefined;
+
     assert.match(viewer.header(), /ag_session=/, "session cookie issued");
 
     const viewerRoot = await req(viewer, "/");
@@ -951,6 +1028,7 @@ async function main() {
 
     console.log("\nALL E2E ASSERTIONS PASSED");
   } finally {
+    await browser?.close();
     await stopChildGracefully(app, "configured console");
     idp.server.close();
     await pdp.close();
