@@ -9,38 +9,6 @@ cargo install --path /path/to/agentguard/crates/agentguard-cli
 which agentguard
 ```
 
-### 1b. (Optional) Run the server
-
-The `agentguard` CLI is a self-contained PDP (it loads policies and
-authorizes decisions in-process). For multi-process or networked
-deployments, run the `agentguard-server` binary which exposes the
-same engine over AuthZEN HTTP plus an optional repository-defined gRPC mirror:
-
-```bash
-# Server-side prerequisite: build.rs shells out to protoc to
-# regenerate gRPC stubs. Install protobuf-compiler first:
-#   apt:   apt install -y protobuf-compiler
-#   brew:  brew install protobuf
-# Or set $PROTOC to its path.
-cargo install --path /path/to/agentguard/crates/agentguard-server
-
-export AGENTGUARD_LISTEN="tcp://127.0.0.1:8443"
-export AGENTGUARD_STORE=".agentguard"
-export AGENTGUARD_AUDIT=".audit/decisions.jsonl"
-export AGENTGUARD_AUTH="apikey:/etc/agentguard/keys.json"   # or "disabled"
-agentguard-server
-```
-
-Available endpoints:
-
-- `POST /access/v1/evaluation` — single decision (AuthZEN draft).
-- `POST /access/v1/evaluations` — batch (cap 100 per call).
-- `GET /healthz` / `/readyz` — Kubernetes probes.
-- `GET /metrics` — Prometheus-text snapshot.
-- gRPC: repository-defined `agentguard.v1.AccessEvaluation` (enable with
-  `AGENTGUARD_GRPC_LISTEN=127.0.0.1:9443`). It is plaintext and is not a
-  standardized AuthZEN gRPC protocol.
-
 ### 2. Create a project
 
 ```bash
@@ -57,6 +25,55 @@ This creates:
     ├── 10_admin.cedar
     └── 20_agents.cedar
 ```
+
+The generated policies are intentionally permissive development examples:
+the admin rule grants a global superuser and the agent rule permits every
+declared tool. Replace them with reviewed, least-privilege rules before using
+real credentials or deploying beyond loopback.
+
+### Optional: run a local HTTP PDP
+
+The `agentguard` CLI evaluates in-process. For a local HTTP integration test,
+install the separate `agentguard-server` binary after initializing the store.
+Its gRPC mirror is optional, repository-defined, plaintext, and not a
+standardized AuthZEN gRPC protocol. Building it requires `protoc` (for example,
+`apt install protobuf-compiler` or `brew install protobuf`).
+
+This example is loopback-only development configuration. It uses a local
+random chain secret and disables PDP authentication only on the loopback
+listener; use the [production deployment guide](production.md) for remote or
+production deployments.
+
+```bash
+cargo install --path /path/to/agentguard/crates/agentguard-server
+umask 077
+openssl rand -hex 32 > .chain-secret
+export AGENTGUARD_LISTEN="tcp://127.0.0.1:8443"
+export AGENTGUARD_STORE="$PWD/.agentguard"
+export AGENTGUARD_AUDIT="$PWD/.audit/decisions.jsonl"
+export AGENTGUARD_CHAIN_SECRET="$PWD/.chain-secret"
+export AGENTGUARD_AUTH=disabled
+agentguard-server
+```
+
+In another terminal, confirm readiness and make a real decision using the
+generated starter agent policy:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8443/readyz
+curl --fail-with-body http://127.0.0.1:8443/access/v1/evaluation \
+  -H 'content-type: application/json' \
+  -d '{"subject":{"type":"Agent","id":"research"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}'
+```
+
+The response must contain `"decision":true`. The server writes the decision
+to the configured chained audit log before returning it. Available endpoints:
+
+- `POST /access/v1/evaluation` — single decision (AuthZEN draft).
+- `POST /access/v1/evaluations` — batch (cap 100 per call).
+- `GET /healthz` / `/readyz` — liveness and readiness.
+- `GET /metrics` — Prometheus-text snapshot.
+- Optional gRPC: set `AGENTGUARD_GRPC_LISTEN=127.0.0.1:9443`.
 
 ### 3. Edit the schema to match your tools
 
@@ -183,12 +200,10 @@ engine. CLI `authorize` and `sim` always evaluate in-process; setting
 `AGENTGUARD_URL` does not turn them into remote clients. Use an HTTP client or
 an adapter such as the Strands example to call a remote PDP.
 
-```bash
-curl --fail-with-body http://127.0.0.1:8443/access/v1/evaluation \\
-  -H 'content-type: application/json' \\
-  -H 'authorization: Bearer <configured-api-key>' \\
-  -d '{"subject":{"type":"Agent","id":"research"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}'
-```
+The loopback HTTP example is in [Optional: run a local HTTP PDP](#optional-run-a-local-http-pdp).
+For a remote or production PDP, do not use `AGENTGUARD_AUTH=disabled`:
+configure API-key authentication and TLS as described in the
+[production deployment guide](production.md).
 
 ### 9. Caching + policy changes
 

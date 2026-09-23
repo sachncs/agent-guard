@@ -163,6 +163,90 @@ fn sim_allows_starter_agent_policy_and_authorize_denial_is_audited() {
 }
 
 #[test]
+fn quickstart_allow_deny_and_chained_audit_flow_works_as_documented() {
+    let dir = tempfile::tempdir().unwrap();
+    initialize(&dir);
+
+    let secret = dir.path().join(".chain-secret");
+    std::fs::write(
+        &secret,
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    .unwrap();
+    let audit = dir.path().join(".audit/decisions.jsonl");
+    let allow_request = dir.path().join("allow.json");
+    let deny_request = dir.path().join("deny.json");
+    for (path, principal_type, principal_id) in [
+        (&allow_request, "agent", "research"),
+        (&deny_request, "user", "bob"),
+    ] {
+        let request = serde_json::json!({
+            "principal": {"type": principal_type, "uid": principal_id},
+            "action": {"tool": "repo_read"},
+            "resource": {"entity_type": "Repository", "uid": "demo"},
+            "context": {"args": {"repo": "demo"}, "session": {"ip": "127.0.0.1"}}
+        });
+        std::fs::write(path, serde_json::to_vec(&request).unwrap()).unwrap();
+    }
+
+    let authorize = |request: &std::path::Path| {
+        agentguard_bin()
+            .args([
+                "--output",
+                "json",
+                "--audit",
+                audit.to_str().unwrap(),
+                "--secret-file",
+                secret.to_str().unwrap(),
+                "authorize",
+                request.to_str().unwrap(),
+            ])
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+    };
+    let allowed = authorize(&allow_request);
+    assert!(
+        allowed.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&allowed.stderr)
+    );
+    let denied = authorize(&deny_request);
+    assert_eq!(denied.status.code(), Some(2));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&denied.stdout).unwrap()["effect"],
+        "deny"
+    );
+
+    let verified = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "--audit",
+            audit.to_str().unwrap(),
+            "audit",
+            "verify",
+            "--secret-file",
+            secret.to_str().unwrap(),
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        verified.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&verified.stderr)
+    );
+    let verification: serde_json::Value = serde_json::from_slice(&verified.stdout).unwrap();
+    assert_eq!(verification["status"], "ok");
+    assert_eq!(
+        std::fs::read_to_string(audit).unwrap().lines().count(),
+        2,
+        "allow and deny decisions must both be durably audited"
+    );
+}
+
+#[test]
 fn authorize_allow_can_skip_audit_and_renders_human_readable_output() {
     let dir = tempfile::tempdir().unwrap();
     initialize(&dir);

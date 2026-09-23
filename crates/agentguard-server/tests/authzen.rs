@@ -133,6 +133,52 @@ async fn evaluation_endpoint_returns_decision() {
 }
 
 #[tokio::test]
+async fn documented_starter_schema_request_evaluates_over_http() {
+    let dir = tempfile::tempdir().unwrap();
+    agentguard_core::init_store(dir.path()).unwrap();
+    let store = PolicyStore::open(dir.path()).unwrap();
+    store
+        .write_policy(
+            "allow_research_repo_read",
+            r#"permit (principal == Agent::"research", action == Action::"ToolCall::repo_read", resource == Repository::"demo");"#,
+        )
+        .unwrap();
+    let audit_path = dir.path().join(".audit/decisions.jsonl");
+    let state = build_state(
+        dir.path().to_path_buf(),
+        Some(audit_path),
+        Some(b"test-chain-secret".to_vec()),
+        AuthLayer::Disabled,
+    )
+    .await
+    .unwrap();
+    let app = router(state);
+    let body = serde_json::json!({
+        "subject": {"type": "Agent", "id": "research"},
+        "action": {"type": "Action", "id": "ToolCall::repo_read"},
+        "resource": {"type": "Repository", "id": "demo"},
+        "context": {"repo": "demo", "session": {"ip": "127.0.0.1"}}
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/access/v1/evaluation")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(result["decision"], true);
+}
+
+#[tokio::test]
 async fn trace_context_header_is_echoed() {
     let app = make_app_shared().await;
     let resp = app
