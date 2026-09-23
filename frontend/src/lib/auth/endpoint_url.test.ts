@@ -25,6 +25,11 @@ describe("PDP endpoint transport validation", () => {
     assert.equal(validatePdpEndpoint("https://pdp.example", true), undefined);
     assert.match(validatePdpEndpoint("http://pdp:8443", true) ?? "", /AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL=1/);
     assert.equal(validatePdpEndpoint("http://pdp:8443", true, true), undefined);
+    assert.equal(validatePdpEndpoint("http://10.4.2.8:8443", true, true), undefined);
+    assert.equal(validatePdpEndpoint("http://[fd12::1]:8443", true, true), undefined);
+    assert.equal(validatePdpEndpoint("http://agentguard-pdp.agentguard.svc:8443", true, true), undefined);
+    assert.match(validatePdpEndpoint("http://attacker.example", true, true) ?? "", /private IP, or cluster-local DNS/);
+    assert.match(validatePdpEndpoint("http://1.1.1.1", true, true) ?? "", /private IP, or cluster-local DNS/);
   });
 
   it("rejects malformed, credential-bearing, and unsupported URLs", () => {

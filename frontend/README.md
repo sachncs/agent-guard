@@ -81,7 +81,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |
 | `AGENTGUARD_PDP_URL` | `http://127.0.0.1:8443` (development) | AuthZEN PDP base URL (`agentguard-server`); required in production and HTTPS unless the private-network exception below is explicitly enabled |
-| `AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL` | `0` | Set to `1` only when the PDP is reached over an isolated internal network or a service mesh that provides mTLS; production HTTP otherwise fails closed because the PDP bearer is sent to this endpoint |
+| `AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL` | `0` | Set to `1` only when the PDP is reached over an isolated internal network or a service mesh that provides mTLS; production HTTP is still restricted to loopback, private IPv4/IPv6 IPs, or cluster-local DNS names |
 | `AGENTGUARD_PDP_BEARER` | *(unset in development)* | PDP bearer; mandatory for production and must remain server-side |
 | `AGENTGUARD_STORE` | `.agentguard` | Cedar schema + policies (CLI-backed routes) |
 | `AGENTGUARD_AUDIT` | `.audit/decisions.jsonl` | Audit log destination (CLI-backed routes) |

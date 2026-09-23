@@ -55,7 +55,7 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state; endpoint must use HTTPS and credentials must be supplied separately |
 | `AGENTGUARD_ADMIN_CLAIM` / `AGENTGUARD_ADMIN_VALUES` | Explicit admin mapping; empty values grant viewer only |
 | `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | PDP URL and bearer credential; required in production, HTTPS required unless the internal transport exception is enabled |
-| `AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL` | `0` by default; set to `1` only when the PDP HTTP hop is protected by a private cluster boundary or service-mesh mTLS |
+| `AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL` | `0` by default; set to `1` only when the PDP HTTP hop is protected by a private cluster boundary or service-mesh mTLS; HTTP destinations are restricted to loopback, private IPv4/IPv6 IPs, or cluster-local DNS names |
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `redis` in production; `memory` only for development/e2e |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting; endpoint must use HTTPS and credentials must be supplied separately |

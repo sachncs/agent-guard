@@ -202,6 +202,12 @@ describe("auth config", () => {
       if (!cfg.valid) assert.match(cfg.reason, /PDP_URL.*HTTPS/);
 
       resetAuthConfigCache();
+      env.AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL = "1";
+      cfg = authConfig();
+      assert.equal(cfg.valid, false, "the HTTP exception must not allow a public PDP host");
+      if (!cfg.valid) assert.match(cfg.reason, /private IP, or cluster-local DNS/);
+
+      resetAuthConfigCache();
       env.AGENTGUARD_PDP_URL = "https://pdp.example";
       cfg = authConfig();
       assert.equal(cfg.valid, true);
