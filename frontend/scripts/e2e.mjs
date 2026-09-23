@@ -24,24 +24,36 @@ import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import https from "node:https";
 import http from "node:http";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
-const FRONTEND_PORT = 3171;
-const IDP_PORT = 3172;
-const PDP_PORT = 3173;
-const REDIS_PORT = 3174;
-const BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
-const ISSUER = `https://127.0.0.1:${IDP_PORT}`;
-const REDIS_URL = `https://127.0.0.1:${REDIS_PORT}`;
+let FRONTEND_PORT;
+let IDP_PORT;
+let PDP_PORT;
+let REDIS_PORT;
+let BASE;
+let ISSUER;
+let REDIS_URL;
 const REDIS_TOKEN = "e2e-redis-token";
 const TEST_CLIENT_IP = "198.51.100.42";
 const REAL_PDP = process.env.AGENTGUARD_E2E_REAL_PDP === "1";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function findAvailablePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address();
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return port;
+}
 
 function createTestTls(tlsDir) {
   const keyPath = join(tlsDir, "test-key.pem");
@@ -138,7 +150,9 @@ async function startIdp(tls) {
     }
     res.writeHead(404).end();
   });
-  await new Promise((r) => server.listen(IDP_PORT, "127.0.0.1", r));
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  IDP_PORT = server.address().port;
+  ISSUER = `https://127.0.0.1:${IDP_PORT}`;
   return {
     server,
     setDiscoveryAvailable(value) {
@@ -200,7 +214,8 @@ async function startPdp() {
       );
     });
   });
-  await new Promise((r) => server.listen(PDP_PORT, "127.0.0.1", r));
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  PDP_PORT = server.address().port;
   return {
     bearer: "e2e-console-bearer",
     close: () => new Promise((resolve) => server.close(resolve)),
@@ -217,6 +232,7 @@ async function startPdp() {
 }
 
 async function startRealPdp() {
+  PDP_PORT = await findAvailablePort();
   const dir = mkdtempSync(join(tmpdir(), "agentguard-real-pdp-"));
   const store = join(dir, "store");
   const policies = join(store, "policies");
@@ -406,7 +422,9 @@ async function startRedisRest(tls) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ result }));
   });
-  await new Promise((r) => server.listen(REDIS_PORT, "127.0.0.1", r));
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  REDIS_PORT = server.address().port;
+  REDIS_URL = `https://127.0.0.1:${REDIS_PORT}`;
   return {
     server,
     setAvailable(value) {
@@ -537,6 +555,12 @@ async function main() {
   const pdp = await startPdp();
   const redis = await startRedisRest(tls);
 
+  console.log("starting production build…");
+  const build = spawnSync("pnpm", ["exec", "next", "build", "--webpack"], { cwd: process.cwd(), stdio: "inherit" });
+  assert.equal(build.status, 0, "next build succeeds");
+
+  FRONTEND_PORT = await findAvailablePort();
+  BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
   const env = {
     ...process.env,
     PORT: String(FRONTEND_PORT),
@@ -561,10 +585,6 @@ async function main() {
     AGENTGUARD_BIN: fakeBin,
     AGENTGUARD_DELEGATION_KEY_FILE: "/tmp/e2e-delegation.key",
   };
-
-  console.log("starting production build…");
-  const build = spawnSync("pnpm", ["exec", "next", "build", "--webpack"], { cwd: process.cwd(), stdio: "inherit" });
-  assert.equal(build.status, 0, "next build succeeds");
 
   const app = spawn(process.execPath, [".next/standalone/frontend/server.js"], {
     cwd: process.cwd(),
@@ -904,7 +924,7 @@ async function main() {
   for (const k of Object.keys(env)) {
     if (k.startsWith("AGENTGUARD_")) delete bareEnv[k];
   }
-  const barePort = 3181;
+  const barePort = await findAvailablePort();
   const bare = spawn(process.execPath, [".next/standalone/frontend/server.js"], {
     cwd: process.cwd(),
     env: { ...bareEnv, PORT: String(barePort), HOSTNAME: "127.0.0.1" },
