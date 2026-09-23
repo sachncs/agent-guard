@@ -25,6 +25,8 @@ spec:
           env:
             - {name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"}
             - {name: AGENTGUARD_CHAIN_SECRET, value: /etc/agentguard/secrets/chain-secret}
+            # Segment files for predictable archival; this does not enforce retention.
+            - {name: AGENTGUARD_AUDIT_MAX_BYTES, value: "67108864"}
           volumeMounts:
             - {name: policies, mountPath: /var/lib/agentguard/policies, readOnly: true}
             - {name: audit, mountPath: /var/lib/agentguard/audit}

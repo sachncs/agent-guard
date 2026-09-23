@@ -49,6 +49,13 @@ volume. Confirm that the selected CSI driver honors Kubernetes fsGroup
 ownership handling; if it does not, provision the volume with group `10001`
 and writable group permissions before deployment. The console uses the same
 UID and mounts the audit directory read-only.
+The reference PDP rotates the active audit segment at 64 MiB to make archive
+and verification batches manageable. Rotation is not retention: every segment
+remains on the PVC. Monitor PVC capacity and export complete verified audit
+sets (active file, rotated files, and `.chainid` sidecars) to durable external
+storage on a schedule sized to the workload. Alert well before the PVC fills;
+audit write failures make authorization requests fail closed. See
+[backups and retention](backups.md) for integrity-preserving archival.
 
 ## Secrets and policy state
 

@@ -33,6 +33,12 @@ mechanism. Store backups encrypted, restrict access to the security/platform
 team, and test a restore into an isolated namespace at least once per release
 cycle.
 
+The reference manifest rotates the active file at 64 MiB, but retains every
+segment on the PVC. Configure external archival and PVC-capacity alerts for
+the expected decision volume; rotation alone does not bound disk use. Archive
+all segments and sidecars as one consistent set, verify the archived chain,
+and only then apply the organization's separately approved retention policy.
+
 ## Retention and erasure
 
 Set retention according to the organization's legal and incident-response
