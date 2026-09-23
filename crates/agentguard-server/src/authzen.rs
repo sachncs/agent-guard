@@ -730,13 +730,15 @@ pub async fn build_state_with_cache(
     auth: crate::auth_layer::AuthLayer,
     cache: Option<CacheConfig>,
 ) -> Result<AppState, String> {
+    let audit_rotation = RotationConfig::try_from_env()
+        .map_err(|error| format!("AGENTGUARD_AUDIT_MAX_BYTES {error}"))?;
     let authorizer = AuthorizerHandle::new(
         store_root,
         Some(cache.unwrap_or_else(DecisionCache::config_from_env)),
     )?;
     let audit = match audit_log {
         Some(path) => {
-            let log = match (chain_secret, RotationConfig::from_env()) {
+            let log = match (chain_secret, audit_rotation) {
                 (Some(secret), Some(rotation)) => {
                     DecisionLog::open_with_rotation(&path, Some(&secret), rotation)
                         .map_err(|e| format!("open rotating chained audit log: {}", e))?

@@ -66,12 +66,9 @@ fn validate_grpc_listener(addr: std::net::SocketAddr) -> Result<()> {
 
 fn validate_audit_rotation(value: Option<&str>) -> Result<()> {
     if let Some(value) = value {
-        match value.parse::<u64>() {
-            Ok(bytes) if bytes > 0 => Ok(()),
-            _ => Err(anyhow!(
-                "AGENTGUARD_AUDIT_MAX_BYTES must be a positive integer when set"
-            )),
-        }
+        agentguard_core::decision::RotationConfig::parse(value)
+            .map(|_| ())
+            .map_err(|error| anyhow!("AGENTGUARD_AUDIT_MAX_BYTES {error}"))
     } else {
         Ok(())
     }

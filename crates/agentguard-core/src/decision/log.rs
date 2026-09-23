@@ -31,15 +31,28 @@ pub struct RotationConfig {
 }
 
 impl RotationConfig {
-    /// Read `AGENTGUARD_AUDIT_MAX_BYTES` from the environment. Returns
-    /// `None` when unset or unparseable, signalling no rotation.
-    pub fn from_env() -> Option<Self> {
-        let raw = std::env::var("AGENTGUARD_AUDIT_MAX_BYTES").ok()?;
-        let max_bytes: u64 = raw.parse().ok()?;
-        if max_bytes == 0 {
-            return None;
+    /// Parse a positive audit-log rotation threshold in bytes.
+    pub fn parse(value: &str) -> std::result::Result<Self, String> {
+        match value.parse::<u64>() {
+            Ok(max_bytes) if max_bytes > 0 => Ok(Self { max_bytes }),
+            _ => Err("must be a positive integer when set".to_owned()),
         }
-        Some(Self { max_bytes })
+    }
+
+    /// Read `AGENTGUARD_AUDIT_MAX_BYTES` from the environment, rejecting
+    /// malformed or non-Unicode values instead of silently disabling rotation.
+    pub fn try_from_env() -> std::result::Result<Option<Self>, String> {
+        match std::env::var("AGENTGUARD_AUDIT_MAX_BYTES") {
+            Ok(value) => Self::parse(&value).map(Some),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(std::env::VarError::NotUnicode(_)) => Err("must be valid Unicode".to_owned()),
+        }
+    }
+
+    /// Lossy legacy environment parser. Prefer [`Self::try_from_env`].
+    #[deprecated(note = "use try_from_env to report invalid configuration")]
+    pub fn from_env() -> Option<Self> {
+        Self::try_from_env().ok().flatten()
     }
 }
 
@@ -1119,6 +1132,17 @@ mod tests {
             msg.contains("ChainedRecord"),
             "error must mention the ChainedRecord parse failure: {msg}"
         );
+    }
+
+    #[test]
+    fn rotation_config_requires_a_positive_integer() {
+        assert_eq!(
+            RotationConfig::parse("1048576").unwrap().max_bytes,
+            1_048_576
+        );
+        for value in ["0", "-1", "many", ""] {
+            assert!(RotationConfig::parse(value).is_err(), "accepted {value:?}");
+        }
     }
 
     #[test]

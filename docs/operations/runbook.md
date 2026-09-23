@@ -29,7 +29,7 @@ or environment variables. The full table:
 | `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache allow TTL (humantime) |
 | `AGENTGUARD_DENY_CACHE_TTL` | — | `5s` | Decision cache deny TTL (humantime) |
 | `AGENTGUARD_CACHE_CAPACITY` | — | `10000` | Decision cache size |
-| `AGENTGUARD_AUDIT_MAX_BYTES` | — | (unset → no rotation) | Positive integer byte threshold; invalid or zero values stop standalone startup |
+| `AGENTGUARD_AUDIT_MAX_BYTES` | — | (unset → no rotation) | Positive integer byte threshold; invalid or zero values fail standalone and embedded server initialization |
 | `AGENTGUARD_JWKS_REFRESH` | — | `30s` | JWKS refresh interval (humantime) |
 
 ## Deployment
