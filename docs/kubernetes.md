@@ -54,6 +54,19 @@ UID and mounts the audit directory read-only.
 
 Create secrets outside Git. The API-key file must contain the serialized
 `ApiKeyStore` format; it must not contain raw API-key secrets or passwords.
+First create the console's dedicated PDP key, append the serialized store to
+`keys.json`, and save the one-time raw secret in your secret manager:
+
+```bash
+agentguard api-key create --key-store ./keys.json \
+  --subject-type Agent --subject-id agentguard-console \
+  --scope authorize:any --ttl-seconds 2592000
+```
+
+The scope is privileged: it lets the trusted console evaluate selected
+subjects. Keep the raw key server-side and limit console access with OIDC/RBAC.
+Materialize the one-time secret through your secret manager as a private
+`pdp-bearer` file (mode `0600`) for the Kubernetes Secret command below.
 
 ```bash
 kubectl -n agentguard create secret generic agentguard-secrets \
@@ -72,10 +85,16 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_SESSION_REDIS_TOKEN='replace-me' \
   --from-literal=AGENTGUARD_TRUST_PROXY_HEADERS='1' \
   --from-literal=AGENTGUARD_ADMIN_VALUES='security-admins' \
+  --from-file=AGENTGUARD_PDP_BEARER=./pdp-bearer \
   --from-literal=AGENTGUARD_RATE_LIMIT_STORE='redis' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_URL='https://redis.example.com' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
 ```
+
+Do not put the raw key in shell history, process arguments, or source control.
+The console manifest requires this key and production startup fails
+closed when it is absent. Use a tenant-bound service key where applicable. See
+[identity and API-key scopes](identity.md).
 
 The PDP polls the projected API-key Secret contents and applies a valid
 rotation or revocation without a process restart. Once the updated bytes are

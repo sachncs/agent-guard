@@ -86,6 +86,7 @@ describe("auth config", () => {
     process.env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
     process.env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
     process.env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
+    process.env.AGENTGUARD_PDP_BEARER = "pdp-secret";
     resetAuthConfigCache();
     cfg = authConfig();
     assert.equal(cfg.valid, true);
@@ -135,6 +136,12 @@ describe("auth config", () => {
       if (!cfg.valid) assert.match(cfg.reason, /must be 0 or 1/);
 
       env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
+      resetAuthConfigCache();
+      cfg = authConfig();
+      assert.equal(cfg.valid, false, "production requires authenticated PDP access");
+      if (!cfg.valid) assert.match(cfg.reason, /PDP_BEARER/);
+
+      env.AGENTGUARD_PDP_BEARER = "pdp-secret";
       resetAuthConfigCache();
       cfg = authConfig();
       assert.equal(cfg.valid, true);

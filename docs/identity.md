@@ -18,6 +18,15 @@ trusted entities and policy inputs. A conflicting caller-supplied
 readable for migration but cannot authorize standalone evaluations. Rotate or
 reissue them as bound keys before enabling this enforcement.
 
+Trusted policy consoles that must simulate different subjects can use the
+explicit `authorize:any` scope. The key must still be bound to a service
+identity; the scope permits its holder to submit a different evaluation
+subject. Treat this as a privileged impersonation capability: store it only in
+the console's server-side secret store, never expose it to browsers, restrict
+console access with OIDC/RBAC, and prefer tenant-bound service identities.
+Ordinary `authorize` keys remain identity-bound, and wildcard `*` does not
+implicitly grant `authorize:any`.
+
 Argon2id verification runs on Tokio's blocking pool and is capped at two
 concurrent verifications per process to bound CPU and memory use. Requests
 with missing or structurally malformed bearer credentials are rejected before

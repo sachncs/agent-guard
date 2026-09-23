@@ -984,9 +984,11 @@ fn bound_tenant_is_trusted_audit_metadata_not_caller_context() {
         evaluation_request_for_caller, EntityRef, EvaluationMappingError, EvaluationRequest,
     };
 
-    let caller = AuthenticatedIdentity(
-        agentguard_auth::ApiKeyIdentity::new("User", "alice", Some("tenant-a".into())).unwrap(),
-    );
+    let caller = AuthenticatedIdentity {
+        identity: agentguard_auth::ApiKeyIdentity::new("User", "alice", Some("tenant-a".into()))
+            .unwrap(),
+        can_act_as: false,
+    };
     let request = EvaluationRequest {
         subject: EntityRef {
             entity_type: "User".into(),
@@ -1028,4 +1030,41 @@ fn bound_tenant_is_trusted_audit_metadata_not_caller_context() {
         evaluation_request_for_caller(conflicting, Some(&caller)),
         Err(EvaluationMappingError::IdentityMismatch)
     ));
+}
+
+#[test]
+fn act_as_scope_allows_console_simulation_but_keeps_key_tenant_trusted() {
+    use agentguard_server::auth_layer::AuthenticatedIdentity;
+    use agentguard_server::authzen::{evaluation_request_for_caller, EntityRef, EvaluationRequest};
+
+    let caller = AuthenticatedIdentity {
+        identity: agentguard_auth::ApiKeyIdentity::new(
+            "Agent",
+            "console-service",
+            Some("tenant-a".into()),
+        )
+        .unwrap(),
+        can_act_as: true,
+    };
+    let request = EvaluationRequest {
+        subject: EntityRef {
+            entity_type: "Agent".into(),
+            id: "research-agent".into(),
+        },
+        action: EntityRef {
+            entity_type: "Action".into(),
+            id: "read".into(),
+        },
+        resource: EntityRef {
+            entity_type: "Document".into(),
+            id: "doc-1".into(),
+        },
+        context: serde_json::json!({"tenant_id":"tenant-a", "purpose":"review"}),
+        entities: vec![],
+    };
+    let mapped = evaluation_request_for_caller(request, Some(&caller)).unwrap();
+    assert_eq!(mapped.principal.to_string(), "Agent::\"research-agent\"");
+    assert_eq!(mapped.tenant_id.as_deref(), Some("tenant-a"));
+    assert_eq!(mapped.context.args.get("tenant_id"), None);
+    assert_eq!(mapped.context.args["purpose"], "review");
 }

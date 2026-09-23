@@ -186,6 +186,7 @@ async function startPdp() {
   });
   await new Promise((r) => server.listen(PDP_PORT, "127.0.0.1", r));
   return {
+    bearer: "e2e-console-bearer",
     close: () => new Promise((resolve) => server.close(resolve)),
     setResponseMode(mode) {
       responseMode = mode;
@@ -213,7 +214,18 @@ async function startRealPdp() {
 };\n`);
   const auditPath = join(dir, "audit.jsonl");
   const secretPath = join(dir, "chain-secret");
+  const keyStorePath = join(dir, "keys.json");
   writeFileSync(secretPath, "real-pdp-e2e-chain-secret", { mode: 0o600 });
+  const cli = process.env.AGENTGUARD_PDP_CLI_BIN
+    ?? join(REPO_ROOT, "target/debug/agentguard");
+  const keyCreation = spawnSync(cli, [
+    "--output", "json", "api-key", "create", "--key-store", keyStorePath,
+    "--subject-type", "Agent", "--subject-id", "console-service",
+    "--scope", "authorize:any",
+  ], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(keyCreation.status, 0, `create scoped console API key: ${keyCreation.stderr}`);
+  const bearer = JSON.parse(keyCreation.stdout).raw_secret;
+  assert.ok(bearer, "the real PDP test creates a bound authorize:any service key");
   const binary = process.env.AGENTGUARD_SERVER_BIN
     ?? join(REPO_ROOT, "target/debug/agentguard-server");
   let child;
@@ -229,7 +241,7 @@ async function startRealPdp() {
         AGENTGUARD_STORE: store,
         AGENTGUARD_AUDIT: auditPath,
         AGENTGUARD_CHAIN_SECRET: secretPath,
-        AGENTGUARD_AUTH: "disabled",
+        AGENTGUARD_AUTH: `apikey:${keyStorePath}`,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -282,6 +294,12 @@ async function startRealPdp() {
 
   try {
     await start();
+    const unauthenticated = await fetch(`http://127.0.0.1:${PDP_PORT}/access/v1/evaluation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(unauthenticated.status, 401, "real PDP protects evaluations without a bearer");
   } catch (error) {
     await stop();
     rmSync(dir, { recursive: true, force: true });
@@ -290,6 +308,7 @@ async function startRealPdp() {
 
   return {
     auditPath,
+    bearer,
     async start() {
       output = "";
       spawnError = undefined;
@@ -511,6 +530,7 @@ async function main() {
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
     AGENTGUARD_TRUST_PROXY_HEADERS: "1",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
+    AGENTGUARD_PDP_BEARER: pdp.bearer,
     AGENTGUARD_INSECURE_COOKIE: "1",
     AGENTGUARD_BIN: fakeBin,
     AGENTGUARD_DELEGATION_KEY_FILE: "/tmp/e2e-delegation.key",
@@ -570,6 +590,7 @@ async function main() {
     const html = await viewerRoot.text();
     assert.match(html, /viewer@example.com/, "nav shows identity");
     assert.match(html, /aria-label="Mobile console navigation"/, "responsive navigation is present");
+    assert.equal(html.includes(pdp.bearer), false, "PDP credential is never rendered into browser HTML");
     assert.doesNotMatch(html, />admin</, "no admin badge for viewer");
 
     // --- 3. RBAC ---------------------------------------------------------
@@ -757,29 +778,25 @@ async function main() {
     }
     assert.ok(saw429, "delegate rate limit trips");
 
-    let simulatorRateLimited = false;
-    for (let i = 0; i < 61; i++) {
-      const response = await req(viewer, "/api/authorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(REAL_PDP
-          ? {
-              uid: "research", principalType: "agent", tool: "repo_read",
-              resourceType: "Repository", resourceId: "demo", args: { repo: "demo" },
-              session: { ip: "127.0.0.1" },
-            }
-          : {
-              uid: "alice", tool: "web_search", resourceType: "Resource",
-              resourceId: `rate-${i}`,
-            }),
-      });
-      if (response.status === 429) {
-        simulatorRateLimited = true;
-        break;
+    if (!REAL_PDP) {
+      let simulatorRateLimited = false;
+      for (let i = 0; i < 61; i++) {
+        const response = await req(viewer, "/api/authorize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: "alice", tool: "web_search", resourceType: "Resource",
+            resourceId: `rate-${i}`,
+          }),
+        });
+        if (response.status === 429) {
+          simulatorRateLimited = true;
+          break;
+        }
+        assert.equal(response.status, 200);
       }
-      assert.equal(response.status, 200);
+      assert.ok(simulatorRateLimited, "simulator rate limit trips before exhausting PDP capacity");
     }
-    assert.ok(simulatorRateLimited, "simulator rate limit trips before exhausting PDP capacity");
 
     // --- 7. logout ---------------------------------------------------------
     const logout = await req(admin, "/api/auth/logout");

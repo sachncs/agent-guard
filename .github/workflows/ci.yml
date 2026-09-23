@@ -157,6 +157,7 @@ jobs:
       - name: Install protobuf compiler for the PDP build
         run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo build -p agentguard-server
+      - run: cargo build -p agentguard
       - name: Run real PDP console integration
         run: AGENTGUARD_E2E_REAL_PDP=1 pnpm --filter frontend exec node scripts/e2e.mjs
       # The Strands example needs LLM credentials to run; CI only typechecks it.

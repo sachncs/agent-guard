@@ -54,7 +54,7 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_SESSION_STORE` | `redis` in production; `memory` only for development |
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state; endpoint must use HTTPS and credentials must be supplied separately |
 | `AGENTGUARD_ADMIN_CLAIM` / `AGENTGUARD_ADMIN_VALUES` | Explicit admin mapping; empty values grant viewer only |
-| `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | Private PDP URL and optional bearer credential |
+| `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | Private PDP URL and bearer credential; required in production |
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `redis` in production; `memory` only for development/e2e |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting; endpoint must use HTTPS and credentials must be supplied separately |
@@ -67,6 +67,11 @@ client-supplied `X-Forwarded-For` and replaces it with exactly one validated
 client address. The console uses that address for per-client rate limiting;
 otherwise all users behind one ingress share a bucket. The console uses secure
 cookies when the request is HTTPS and sends restrictive security headers. The
+console-to-PDP credential is server-only. Use an identity-bound `authorize:any`
+service key when the simulator must evaluate selected subjects; ordinary
+`authorize` keys cannot act as another identity. Restrict console users through
+OIDC/RBAC and never expose this credential to browser code. See the
+[identity guide](identity.md) for the privilege boundary. The
 production image includes the pinned `agentguard` CLI;
 mount the policy directory and audit file read-only, as the Kubernetes
 reference does, and keep both paths private to the console runtime.

@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add the explicit `authorize:any` API-key capability for trusted server-side
+  simulators. Keys remain bound to a service identity, while ordinary
+  `authorize` keys continue to reject subject impersonation. Production console
+  configuration now requires a PDP bearer credential.
 - Add non-blocking `Client.logTailAsync` and `Client.delegateAsync` methods to
   the TypeScript SDK, with configurable execution timeout and bounded output.
   Concurrent child processes are bounded per client. The console audit and

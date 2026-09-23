@@ -44,6 +44,7 @@ kubectl -n "$namespace" create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_OIDC_CLIENT_ID=smoke \
   --from-literal=AGENTGUARD_OIDC_CLIENT_SECRET=smoke \
   --from-literal=AGENTGUARD_SESSION_SECRET=smoke-session-secret-which-is-long-enough \
+  --from-literal=AGENTGUARD_PDP_BEARER=unused-smoke \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$namespace" create secret generic agentguard-delegation-key \
   --from-literal=delegation.key=smoke-delegation-key \

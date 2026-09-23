@@ -31,7 +31,11 @@ const MAX_CONCURRENT_API_KEY_VERIFICATIONS: usize = 2;
 
 /// Authenticated identity and tenant asserted by a verified, bound API key.
 #[derive(Debug, Clone)]
-pub struct AuthenticatedIdentity(pub ApiKeyIdentity);
+pub struct AuthenticatedIdentity {
+    pub identity: ApiKeyIdentity,
+    /// True only for credentials granted the explicit `authorize:any` scope.
+    pub can_act_as: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthenticationFailure {
@@ -105,7 +109,8 @@ impl AuthLayer {
                 let key = store
                     .verify(token)
                     .map_err(|_| AuthenticationFailure::Unauthenticated)?;
-                if !key.has_scope(required_scope) {
+                let can_act_as = required_scope == "authorize" && has_act_as_scope(&key.scopes);
+                if !key.has_scope(required_scope) && !can_act_as {
                     return Err(AuthenticationFailure::Forbidden);
                 }
                 let identity = key.identity.ok_or(if require_identity {
@@ -114,7 +119,10 @@ impl AuthLayer {
                     AuthenticationFailure::Unauthenticated
                 });
                 match identity {
-                    Ok(identity) => Ok(Some(AuthenticatedIdentity(identity))),
+                    Ok(identity) => Ok(Some(AuthenticatedIdentity {
+                        identity,
+                        can_act_as,
+                    })),
                     Err(AuthenticationFailure::Unauthenticated) if !require_identity => Ok(None),
                     Err(err) => Err(err),
                 }
@@ -180,6 +188,10 @@ impl AuthLayer {
         .await
         .map_err(|_| AuthenticationFailure::Unavailable)?
     }
+}
+
+fn has_act_as_scope(scopes: &[String]) -> bool {
+    scopes.iter().any(|scope| scope == "authorize:any")
 }
 
 fn api_key_verification_slots() -> Arc<Semaphore> {
@@ -249,6 +261,13 @@ mod async_auth_tests {
     use super::{ApiKeyStore, AuthLayer, AuthenticationFailure};
     use std::sync::Arc;
     use tokio::sync::Semaphore;
+
+    #[test]
+    fn wildcard_authorization_does_not_implicitly_grant_act_as() {
+        assert!(!super::has_act_as_scope(&["*".into()]));
+        assert!(!super::has_act_as_scope(&["authorize".into()]));
+        assert!(super::has_act_as_scope(&["authorize:any".into()]));
+    }
 
     #[tokio::test]
     async fn saturated_verification_capacity_fails_fast() {
@@ -326,10 +345,37 @@ mod async_auth_tests {
             .await;
         ticker.abort();
 
-        assert!(matches!(result, Ok(Some(_))));
+        assert!(matches!(result, Ok(Some(identity)) if !identity.can_act_as));
         assert!(
             ticks.load(Ordering::Relaxed) >= 2,
             "the async runtime should keep making progress during Argon2 verification"
+        );
+    }
+
+    #[tokio::test]
+    async fn act_as_scope_is_explicit_and_keeps_a_bound_service_identity() {
+        use agentguard_auth::ApiKeyIdentity;
+
+        let store = ApiKeyStore::new();
+        let identity = ApiKeyIdentity::new("Agent", "console-service", None).unwrap();
+        let (_, raw) = store
+            .create_bound("ag_test", vec!["authorize:any".into()], None, identity)
+            .unwrap();
+        let auth = AuthLayer::ApiKey(Arc::new(store));
+        let result = auth
+            .authenticate_bearer_async_with_slots(
+                Some(&format!("Bearer {raw}")),
+                "authorize",
+                true,
+                Arc::new(Semaphore::new(1)),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.identity.subject_id, "console-service");
+        assert!(
+            result.can_act_as,
+            "only authorize:any opts into acting as a request subject"
         );
     }
 }

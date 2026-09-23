@@ -585,8 +585,10 @@ pub fn evaluation_request_for_caller(
     caller: Option<&crate::auth_layer::AuthenticatedIdentity>,
 ) -> Result<AgentRequest, EvaluationMappingError> {
     let tenant_id = if let Some(caller) = caller {
-        let identity = &caller.0;
-        if req.subject.entity_type != identity.subject_type || req.subject.id != identity.subject_id
+        let identity = &caller.identity;
+        if !caller.can_act_as
+            && (req.subject.entity_type != identity.subject_type
+                || req.subject.id != identity.subject_id)
         {
             return Err(EvaluationMappingError::IdentityMismatch);
         }

@@ -48,8 +48,9 @@ pub struct ApiKey {
     /// Argon2id hash of the secret half.
     pub secret_hash: String,
     pub scopes: Vec<String>,
-    /// Optional request identity binding. Standalone PDP decision routes
-    /// reject unbound keys so the bearer cannot claim arbitrary principals.
+    /// Required request identity binding for standalone PDP decision routes.
+    /// The explicit `authorize:any` capability may act on another subject,
+    /// but the key still has a service identity for attribution and tenancy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<ApiKeyIdentity>,
     pub created_at: i64,

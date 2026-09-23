@@ -23,6 +23,7 @@ import Docs from '@/layouts/docs.astro';
     <li>Server file watching and SIGHUP replace the standalone policy snapshot only after complete validation; malformed edits retain the last-known-good snapshot.</li>
     <li>Standalone decision caching is enabled by default and can be tuned with the documented cache variables; OTLP export remains an embedding-library capability.</li>
     <li>JWT, DPoP, and SPIFFE are library capabilities, not standalone server auth modes.</li>
+    <li>The console simulator uses a privileged <code>authorize:any</code> service key to evaluate selected subjects; protect it server-side and restrict console users through OIDC/RBAC.</li>
     <li>Delegation signature verification does not enforce scope or prove parent authority. Applications must implement those checks and any revocation service.</li>
     <li>gRPC is plaintext and restricted to loopback.</li>
   </ul>

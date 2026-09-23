@@ -126,6 +126,12 @@ function readEnv(): AuthConfigResult {
         "production console requires AGENTGUARD_TRUST_PROXY_HEADERS=1 behind a proxy that overwrites X-Forwarded-For",
     };
   }
+  if (process.env.NODE_ENV === "production" && !process.env.AGENTGUARD_PDP_BEARER) {
+    return {
+      valid: false,
+      reason: "production console requires AGENTGUARD_PDP_BEARER for its authenticated PDP connection",
+    };
+  }
 
   const adminClaim = process.env.AGENTGUARD_ADMIN_CLAIM || "groups";
   const adminValues = (process.env.AGENTGUARD_ADMIN_VALUES ?? "")

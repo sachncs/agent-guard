@@ -37,6 +37,9 @@ if (failures.length === 0) {
   }
 
   const smoke = readFileSync("scripts/k8s-smoke.sh", "utf8");
+  if (!smoke.includes("AGENTGUARD_PDP_BEARER=unused-smoke")) {
+    failures.push("k8s-smoke.sh must satisfy the console PDP credential Secret reference");
+  }
   if (!smoke.includes('--user "$(id -u):$(id -g)"')) {
     failures.push("k8s-smoke.sh must run key-store writes as the host uid/gid for kubectl access");
   }
@@ -90,6 +93,7 @@ if (failures.length === 0) {
   const console = read("console.yaml");
   for (const value of [
     "secretRef: {name: agentguard-console-env}",
+    "key: AGENTGUARD_PDP_BEARER",
     "name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard",
     "name: AGENTGUARD_DELEGATION_KEY_FILE, value: /etc/agentguard/delegation/delegation.key",
     "mountPath: /var/lib/agentguard/policies, readOnly: true",

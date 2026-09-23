@@ -26,6 +26,11 @@ spec:
           ports: [{name: http, containerPort: 3000}]
           envFrom: [{secretRef: {name: agentguard-console-env}}]
           env:
+            - name: AGENTGUARD_PDP_BEARER
+              valueFrom:
+                secretKeyRef:
+                  name: agentguard-console-env
+                  key: AGENTGUARD_PDP_BEARER
             - {name: AGENTGUARD_PDP_URL, value: http://agentguard-pdp:8443}
             - {name: AGENTGUARD_BIN, value: /usr/local/bin/agentguard}
             - {name: AGENTGUARD_STORE, value: /var/lib/agentguard/policies}
