@@ -150,6 +150,8 @@ describe("OIDC discovery", () => {
     let includeExpiration = true;
     let issuedAtOffsetSeconds = 0;
     let oversizedTokenResponse = false;
+    let oversizedJwksResponse = false;
+    let tokenNonceOverride: string | undefined;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -165,7 +167,8 @@ describe("OIDC discovery", () => {
             headers: { "content-length": String(256 * 1024 + 1) },
           });
         }
-        const nonce = nonces[tokenCalls++];
+        const nonce = tokenNonceOverride ?? nonces[tokenCalls];
+        tokenCalls += 1;
         const claims = {
           sub: tokenSubject,
           nonce,
@@ -184,6 +187,11 @@ describe("OIDC discovery", () => {
       }
       if (url.pathname === "/jwks") {
         jwksCalls += 1;
+        if (oversizedJwksResponse) {
+          return new Response("{}", {
+            headers: { "content-length": String(256 * 1024 + 1) },
+          });
+        }
         return Response.json({ keys: [jwk] });
       }
       throw new Error(`unexpected OIDC request: ${url.href}`);
@@ -278,5 +286,15 @@ describe("OIDC discovery", () => {
     assert.equal((await complete(validAzpLogin, "valid-azp")).sub, "oidc-user");
     assert.equal(tokenCalls, 11);
     assert.equal(jwksCalls, 1, "the cached jose resolver reuses the fetched key set");
+
+    resetDiscoveryCache();
+    const oversizedJwksLogin = await buildLoginRedirect(config, redirectUri);
+    const oversizedJwksState = (await jwtVerify(oversizedJwksLogin.stateJwt, config.sessionSecret)).payload;
+    tokenNonceOverride = String(oversizedJwksState.nonce);
+    oversizedJwksResponse = true;
+    await assert.rejects(complete(oversizedJwksLogin, "oversized-jwks"), /ID token validation failed/);
+    oversizedJwksResponse = false;
+    assert.equal((await complete(oversizedJwksLogin, "jwks-retry")).sub, "oidc-user");
+    assert.equal(jwksCalls, 3, "an oversized JWKS is rejected and a later request can retry");
   });
 });
