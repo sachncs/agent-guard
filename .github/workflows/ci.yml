@@ -276,13 +276,13 @@ jobs:
         with:
           shared-key: stable-rust-workspace
       - run: cargo llvm-cov clean --workspace
-      - run: cargo llvm-cov -p agentguard-core --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p agentguard-auth --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p agentguard-policy --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p agentguard-telemetry --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p agentguard --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p agentguard-server --quiet --summary-only
-      - run: cargo llvm-cov --no-clean -p rust-embedder --quiet --summary-only
+      - run: cargo llvm-cov -p agentguard-core --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-auth --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-policy --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-telemetry --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-server --summary-only
+      - run: cargo llvm-cov --no-clean -p rust-embedder --summary-only
       - name: enforce 80% aggregate line coverage
         run: cargo llvm-cov report --summary-only --fail-under-lines 80
 

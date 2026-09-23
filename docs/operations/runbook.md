@@ -24,7 +24,7 @@ or environment variables. The full table:
 | `AGENTGUARD_AUDIT` | `--audit` | `.audit/decisions.jsonl` | Audit log path |
 | `AGENTGUARD_CHAIN_SECRET` / `--secret-file` | — | (unset → plain JSONL) | HMAC chain secret (hex / base64 / raw) |
 | `AGENTGUARD_AUTH` | `--auth` | `disabled` | `disabled` or `apikey:<path>` (point at the JSON key store) |
-| `AGENTGUARD_GRPC_LISTEN` | `--grpc-listen` | (empty → disabled) | gRPC listen address |
+| `AGENTGUARD_GRPC_LISTEN` | `--grpc-listen` | (empty → disabled) | Optional plaintext gRPC mirror; loopback-only |
 | `AGENTGUARD_ALLOW_LOOPBACK_BYPASS` | — | `0` | Allow auth-disabled on public listener |
 | `AGENTGUARD_CACHE_TTL` | — | `60s` | Decision cache allow TTL (humantime) |
 | `AGENTGUARD_DENY_CACHE_TTL` | — | `5s` | Decision cache deny TTL (humantime) |
@@ -48,7 +48,7 @@ or environment variables. The full table:
    export AGENTGUARD_AUDIT="/var/log/agentguard/decisions.jsonl"
    export AGENTGUARD_CHAIN_SECRET="/etc/agentguard/.chain-secret"
    export AGENTGUARD_AUTH="apikey:/etc/agentguard/keys.json"
-   export AGENTGUARD_GRPC_LISTEN="0.0.0.0:9443"
+   export AGENTGUARD_GRPC_LISTEN="127.0.0.1:9443" # optional; plaintext and loopback-only
    ```
 3. Provision a caller-specific key. The CLI persists an Argon2id hash, binds
    the key to one User or Agent, defaults to a 30-day expiry, and prints the
