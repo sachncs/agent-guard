@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img" aria-labelledby="title desc">
   <title id="title">AgentGuard boundary glyph</title>
-  <desc id="desc">Agent and tool nodes are separated by a controlled vertical policy boundary.</desc>
+  <desc id="desc">A flow from an agent to a tool passes through a shield-shaped authorization boundary.</desc>
   <rect width="320" height="180" rx="24" fill="#172420"/>
-  <path d="M112 82V58h34M208 82V58h-34M112 98v24h34M208 98v24h-34" fill="none" stroke="#b9f3df" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M86 90h54M180 90h54" stroke="#b9f3df" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="74" cy="90" r="8" fill="#fff"/><circle cx="246" cy="90" r="8" fill="#fff"/>
-  <path d="M160 42v96" stroke="#172420" stroke-width="20" stroke-linecap="round"/>
-  <path d="M160 56v68" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <path d="M76 90h64m40 0h64" fill="none" stroke="#b9f3df" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="64" cy="90" r="9" fill="#fff"/><circle cx="256" cy="90" r="9" fill="#fff"/>
+  <path d="M160 40 195 55v43c0 27-15 47-35 62-20-15-35-35-35-62V55l35-15Z" fill="#b9f3df"/>
+  <path d="M160 67v62" fill="none" stroke="#17664f" stroke-width="10" stroke-linecap="round"/>
 </svg>

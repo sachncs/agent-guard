@@ -17,5 +17,38 @@ test("favicon, site mark, and console mark remain the same selected glyph", () =
   const mark = read("./public/agentguard-mark.svg");
   assert.equal(read("./public/favicon.svg"), mark);
   assert.equal(read("../frontend/public/agentguard-mark.svg"), mark);
-  assert.match(mark, /M32 14v36/);
+  assert.match(mark, /viewBox="0 0 64 64"/);
+  assert.match(mark, /M32 13 42 17\.5v12\.2/);
+  assert.match(mark, /An agent and tool connected across a shield-shaped authorization boundary/);
+});
+
+test("light, dark, and monochrome marks preserve one glyph with surface-safe contrast", () => {
+  const paths = ["./public/agentguard-mark.svg", "./public/agentguard-mark-dark.svg", "./public/agentguard-mark-mono.svg"]
+    .map((path) => read(path));
+  const glyph = /<path d="(M32 13 [^"]+)" fill=/;
+  assert.deepEqual(paths.map((asset) => asset.match(glyph)?.[1]), [
+    paths[0].match(glyph)?.[1],
+    paths[0].match(glyph)?.[1],
+    paths[0].match(glyph)?.[1],
+  ]);
+  assert.match(paths[0], /fill="#218263"/);
+  assert.match(paths[1], /fill="#0f2f27"/);
+  assert.match(paths[2], /stroke="#172420" stroke-width="3"/);
+  for (const asset of paths) {
+    assert.match(asset, /<title id="title">AgentGuard<\/title>/);
+    assert.match(asset, /stroke-linecap="round"/);
+  }
+});
+
+test("wordmarks and social preview use the selected boundary identity", () => {
+  const boundary = /M32 13 42 17\.5v12\.2/;
+  for (const path of ["./public/agentguard-wordmark.svg", "./public/agentguard-wordmark-dark.svg", "./public/og-image.svg"]) {
+    assert.match(read(path), boundary, `${path} should use the selected glyph`);
+  }
+  assert.match(read("./public/brand/concept-boundary.svg"), /M160 40 195 55v43/);
+  const social = read("./public/og-image.svg");
+  assert.match(social, /viewBox="0 0 1200 630"/);
+  assert.match(social, /x="96" y="337"[^>]*font-size="64"/);
+  assert.match(social, /github\.com\/sachncs\/agent-guard/);
+  assert.doesNotMatch(social, /agentguard\.dev/);
 });

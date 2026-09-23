@@ -29,8 +29,10 @@ for (const file of [
   "site/public/agentguard-mark-mono.svg",
   "site/public/agentguard-mark.svg",
   "site/public/agentguard-wordmark.svg",
+  "site/public/agentguard-wordmark-dark.svg",
   "site/public/favicon.svg",
   "site/public/og-image.svg",
+  "site/public/brand/concept-boundary.svg",
   "docs/production.md",
   "scripts/k8s-smoke.sh",
   "deploy/k8s/kustomization.yaml",
@@ -47,11 +49,14 @@ const markAssets = [
 ];
 for (const file of markAssets) {
   const svg = readFileSync(file, "utf8");
-  if (!svg.includes("AgentGuard")) failures.push(`${file}: missing accessible AgentGuard label`);
-  if (!svg.includes("M32 14v36")) failures.push(`${file}: missing selected agent-boundary glyph`);
+  if (!svg.includes("<title id=\"title\">AgentGuard</title>")) failures.push(`${file}: missing accessible AgentGuard title`);
+  if (!svg.includes("M32 13 42 17.5v12.2")) failures.push(`${file}: missing selected shield-boundary glyph`);
+}
+if (!readFileSync("site/public/brand/concept-boundary.svg", "utf8").includes("M160 40 195 55v43")) {
+  failures.push("site/public/brand/concept-boundary.svg: missing selected shield-boundary concept");
 }
 const og = readFileSync("site/public/og-image.svg", "utf8");
-if (!og.includes("A clear boundary between agent intent and execution.")) {
+if (!og.includes("Policy before execution.") || !og.includes("github.com/sachncs/agent-guard")) {
   failures.push("site/public/og-image.svg: missing canonical product positioning");
 }
 

@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AgentGuard">
-  <rect width="64" height="64" rx="16" fill="#0f2f27"/>
-  <path d="M18 27V18h10M46 27V18h-10M18 37v9h10M46 37v9h-10" fill="none" stroke="#b9f3df" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M14 32h12M38 32h12" stroke="#b9f3df" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="12" cy="32" r="3" fill="#fff"/><circle cx="52" cy="32" r="3" fill="#fff"/>
-  <path d="M32 14v36" stroke="#071c17" stroke-width="10" stroke-linecap="round"/>
-  <path d="M32 18v28" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGuard</title>
+  <desc id="desc">An agent and tool connected across a shield-shaped authorization boundary.</desc>
+  <rect width="64" height="64" rx="18" fill="#0f2f27"/>
+  <path d="M13 32h9m20 0h9" fill="none" stroke="#b9f3df" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="11" cy="32" r="3.5" fill="#fff"/><circle cx="53" cy="32" r="3.5" fill="#fff"/>
+  <path d="M32 13 42 17.5v12.2c0 7.5-4.2 13.4-10 17.3-5.8-3.9-10-9.8-10-17.3V17.5L32 13Z" fill="#b9f3df"/>
+  <path d="M32 21v18" fill="none" stroke="#0f2f27" stroke-width="3.5" stroke-linecap="round"/>
 </svg>

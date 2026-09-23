@@ -3,10 +3,11 @@
 AgentGuard is the product name. agent-guard is the GitHub repository slug and
 may remain in package names, URLs, and command paths for compatibility.
 
-The primary mark is the boundary glyph: agent and tool nodes are connected by a
-controlled vertical boundary. It communicates that agent intent is evaluated
-before execution. The reviewed alternatives and the selection rationale are
-documented in [docs/branding.md](docs/branding.md).
+The primary mark is the boundary glyph: an agent node and tool node are joined
+by a path that passes through a shield-shaped authorization boundary. The
+center stroke represents policy evaluation before execution. Use the supplied
+SVGs rather than redrawing the mark. The reviewed alternatives and selection
+rationale are documented in [docs/branding.md](docs/branding.md).
 
 ## Tokens
 
@@ -17,11 +18,17 @@ documented in [docs/branding.md](docs/branding.md).
 - Deny: #b42318
 - Warning: #a15c00
 
-Use the mark as an SVG wherever possible. The shipped assets are
-agentguard-mark.svg (primary), agentguard-mark-dark.svg (dark surfaces),
-agentguard-mark-mono.svg (single-color surfaces), and agentguard-wordmark.svg.
-Keep at least one mark-height of clear space, do not rotate or distort it, and
-use the monochrome version when the surrounding surface cannot guarantee
-contrast. The dark wordmark is intended for dark navigation and social
-surfaces; the light wordmark is intended for light README and documentation
-surfaces.
+Use the mark as an SVG wherever possible. Canonical files live in
+`site/public/`: `agentguard-mark.svg` (light surfaces),
+`agentguard-mark-dark.svg` (dark surfaces), `agentguard-mark-mono.svg`
+(single-color output), `agentguard-wordmark.svg` and
+`agentguard-wordmark-dark.svg`. `favicon.svg` uses the primary mark and
+`og-image.svg` is the social preview. `frontend/public/agentguard-mark.svg`
+is the console copy and must remain identical to the primary mark.
+
+Preserve the 1:1 mark proportions and its rounded-square background. Do not
+rotate, stretch, redraw, or add effects. Keep clear space of at least one
+quarter of the mark width around it. Use the monochrome version only when the
+surface cannot guarantee color reproduction; select light or dark assets to
+maintain contrast. The wordmark text is part of the SVG and should not be
+replaced with a differently styled label in artwork.

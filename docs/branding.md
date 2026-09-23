@@ -9,7 +9,7 @@ Three vector directions were created for review:
 
 | Concept | Asset | Decision |
 | --- | --- | --- |
-| Boundary glyph | [`concept-boundary.svg`](../site/public/brand/concept-boundary.svg) | **Selected.** The agent and tool nodes are separated by a controlled vertical boundary, communicating policy before execution at favicon and navigation sizes. |
+| Boundary glyph | [`concept-boundary.svg`](../site/public/brand/concept-boundary.svg) | **Selected.** An agent and tool path passes through a shield-shaped authorization boundary; its center stroke represents policy evaluation before execution. |
 | Gate | [`concept-gate.svg`](../site/public/brand/concept-gate.svg) | Rejected. It reads as a physical access gate and loses the agent/tool relationship at small sizes. |
 | Agent path | [`concept-agent-path.svg`](../site/public/brand/concept-agent-path.svg) | Rejected. It is useful as an explanatory diagram but is too detailed for a product mark. |
 
@@ -24,12 +24,14 @@ The selected mark is shipped in `site/public/` and `frontend/public/`:
 
 The Astro site navigation and footer load `agentguard-mark.svg` directly; the
 frontend mark and favicon are kept byte-identical to that canonical light mark
-and checked by the site test suite. The monochrome asset remains available for
-surfaces that need a single-color treatment.
+and checked by the site test suite. Wordmarks and the social preview use the
+same selected glyph. At 64×64 the shield and endpoint nodes remain separated;
+use the supplied SVG at native proportions rather than simplifying or
+rebuilding it. The monochrome asset remains available for constrained output.
 
 ## Usage rules
 
-- Keep at least one mark-height of clear space around the glyph.
+- Keep clear space of at least one quarter of the mark width around the glyph.
 - Do not rotate, stretch, redraw, or add a drop shadow to the mark.
 - Use the dark mark on dark teal surfaces and the primary mark on light surfaces.
 - Use the monochrome mark when color reproduction or contrast is constrained.
