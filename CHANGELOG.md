@@ -15,6 +15,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Next.js event loop.
 - Add the `DpopReplayStore` port so embedders can inject an atomic shared
   replay backend without coupling proof verification to a storage adapter.
+- Add `AsyncDpopReplayStore` and `DpopVerifier::verify_async` for remote replay
+  backends that must not block async runtime workers.
 
 ### Fixed
 

@@ -74,10 +74,14 @@ with `JtiTracker::with_capacity`. At capacity, new proofs fail closed with
 `DpopCapacityExceeded` until old entries expire. The tracker does not share
 replay state across processes and loses it on restart, so deployments requiring
 cluster-wide replay protection can inject a shared implementation of
-`DpopReplayStore`. It must atomically retain each accepted JTI across the
-deployment scope and fail closed on storage errors. The port is synchronous:
-do not perform blocking remote I/O on an async runtime worker. No shared
-backend is included in the standalone PDP contract.
+`DpopReplayStore` or `AsyncDpopReplayStore`. Both must atomically retain each
+accepted JTI across the deployment scope and fail closed on storage errors.
+Synchronous implementations must not perform blocking remote I/O on an async
+runtime worker. For remote stores, implement `AsyncDpopReplayStore`, construct the verifier with
+`DpopVerifier::new_async`, and call `verify_async`; this awaits the storage
+operation without blocking the worker. The bundled `JtiTracker` remains
+process-local, and no shared backend is included in the standalone PDP
+contract.
 
 ## Console OIDC
 

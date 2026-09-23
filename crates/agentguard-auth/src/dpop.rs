@@ -17,6 +17,7 @@
 
 use crate::error::{AuthError, Result};
 use crate::jti::JtiTracker;
+use async_trait::async_trait;
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
@@ -44,17 +45,41 @@ impl DpopReplayStore for JtiTracker {
     }
 }
 
+/// Async replay-state port for stores that perform remote I/O.
+///
+/// Implementations have the same atomicity, expiry, and fail-closed
+/// requirements as [`DpopReplayStore`], but can perform I/O without blocking a
+/// Tokio worker. Use [`DpopVerifier::new_async`] with this port.
+#[async_trait]
+pub trait AsyncDpopReplayStore: Send + Sync {
+    async fn check_and_record(&self, jti: &[u8; 16]) -> Result<()>;
+}
+
+#[derive(Clone)]
+enum ReplayStore {
+    Sync(Arc<dyn DpopReplayStore>),
+    Async(Arc<dyn AsyncDpopReplayStore>),
+}
+
 /// Verifies DPoP proof JWTs.
 #[derive(Clone)]
 pub struct DpopVerifier {
-    keys: Arc<dyn DpopReplayStore>,
+    replay_store: ReplayStore,
     pub allowed_clock_skew: Duration,
 }
 
 impl DpopVerifier {
     pub fn new(jti_tracker: Arc<dyn DpopReplayStore>) -> Self {
         Self {
-            keys: jti_tracker,
+            replay_store: ReplayStore::Sync(jti_tracker),
+            allowed_clock_skew: Duration::from_secs(30),
+        }
+    }
+
+    /// Construct a verifier with an asynchronous replay store.
+    pub fn new_async(replay_store: Arc<dyn AsyncDpopReplayStore>) -> Self {
+        Self {
+            replay_store: ReplayStore::Async(replay_store),
             allowed_clock_skew: Duration::from_secs(30),
         }
     }
@@ -83,6 +108,42 @@ impl DpopVerifier {
         htu: &str,
         expected_jkt: &str,
     ) -> Result<()> {
+        let jti_key = self.verify_proof(dpop_header, access_token, htm, htu, expected_jkt)?;
+        match &self.replay_store {
+            ReplayStore::Sync(store) => store.check_and_record(&jti_key),
+            ReplayStore::Async(_) => Err(AuthError::DpopInvalid(
+                "asynchronous replay store requires verify_async".into(),
+            )),
+        }
+    }
+
+    /// Verify a DPoP proof using either sync or async replay storage.
+    ///
+    /// Cryptographic validation remains synchronous; remote replay-state I/O
+    /// is awaited without blocking an async runtime worker.
+    pub async fn verify_async(
+        &self,
+        dpop_header: &str,
+        access_token: &str,
+        htm: &str,
+        htu: &str,
+        expected_jkt: &str,
+    ) -> Result<()> {
+        let jti_key = self.verify_proof(dpop_header, access_token, htm, htu, expected_jkt)?;
+        match &self.replay_store {
+            ReplayStore::Sync(store) => store.check_and_record(&jti_key),
+            ReplayStore::Async(store) => store.check_and_record(&jti_key).await,
+        }
+    }
+
+    fn verify_proof(
+        &self,
+        dpop_header: &str,
+        access_token: &str,
+        htm: &str,
+        htu: &str,
+        expected_jkt: &str,
+    ) -> Result<[u8; 16]> {
         // 1. Parse the compact JWS into (header, claims, signing_input, signature).
         let (header, claims, signing_input, signature) = Self::parse_proof(dpop_header)?;
         // 2. Validate header typ + alg, extract jwk.
@@ -99,8 +160,7 @@ impl DpopVerifier {
         self.check_htm_htu_ath(&claims, htm, htu, access_token)?;
         // 6. Replay protection: hash the jti to a 16-byte key.
         let jti_key = jti_to_replay_key(claims.get("jti").and_then(|v| v.as_str()))?;
-        self.keys.check_and_record(&jti_key)?;
-        Ok(())
+        Ok(jti_key)
     }
 
     /// Parse the compact JWS into header, claims, signing input, signature.
@@ -292,12 +352,27 @@ mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
+    use std::collections::HashSet;
 
     struct RejectingReplayStore;
 
     impl DpopReplayStore for RejectingReplayStore {
         fn check_and_record(&self, _jti: &[u8; 16]) -> Result<()> {
             Err(AuthError::Other("shared replay store unavailable".into()))
+        }
+    }
+
+    #[derive(Default)]
+    struct AsyncSetReplayStore(std::sync::Mutex<HashSet<[u8; 16]>>);
+
+    #[async_trait]
+    impl AsyncDpopReplayStore for AsyncSetReplayStore {
+        async fn check_and_record(&self, jti: &[u8; 16]) -> Result<()> {
+            let mut seen = self.0.lock().expect("test replay store lock poisoned");
+            if !seen.insert(*jti) {
+                return Err(AuthError::DpopReplay("proof already used".into()));
+            }
+            Ok(())
         }
     }
 
@@ -579,6 +654,35 @@ mod tests {
         assert!(matches!(
             verifier.verify(&dpop, "tok", "POST", "https://example.com/x", &jkt),
             Err(AuthError::Other(message)) if message == "shared replay store unavailable"
+        ));
+    }
+
+    #[tokio::test]
+    async fn async_verifier_uses_store_and_rejects_replays() {
+        let mut csprng = OsRng;
+        let signer = SigningKey::generate(&mut csprng);
+        let pub_bytes = signer.verifying_key().to_bytes();
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pub_bytes);
+        let jkt = make_jkt(&pub_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(b"tok");
+        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let dpop = make_dpop(&signer, &x, "async-proof", &format!(r#""ath":"{}""#, ath));
+        let verifier = DpopVerifier::new_async(Arc::new(AsyncSetReplayStore::default()));
+
+        verifier
+            .verify_async(&dpop, "tok", "POST", "https://example.com/x", &jkt)
+            .await
+            .unwrap();
+        assert!(matches!(
+            verifier
+                .verify_async(&dpop, "tok", "POST", "https://example.com/x", &jkt)
+                .await,
+            Err(AuthError::DpopReplay(_))
+        ));
+        assert!(matches!(
+            verifier.verify(&dpop, "tok", "POST", "https://example.com/x", &jkt),
+            Err(AuthError::DpopInvalid(message)) if message.contains("verify_async")
         ));
     }
 
