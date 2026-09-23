@@ -55,6 +55,15 @@ pub(crate) fn validate_tls_paths(cert: &Path, key: &Path) -> Result<()> {
     Ok(())
 }
 
+fn validate_grpc_listener(addr: std::net::SocketAddr) -> Result<()> {
+    if !addr.ip().is_loopback() {
+        return Err(anyhow!(
+            "gRPC listener must be loopback-bound until TLS is supported"
+        ));
+    }
+    Ok(())
+}
+
 /// Run the server. Returns when the listener stops (e.g. on SIGTERM/SIGINT).
 /// In-flight requests are allowed to complete before the process exits.
 ///
@@ -62,6 +71,9 @@ pub(crate) fn validate_tls_paths(cert: &Path, key: &Path) -> Result<()> {
 /// Returns an error if the listener can't be bound, the TLS material is
 /// invalid, or the policy store can't be loaded.
 pub async fn run(cfg: ServerConfig) -> Result<()> {
+    if let Some(addr) = cfg.grpc_listener {
+        validate_grpc_listener(addr)?;
+    }
     // Validate TLS paths early so a bad tls://addr?cert=PATH&key=PATH
     // is reported at startup, not after the policy store loads and
     // the HTTP listener binds.
@@ -126,11 +138,6 @@ pub async fn run(cfg: ServerConfig) -> Result<()> {
     // server. Same AppState, same authorizer — only the transport
     // differs.
     let grpc_handle = if let Some(addr) = cfg.grpc_listener {
-        if !addr.ip().is_loopback() {
-            return Err(anyhow!(
-                "gRPC listener must be loopback-bound until TLS is supported"
-            ));
-        }
         let svc = crate::grpc::service(state.clone());
         tracing::info!("agentguard gRPC listening on tcp://{}", addr);
         Some(tokio::spawn(async move {
@@ -442,7 +449,7 @@ type Never = std::convert::Infallible;
 
 #[cfg(test)]
 mod tls_validation_tests {
-    use super::validate_tls_paths;
+    use super::{validate_grpc_listener, validate_tls_paths};
     use std::io::Write;
 
     #[test]
@@ -485,5 +492,15 @@ mod tls_validation_tests {
             err.contains("not a regular file"),
             "missing dir reason: {err}"
         );
+    }
+
+    #[test]
+    fn plaintext_grpc_listener_is_restricted_to_loopback() {
+        assert!(validate_grpc_listener("127.0.0.1:9443".parse().unwrap()).is_ok());
+        assert!(validate_grpc_listener("[::1]:9443".parse().unwrap()).is_ok());
+        let err = validate_grpc_listener("0.0.0.0:9443".parse().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("loopback-bound"));
     }
 }
