@@ -5,6 +5,7 @@ import { BoundedJsonResponseError, readBoundedJson } from "./bounded_json";
 
 /** Inbound console JSON cap, including simulator args and session facts. */
 export const MAX_API_REQUEST_BYTES = 256 * 1024;
+export const API_REQUEST_BODY_TIMEOUT_MS = 5_000;
 
 /** Read a bounded JSON request, validate it, and return a safe client error. */
 export async function parseJsonBody<S extends z.ZodType>(
@@ -12,11 +13,16 @@ export async function parseJsonBody<S extends z.ZodType>(
   schema: S,
 ): Promise<
   | { ok: true; data: z.infer<S> }
-  | { ok: false; status: 400 | 413; error: string }
+  | { ok: false; status: 400 | 408 | 413; error: string }
 > {
   let raw: unknown;
   try {
-    raw = await readBoundedJson(request, MAX_API_REQUEST_BYTES, "console request");
+    raw = await readBoundedJson(
+      request,
+      MAX_API_REQUEST_BYTES,
+      "console request",
+      API_REQUEST_BODY_TIMEOUT_MS,
+    );
   } catch (error) {
     if (
       error instanceof BoundedJsonResponseError &&
@@ -27,6 +33,9 @@ export async function parseJsonBody<S extends z.ZodType>(
         status: 413,
         error: `request body exceeds the ${MAX_API_REQUEST_BYTES}-byte limit`,
       };
+    }
+    if (error instanceof BoundedJsonResponseError && error.message.includes("timed out")) {
+      return { ok: false, status: 408, error: "request body read timed out" };
     }
     return { ok: false, status: 400, error: "request body must be valid JSON" };
   }

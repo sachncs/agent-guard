@@ -32,7 +32,8 @@ the console answers `503` on every route — there is no open mode.
   not look like CLI flags) and use a conservative application-host rate-limit
   key; spoofable forwarded client headers are ignored. JSON request bodies are
   capped at 256 KiB before parsing, including when Content-Length is missing or
-  understated; oversized requests receive HTTP 413.
+  understated; oversized requests receive HTTP 413. Body reads have a five-
+  second deadline and return HTTP 408 when the client does not finish in time.
 
 ## Prerequisites
 

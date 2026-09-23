@@ -8,9 +8,13 @@ export async function readBoundedJson(
   response: Pick<Response, "headers" | "body">,
   maxBytes: number,
   source: string,
+  timeoutMs?: number,
 ): Promise<unknown> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new RangeError("maxBytes must be a positive safe integer");
+  }
+  if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1)) {
+    throw new RangeError("timeoutMs must be a positive safe integer");
   }
   const declaredLength = response.headers.get("content-length");
   if (
@@ -26,7 +30,8 @@ export async function readBoundedJson(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-  try {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const readBody = async () => {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -37,10 +42,24 @@ export async function readBoundedJson(
       }
       chunks.push(value);
     }
+  };
+  try {
+    if (timeoutMs === undefined) {
+      await readBody();
+    } else {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          void reader.cancel().catch(() => undefined);
+          reject(new BoundedJsonResponseError(`${source} response body timed out`));
+        }, timeoutMs);
+      });
+      await Promise.race([readBody(), timeout]);
+    }
   } catch (error) {
     if (error instanceof BoundedJsonResponseError) throw error;
     throw new BoundedJsonResponseError(`${source} response body could not be read`, { cause: error });
   } finally {
+    if (timer) clearTimeout(timer);
     reader.releaseLock();
   }
 
