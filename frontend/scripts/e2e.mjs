@@ -527,6 +527,24 @@ async function main() {
     }
     assert.ok(saw429, "delegate rate limit trips");
 
+    let simulatorRateLimited = false;
+    for (let i = 0; i < 61; i++) {
+      const response = await req(viewer, "/api/authorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: "alice", tool: "web_search", resourceType: "Resource",
+          resourceId: `rate-${i}`,
+        }),
+      });
+      if (response.status === 429) {
+        simulatorRateLimited = true;
+        break;
+      }
+      assert.equal(response.status, 200);
+    }
+    assert.ok(simulatorRateLimited, "simulator rate limit trips before exhausting PDP capacity");
+
     // --- 7. logout ---------------------------------------------------------
     const logout = await req(admin, "/api/auth/logout");
     assert.equal(logout.status, 302);

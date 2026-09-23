@@ -3,6 +3,7 @@ import { parseJsonBody, authorizeSchema } from "@/lib/api_schemas";
 import { authConfig } from "@/lib/auth/config";
 import { isResponse, requireViewer } from "@/lib/auth/guard";
 import { evaluate } from "@/lib/auth/pdp";
+import { clientKey, rateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,16 @@ export async function POST(request: Request) {
 
   const session = await requireViewer(cfg.config.sessionSecret, request, cfg.config.sessionStore);
   if (isResponse(session)) return session;
+
+  // Simulation consumes PDP capacity and appends audit records. Bound each
+  // trusted client to prevent an authenticated console from exhausting them.
+  const rl = await rateLimit(`authorize:${clientKey(request, cfg.config.trustProxyHeaders)}`, 60);
+  if (!rl.allowed) {
+    return Response.json(
+      { error: "rate limit exceeded", kind: "rate_limited" },
+      { status: 429 },
+    );
+  }
 
   const parsed = await parseJsonBody(request, authorizeSchema);
   if (!parsed.ok) {

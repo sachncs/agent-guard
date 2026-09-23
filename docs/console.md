@@ -73,7 +73,9 @@ responses, CLI failures, malformed upstream payloads, and audit failures are
 surfaced as errors; they never become an allow decision.
 
 Use Redis-compatible shared sessions and rate limiting for horizontally scaled
-console replicas. The in-memory stores are development-only and intentionally
+console replicas. Login, delegation, verification, and simulator requests are
+limited per trusted client; the simulator allows 60 evaluations per minute to
+bound PDP and audit load. The in-memory stores are development-only and intentionally
 do not provide cross-replica protection. Store session signing keys and Redis
 credentials in the deployment secret manager.
 
