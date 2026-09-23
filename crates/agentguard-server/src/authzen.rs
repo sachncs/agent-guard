@@ -308,7 +308,9 @@ impl AuthorizerHandle {
         let store = PolicyStore::open(store_root).map_err(|e| format!("open store: {}", e))?;
         let mut authorizer = Authorizer::new(store).map_err(|e| format!("authorizer: {}", e))?;
         if let Some(cfg) = cache {
-            authorizer = authorizer.with_cache(cfg.clone());
+            authorizer = authorizer
+                .try_with_cache(cfg.clone())
+                .map_err(|error| format!("decision cache configuration: {error}"))?;
         }
         Ok(authorizer)
     }
@@ -1005,6 +1007,31 @@ mod summarize_tests {
             .try_acquire_owned()
             .is_ok());
         drop(permits);
+    }
+
+    #[tokio::test]
+    async fn embedded_state_rejects_invalid_cache_options_without_panicking() {
+        let dir = tempdir().unwrap();
+        let result = super::build_state_with_options(
+            dir.path().to_path_buf(),
+            None,
+            None,
+            crate::auth_layer::AuthLayer::Disabled,
+            AppStateOptions {
+                cache: Some(agentguard_core::decision::cache::CacheConfig {
+                    capacity: 0,
+                    ..agentguard_core::decision::cache::CacheConfig::default()
+                }),
+                audit_rotation: None,
+            },
+        )
+        .await;
+
+        let error = result
+            .err()
+            .expect("invalid cache options should fail state construction");
+        assert!(error.contains("decision cache configuration"));
+        assert!(error.contains("capacity must be greater than zero"));
     }
 
     #[test]

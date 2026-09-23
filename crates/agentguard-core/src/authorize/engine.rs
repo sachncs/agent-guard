@@ -154,6 +154,18 @@ impl Authorizer {
         self
     }
 
+    /// Enable the decision cache, returning invalid configuration as an
+    /// error instead of panicking. Prefer this when `config` originates from
+    /// user, operator, or embedder settings.
+    pub fn try_with_cache(
+        mut self,
+        config: crate::decision::cache::CacheConfig,
+    ) -> std::result::Result<Self, String> {
+        let clock: Arc<dyn crate::ttl::Clock> = Arc::new(SystemClock);
+        self.cache = Some(Arc::new(DecisionCache::try_new(config, clock)?));
+        Ok(self)
+    }
+
     /// Direct handle on the cache (for invalidation, metrics, tests).
     /// Returns `None` when the cache is disabled.
     pub fn cache(&self) -> Option<&Arc<DecisionCache>> {

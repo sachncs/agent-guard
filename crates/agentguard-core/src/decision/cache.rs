@@ -205,9 +205,17 @@ pub struct DecisionCache {
 }
 
 impl DecisionCache {
-    pub fn new(config: CacheConfig, clock: Arc<dyn Clock>) -> Self {
-        let capacity = std::num::NonZeroUsize::new(config.capacity).unwrap();
-        Self {
+    /// Construct a cache after validating its public configuration.
+    ///
+    /// Use this at application boundaries so invalid capacities produce a
+    /// recoverable configuration error instead of a panic.
+    pub fn try_new(
+        config: CacheConfig,
+        clock: Arc<dyn Clock>,
+    ) -> std::result::Result<Self, String> {
+        let capacity = std::num::NonZeroUsize::new(config.capacity)
+            .ok_or_else(|| "cache capacity must be greater than zero".to_owned())?;
+        Ok(Self {
             config,
             clock,
             policy_version: AtomicU64::new(0),
@@ -215,7 +223,16 @@ impl DecisionCache {
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
             evictions: AtomicU64::new(0),
-        }
+        })
+    }
+
+    /// Construct a cache with an already validated configuration.
+    ///
+    /// # Panics
+    /// Panics when `config.capacity` is zero. Use [`Self::try_new`] when the
+    /// value comes from application configuration or another fallible input.
+    pub fn new(config: CacheConfig, clock: Arc<dyn Clock>) -> Self {
+        Self::try_new(config, clock).expect("DecisionCache capacity must be greater than zero")
     }
 
     /// A disabled cache (every call is a miss).
@@ -504,6 +521,19 @@ mod tests {
             .context(AgentContext::new().with_arg("to", "[email protected]"))
             .build()
             .unwrap()
+    }
+
+    #[test]
+    fn try_new_rejects_zero_capacity_without_panicking() {
+        let clock: Arc<dyn Clock> = Arc::new(MockClock::new());
+        let config = CacheConfig {
+            capacity: 0,
+            ..CacheConfig::default()
+        };
+        let error = DecisionCache::try_new(config, clock)
+            .err()
+            .expect("zero capacity should return a configuration error");
+        assert_eq!(error, "cache capacity must be greater than zero");
     }
 
     #[test]
