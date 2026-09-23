@@ -133,6 +133,10 @@ async function startIdp(tls) {
 async function startPdp() {
   let responseMode = "decision";
   const server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/readyz") {
+      res.writeHead(responseMode === "unavailable" ? 503 : 200).end();
+      return;
+    }
     if (req.method !== "POST" || !req.url.includes("/access/v1/evaluation")) {
       res.writeHead(404).end();
       return;
@@ -484,6 +488,8 @@ async function main() {
     });
     assert.equal(unavailablePdp.status, 503, "PDP HTTP failures return service unavailable");
     assert.equal((await unavailablePdp.json()).kind, "pdp_unavailable");
+    assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
+      "readiness fails when the required PDP is unavailable");
 
     pdp.setResponseMode("invalid");
     const invalidPdp = await req(viewer, "/api/authorize", {
@@ -496,6 +502,8 @@ async function main() {
     assert.equal(invalidPdp.status, 503, "malformed PDP decisions fail closed");
     assert.equal((await invalidPdp.json()).kind, "pdp_unavailable");
     pdp.setResponseMode("decision");
+    assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
+      "readiness recovers when the PDP recovers");
 
     const invalidAuthz = await req(viewer, "/api/authorize", {
       method: "POST",
