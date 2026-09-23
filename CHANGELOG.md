@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add a visually reviewed 1200×630 PNG social card from the canonical SVG and
+  test that its dimensions and page metadata stay in sync.
 - Add the explicit `authorize:any` API-key capability for trusted server-side
   simulators. Keys remain bound to a service identity, while ordinary
   `authorize` keys continue to reject subject impersonation. Production console

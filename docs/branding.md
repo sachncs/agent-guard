@@ -20,14 +20,19 @@ The selected mark is shipped in `site/public/` and `frontend/public/`:
 - `agentguard-mark-mono.svg` — one-color fallback
 - `agentguard-wordmark.svg` — light-surface wordmark
 - `agentguard-wordmark-dark.svg` — dark-surface wordmark
-- `og-image.svg` — 1200×630 social preview
+- `og-image.svg` — editable social-preview source
+- `og-image.png` — 1200×630 social preview used in Open Graph/Twitter metadata
 
 The Astro site navigation and footer load `agentguard-mark.svg` directly; the
 frontend mark and favicon are kept byte-identical to that canonical light mark
 and checked by the site test suite. Wordmarks and the social preview use the
-same selected glyph. At 64×64 the shield and endpoint nodes remain separated;
-use the supplied SVG at native proportions rather than simplifying or
-rebuilding it. The monochrome asset remains available for constrained output.
+same selected glyph. The PNG social card is rasterized from the SVG source at
+1200×630; if the source artwork changes, regenerate the PNG at those exact
+dimensions and visually review the exported file. The asset test checks the
+PNG signature, dimensions, and metadata reference. At 64×64 the shield and
+endpoint nodes remain separated; use the supplied SVG at native proportions
+rather than simplifying or rebuilding it. The monochrome asset remains
+available for constrained output.
 
 ## Usage rules
 

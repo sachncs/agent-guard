@@ -22,9 +22,13 @@ Use the mark as an SVG wherever possible. Canonical files live in
 `site/public/`: `agentguard-mark.svg` (light surfaces),
 `agentguard-mark-dark.svg` (dark surfaces), `agentguard-mark-mono.svg`
 (single-color output), `agentguard-wordmark.svg` and
-`agentguard-wordmark-dark.svg`. `favicon.svg` uses the primary mark and
-`og-image.svg` is the social preview. `frontend/public/agentguard-mark.svg`
-is the console copy and must remain identical to the primary mark.
+`agentguard-wordmark-dark.svg`. `favicon.svg` uses the primary mark.
+`og-image.svg` is the editable social-card source; `og-image.png` is the
+1200×630 raster served in Open Graph and Twitter metadata. Regenerate the PNG
+from the SVG at exactly 1200×630 after changing the artwork. The social card is
+visually reviewed at its published dimensions and its dimensions are tested.
+`frontend/public/agentguard-mark.svg` is the console copy and must remain
+identical to the primary mark.
 
 Preserve the 1:1 mark proportions and its rounded-square background. Do not
 rotate, stretch, redraw, or add effects. Keep clear space of at least one

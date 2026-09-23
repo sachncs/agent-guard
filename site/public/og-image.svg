@@ -27,8 +27,8 @@
   <text x="96" y="337" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="64" font-weight="600" fill="#FAFAF7" letter-spacing="-2">Policy before execution.</text>
   <text x="100" y="390" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="27" font-weight="400" fill="#b9f3df">Cedar authorization for agent tool calls.</text>
   <g transform="translate(96 478)">
-    <rect width="214" height="46" rx="23" fill="#79dfbf"/>
-    <text x="107" y="30" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#071c17">OPEN SOURCE · APACHE-2.0</text>
+    <rect width="280" height="46" rx="23" fill="#79dfbf"/>
+    <text x="140" y="30" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#071c17">OPEN SOURCE · APACHE-2.0</text>
   </g>
   <text x="1090" y="510" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="17" fill="#b9f3df" fill-opacity=".8">github.com/sachncs/agent-guard</text>
 </svg>

@@ -32,6 +32,7 @@ for (const file of [
   "site/public/agentguard-wordmark-dark.svg",
   "site/public/favicon.svg",
   "site/public/og-image.svg",
+  "site/public/og-image.png",
   "site/public/brand/concept-boundary.svg",
   "docs/production.md",
   "scripts/k8s-smoke.sh",
@@ -58,6 +59,9 @@ if (!readFileSync("site/public/brand/concept-boundary.svg", "utf8").includes("M1
 const og = readFileSync("site/public/og-image.svg", "utf8");
 if (!og.includes("Policy before execution.") || !og.includes("github.com/sachncs/agent-guard")) {
   failures.push("site/public/og-image.svg: missing canonical product positioning");
+}
+if (!readFileSync("site/src/layouts/base.astro", "utf8").includes("og-image.png")) {
+  failures.push("site/src/layouts/base.astro: social metadata must use the PNG preview");
 }
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');

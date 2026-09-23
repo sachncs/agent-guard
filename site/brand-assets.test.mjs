@@ -48,7 +48,14 @@ test("wordmarks and social preview use the selected boundary identity", () => {
   assert.match(read("./public/brand/concept-boundary.svg"), /M160 40 195 55v43/);
   const social = read("./public/og-image.svg");
   assert.match(social, /viewBox="0 0 1200 630"/);
+  assert.match(social, /<rect width="280" height="46" rx="23" fill="#79dfbf"\/>/);
+  assert.match(social, /<text x="140" y="30" text-anchor="middle"[^>]*>OPEN SOURCE · APACHE-2\.0<\/text>/);
   assert.match(social, /x="96" y="337"[^>]*font-size="64"/);
   assert.match(social, /github\.com\/sachncs\/agent-guard/);
   assert.doesNotMatch(social, /agentguard\.dev/);
+  const png = readFileSync(new URL("./public/og-image.png", import.meta.url));
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(png.readUInt32BE(16), 1200);
+  assert.equal(png.readUInt32BE(20), 630);
+  assert.match(read("./src/layouts/base.astro"), /og-image\.png/);
 });
