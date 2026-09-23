@@ -75,6 +75,8 @@ requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
 requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
 requireText("docs/production.md", "never becomes an implicit production fallback");
 requireText("docs/production.md", "corrupted chained audit tail refuses startup");
+requireText("docs/operations/runbook.md", "Do not increase PDP replicas");
+requireText("docs/operations/runbook.md", "coordinated,\ndurable audit backend");
 requireText("frontend/src/components/theme_provider.tsx", "enableSystem");
 requireText("frontend/src/components/theme_toggle.tsx", "aria-label");
 requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
@@ -87,6 +89,7 @@ if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FI
 
 for (const [file, stale] of [
   ["docs/kubernetes.md", "uses loopback and disabled authentication"],
+  ["docs/operations/runbook.md", "Run multiple\nreplicas with a shared policy directory"],
   ["site/src/pages/index.astro", "Workspace packages declare 0.2.0"],
   ["site/src/pages/docs/deploy.astro", "invalid clap requires"],
   ["site/src/pages/docs/configuration.astro", "invalid clap requires"],

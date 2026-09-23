@@ -76,10 +76,17 @@ PersistentVolumeClaim for `.audit/`. Set
 
 ### Scaling
 
-`agentguard` is stateless beyond the on-disk audit log. Run multiple
-replicas with a shared policy directory (read-only) and an audit log
-volume per pod. Cache invalidation is per-pod; cache TTL bounds the
-staleness window.
+The supported Kubernetes topology runs one PDP replica with a persistent
+audit volume. Do not increase PDP replicas: each process-local audit writer
+would create an independent chain, and the shipped server does not coordinate
+appends across replicas. Multi-replica PDP operation requires a coordinated,
+durable audit backend and is outside the current production contract.
+
+The console may be scaled independently when every replica uses the configured
+shared Redis-compatible session and rate-limit stores. Policy snapshots and
+decision caches are local to each PDP process; cache TTL limits staleness but
+does not provide shared audit ordering or make multi-replica PDP deployment
+supported.
 
 ## Routine operations
 
