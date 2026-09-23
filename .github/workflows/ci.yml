@@ -172,9 +172,13 @@ jobs:
             --data '{}' http://127.0.0.1:8443/access/v1/evaluation)
           test "$status" = "401"
       - name: Build console image
-        run: docker build --pull --tag agentguard-console:ci -f frontend/Dockerfile .
+        run: >-
+          docker build --tag agentguard-console:ci
+          --build-arg AGENTGUARD_CLI_IMAGE=agentguard-server:ci
+          -f frontend/Dockerfile .
       - name: Validate console image entrypoint
         run: |
+          docker run --rm --entrypoint /usr/local/bin/agentguard agentguard-console:ci --help
           container=$(docker run --detach --publish 3000:3000 agentguard-console:ci)
           trap 'docker rm --force "$container" >/dev/null' EXIT
           for attempt in $(seq 1 30); do

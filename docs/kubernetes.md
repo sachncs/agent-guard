@@ -32,7 +32,9 @@ Use one immutable release tag for both images. Do not deploy `latest`:
 export VERSION=0.2.0
 export REGISTRY=registry.example.com/security
 docker build --pull -t "$REGISTRY/agentguard-server:$VERSION" .
-docker build --pull -t "$REGISTRY/agentguard-console:$VERSION" -f frontend/Dockerfile .
+docker build -t "$REGISTRY/agentguard-console:$VERSION" \
+  --build-arg AGENTGUARD_CLI_IMAGE="$REGISTRY/agentguard-server:$VERSION" \
+  -f frontend/Dockerfile .
 docker push "$REGISTRY/agentguard-server:$VERSION"
 docker push "$REGISTRY/agentguard-console:$VERSION"
 ```

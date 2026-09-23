@@ -1,7 +1,5 @@
-FROM rust:1.89-bookworm AS cli-builder
-WORKDIR /src
-COPY . .
-RUN cargo build --locked --release -p agentguard
+ARG AGENTGUARD_CLI_IMAGE
+FROM ${AGENTGUARD_CLI_IMAGE} AS cli-source
 
 FROM node:22.19.0-bookworm-slim AS deps
 WORKDIR /app
@@ -34,7 +32,7 @@ RUN apt-get update \
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/standalone ./
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/.next/static ./frontend/.next/static
 COPY --from=builder --chown=agentguard:agentguard /app/frontend/public ./frontend/public
-COPY --from=cli-builder --chown=agentguard:agentguard /src/target/release/agentguard /usr/local/bin/agentguard
+COPY --from=cli-source --chown=agentguard:agentguard /usr/local/bin/agentguard /usr/local/bin/agentguard
 USER 10001:10001
 ENV AGENTGUARD_BIN=/usr/local/bin/agentguard
 EXPOSE 3000

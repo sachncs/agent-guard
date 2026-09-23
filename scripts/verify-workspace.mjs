@@ -5,6 +5,7 @@ const sitePackage = JSON.parse(readFileSync("site/package.json", "utf8"));
 const siteWorkspace = readFileSync("site/pnpm-workspace.yaml", "utf8");
 const setup = readFileSync("scripts/setup.sh", "utf8");
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const consoleDockerfile = readFileSync("frontend/Dockerfile", "utf8");
 const failures = [];
 
 if (rootPackage.packageManager !== "pnpm@11.22.0") {
@@ -32,6 +33,19 @@ if (/dangerouslyAllowAllBuilds/.test(setup) || /dangerouslyAllowAllBuilds/.test(
 }
 if (!setup.includes("npm exec --yes --package=pnpm@11.22.0 -- pnpm")) {
   failures.push("bootstrap must support pinned pnpm when Corepack is unavailable");
+}
+if (
+  !consoleDockerfile.includes("ARG AGENTGUARD_CLI_IMAGE") ||
+  !consoleDockerfile.includes("COPY --from=cli-source") ||
+  /cargo build/.test(consoleDockerfile)
+) {
+  failures.push("console image must reuse the CLI from an explicit PDP image, not rebuild it");
+}
+if (
+  !ci.includes("AGENTGUARD_CLI_IMAGE=agentguard-server:ci") ||
+  !ci.includes("--entrypoint /usr/local/bin/agentguard agentguard-console:ci --help")
+) {
+  failures.push("container CI must provide and verify the console image's shared CLI");
 }
 
 if (failures.length) {

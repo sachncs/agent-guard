@@ -56,7 +56,9 @@ if (!og.includes("A clear boundary between agent intent and execution.")) {
 }
 
 requireText("deploy/k8s/pdp.yaml", 'name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"');
-requireText("frontend/Dockerfile", "RUN cargo build --locked --release -p agentguard");
+requireText("frontend/Dockerfile", "ARG AGENTGUARD_CLI_IMAGE");
+requireText("frontend/Dockerfile", "FROM ${AGENTGUARD_CLI_IMAGE} AS cli-source");
+requireText("frontend/Dockerfile", "COPY --from=cli-source");
 requireText("frontend/Dockerfile", "ENV AGENTGUARD_BIN=/usr/local/bin/agentguard");
 requireText("Dockerfile", "USER 10001:10001");
 requireText("Dockerfile", "AGENTGUARD_AUTH=apikey:/etc/agentguard/keys/keys.json");

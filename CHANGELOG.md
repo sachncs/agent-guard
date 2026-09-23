@@ -43,6 +43,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   at startup instead of silently falling back or disabling rotation.
 - Keep embedded state construction deterministic by passing cache and audit
   rotation options explicitly rather than reading ambient environment values.
+- Build the console with the CLI binary from the matching PDP image instead of
+  recompiling it, reducing release-build time and preventing CLI version skew.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 
