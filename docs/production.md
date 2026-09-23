@@ -17,6 +17,11 @@ guides alongside this overview.
 4. Put TLS at the ingress or service mesh. The PDP must not be exposed on a
    public network without authentication and encrypted transport.
 
+Before applying the commands below, create the operator-owned, digest-pinned
+production overlay as described in the [Kubernetes deployment guide](kubernetes.md#deploy).
+The overlay is not checked in because registry names, image digests, and
+network/ingress policy depend on the target environment.
+
 The standalone PDP polls the API-key Secret content and reloads valid
 rotations/revocations without a process restart. After an update is visible at
 the mounted path it is checked every 250 ms; Kubernetes Secret projection
@@ -38,10 +43,15 @@ append-only audit backend is deployed.
 ## Upgrade and rollback
 
 Build and tag both images with the same release version, capture their registry
-digests, and deploy those digests from an operator-owned Kustomize overlay. Do
-not deploy the checked-in base directly for production; it uses sample tags.
-Apply the overlay, wait for readiness, then run an allow, deny, and audit verification smoke
-test. Roll back with kubectl rollout undo if readiness or audit checks fail.
+digests, and deploy those digests from an operator-owned Kustomize overlay. The
+production overlay is intentionally not checked in: registry names and digests,
+network policies, and ingress peers are environment-specific. Before using the
+`kubectl apply -k deploy/k8s/overlays/production` command above, create that
+directory and `kustomization.yaml` using the digest-pinning example in the
+[Kubernetes deployment guide](kubernetes.md#deploy). Do not deploy the checked-in
+base directly for production; it uses sample tags. Apply the completed overlay,
+wait for readiness, then run an allow, deny, and audit verification smoke test.
+Roll back with `kubectl rollout undo` if readiness or audit checks fail.
 Keep the policy ConfigMap, secrets, and audit volume across application
 upgrades. The full smoke-test, backup, and rollback procedure is in
 [Kubernetes operations](kubernetes.md).
