@@ -127,4 +127,23 @@ describe("schemas", () => {
     assert.equal(streamedResult.ok, false);
     if (!streamedResult.ok) assert.equal(streamedResult.status, 413);
   });
+
+  it("maps an incomplete request stream to HTTP 408 and cancels it", async () => {
+    let canceled = false;
+    const request = {
+      headers: new Headers(),
+      body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+        cancel() {
+          canceled = true;
+        },
+      }),
+    } as Request;
+    const result = await parseJsonBody(request, delegateSchema, 10);
+    assert.deepEqual(result, {
+      ok: false,
+      status: 408,
+      error: "request body read timed out",
+    });
+    assert.equal(canceled, true);
+  });
 });

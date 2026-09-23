@@ -11,6 +11,7 @@ export const API_REQUEST_BODY_TIMEOUT_MS = 5_000;
 export async function parseJsonBody<S extends z.ZodType>(
   request: Request,
   schema: S,
+  timeoutMs = API_REQUEST_BODY_TIMEOUT_MS,
 ): Promise<
   | { ok: true; data: z.infer<S> }
   | { ok: false; status: 400 | 408 | 413; error: string }
@@ -21,7 +22,7 @@ export async function parseJsonBody<S extends z.ZodType>(
       request,
       MAX_API_REQUEST_BYTES,
       "console request",
-      API_REQUEST_BODY_TIMEOUT_MS,
+      timeoutMs,
     );
   } catch (error) {
     if (
