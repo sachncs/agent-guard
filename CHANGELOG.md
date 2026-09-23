@@ -51,6 +51,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Resolve and validate a release tag before CI, run the reusable gate against
   that exact ref, and publish from the same tested tag for manual and tag-push
   releases.
+- Keep DPoP replay history intact when the bounded JTI tracker is full; reject
+  new proofs until entries expire, with an explicit capacity error and
+  configurable tracker limit.
 
 ### Hardening pass (v0.2.0 enterprise-readiness sweep)
 

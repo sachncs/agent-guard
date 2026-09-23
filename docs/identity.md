@@ -68,6 +68,14 @@ identity. These are not automatically enabled server authentication modes.
 Embedding applications must invoke the validator, map the validated claims to a
 `User` or `Agent` Cedar principal, and pass only trusted facts to evaluation.
 
+`DpopVerifier` replay tracking is process-local. Its default tracker retains
+up to 262,144 live proof identifiers; callers may choose another positive cap
+with `JtiTracker::with_capacity`. At capacity, new proofs fail closed with
+`DpopCapacityExceeded` until old entries expire. The tracker does not share
+replay state across processes and loses it on restart, so deployments requiring
+cluster-wide replay protection must provide a shared replay store in their
+embedding adapter; that backend is not part of the standalone PDP contract.
+
 ## Console OIDC
 
 The optional Next.js console uses OIDC Authorization Code + PKCE. Every signed

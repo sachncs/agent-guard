@@ -56,7 +56,8 @@ impl DpopVerifier {
     ///
     /// # Errors
     /// Returns `AuthError::DpopInvalid` on any structural, alg, or jkt
-    /// problem, and `AuthError::DpopReplay` on `jti` reuse.
+    /// problem, `AuthError::DpopReplay` on `jti` reuse, or
+    /// `AuthError::DpopCapacityExceeded` if replay tracking is full.
     pub fn verify(
         &self,
         dpop_header: &str,
@@ -505,6 +506,35 @@ mod tests {
             .verify(&dpop, "tok", "POST", "https://example.com/x", &jkt)
             .unwrap_err();
         assert!(matches!(err, AuthError::DpopReplay(_)));
+    }
+
+    #[test]
+    fn replay_tracker_capacity_fails_closed_for_new_proofs() {
+        let mut csprng = OsRng;
+        let signer = SigningKey::generate(&mut csprng);
+        let pub_bytes = signer.verifying_key().to_bytes();
+        let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pub_bytes);
+        let jkt = make_jkt(&pub_bytes);
+        let mut hasher = Sha256::new();
+        hasher.update(b"tok");
+        let ath = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());
+        let extras = format!(r#""ath":"{}""#, ath);
+        let tracker = Arc::new(JtiTracker::with_capacity(Duration::from_secs(60), 1).unwrap());
+        let verifier = DpopVerifier::new(tracker);
+        let first = make_dpop(&signer, &x, "first-proof", &extras);
+        let second = make_dpop(&signer, &x, "second-proof", &extras);
+
+        verifier
+            .verify(&first, "tok", "POST", "https://example.com/x", &jkt)
+            .unwrap();
+        assert!(matches!(
+            verifier.verify(&second, "tok", "POST", "https://example.com/x", &jkt),
+            Err(AuthError::DpopCapacityExceeded)
+        ));
+        assert!(matches!(
+            verifier.verify(&first, "tok", "POST", "https://example.com/x", &jkt),
+            Err(AuthError::DpopReplay(_))
+        ));
     }
 
     #[test]

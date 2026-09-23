@@ -1,116 +1,95 @@
 //! jti tracker for replay protection.
 //!
-//! Bucket-based: jtis are partitioned into time buckets of width
-//! `ttl / N_BUCKETS`. On each `check_and_record` call the bucket
-//! index for `now` is computed and the previous bucket is dropped
-//! wholesale — a single `HashMap::clear()` replaces the previous
-//! O(N) `HashMap::retain`. Memory is bounded by the number of
-//! distinct jtis arriving within the TTL window; lookup is O(1)
-//! per request.
-//!
-//! For deployments with very high `jti` cardinality, replace the
-//! inner `HashMap` with a probabilistic structure (e.g. cuckoo
-//! filter).
+//! Seen JTIs are stored with monotonic timestamps. Expired entries are
+//! periodically reaped, while duplicate lookups and insertions stay atomic
+//! under one mutex. A hard capacity bounds memory; when full, new proofs are
+//! rejected instead of discarding live replay history.
 
 use crate::error::Result;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-/// Number of time buckets per TTL window. Each bucket covers
-/// `ttl / N_BUCKETS`; on rotation we drop the oldest bucket.
-const N_BUCKETS: usize = 4;
+/// Maximum number of live proof identifiers retained by one tracker.
+const DEFAULT_MAX_ENTRIES: usize = 262_144;
+/// Opportunistic expiry sweep interval as a fraction of the replay TTL.
+const SWEEP_DIVISOR: u32 = 4;
+
+struct JtiState {
+    seen: HashMap<[u8; 16], Instant>,
+    last_sweep: Instant,
+}
 
 /// In-memory tracker of seen `jti` values.
 pub struct JtiTracker {
-    /// One `HashMap` per bucket. Old buckets are cleared in O(1).
-    buckets: [Mutex<HashMap<[u8; 16], ()>>; N_BUCKETS],
-    /// TTL per jti entry.
+    state: Mutex<JtiState>,
     ttl: Duration,
-    /// Last rotation timestamp (used to compute bucket index).
-    last_rotation: Mutex<Instant>,
-    /// Tracked jti count across all buckets (cached).
-    count: Mutex<usize>,
-    /// Maximum entries per bucket before forced rotation.
-    per_bucket_cap: usize,
+    max_entries: usize,
+    sweep_interval: Duration,
 }
 
 impl JtiTracker {
     pub fn new(ttl: Duration) -> Self {
-        // Cap per bucket: ttl is the upper bound on lifetime; bound the
-        // high-cardinality attack surface by capping bucket size.
-        // 65k entries × 16 bytes = ~1 MiB per bucket; well under any
-        // reasonable memory budget.
-        const DEFAULT_PER_BUCKET_CAP: usize = 65_536;
+        Self::build(ttl, DEFAULT_MAX_ENTRIES)
+    }
+
+    /// Construct a tracker with an explicit live-entry limit.
+    ///
+    /// The default [`Self::new`] limit is 262,144 identifiers. Capacity
+    /// exhaustion rejects new proofs; it never evicts unexpired replay state.
+    pub fn with_capacity(ttl: Duration, max_entries: usize) -> Result<Self> {
+        if max_entries == 0 {
+            return Err(crate::error::AuthError::DpopInvalid(
+                "JTI tracker capacity must be positive".into(),
+            ));
+        }
+        Ok(Self::build(ttl, max_entries))
+    }
+
+    fn build(ttl: Duration, max_entries: usize) -> Self {
+        let now = Instant::now();
         Self {
-            buckets: std::array::from_fn(|_| Mutex::new(HashMap::new())),
+            state: Mutex::new(JtiState {
+                seen: HashMap::new(),
+                last_sweep: now,
+            }),
             ttl,
-            last_rotation: Mutex::new(Instant::now()),
-            count: Mutex::new(0),
-            per_bucket_cap: DEFAULT_PER_BUCKET_CAP,
+            max_entries,
+            sweep_interval: ttl / SWEEP_DIVISOR,
         }
     }
 
-    /// Compute the bucket index for `now`. Updates the rotation
-    /// timestamp and drops the oldest bucket when `now` crosses
-    /// into a new bucket window.
-    fn current_bucket(&self, now: Instant) -> usize {
-        let mut last = self.last_rotation.lock();
-        let elapsed = now.duration_since(*last);
-        let bucket_width = self.ttl / N_BUCKETS as u32;
-        if elapsed >= bucket_width {
-            // Rotate: drop the bucket we're about to overwrite, plus
-            // any stale ones since last rotation.
-            let steps = (elapsed.as_nanos() / bucket_width.as_nanos().max(1)) as usize;
-            let drop_count = steps.min(N_BUCKETS);
-            let cur_idx = ((now.duration_since(*last).as_nanos() / bucket_width.as_nanos().max(1))
-                as usize)
-                % N_BUCKETS;
-            for i in 0..drop_count {
-                let idx = (cur_idx + N_BUCKETS - i) % N_BUCKETS;
-                let mut g = self.buckets[idx].lock();
-                *self.count.lock() -= g.len();
-                g.clear();
-            }
-            *last = now;
-        }
-        let step = (now.duration_since(*last).as_nanos() / bucket_width.as_nanos().max(1)) as usize;
-        step % N_BUCKETS
-    }
-
-    /// Record `jti`. Returns Ok if not seen before, Err if it's a replay.
+    /// Record `jti`. Returns an error for replays or when capacity is exhausted.
     pub fn check_and_record(&self, jti: &[u8; 16]) -> Result<()> {
         let now = Instant::now();
-        let idx = self.current_bucket(now);
-        let mut guard = self.buckets[idx].lock();
-        // Forced rotation when a bucket fills up.
-        if guard.len() >= self.per_bucket_cap {
-            drop(guard);
-            // Force a full rotation: clear all buckets.
-            self.force_rotate(now);
-            let idx = self.current_bucket(now);
-            guard = self.buckets[idx].lock();
-        }
-        if guard.contains_key(jti) {
+        let mut state = self.state.lock();
+
+        if state
+            .seen
+            .get(jti)
+            .is_some_and(|seen_at| now.duration_since(*seen_at) < self.ttl)
+        {
             return Err(crate::error::AuthError::DpopReplay(hex::encode(jti)));
         }
-        guard.insert(*jti, ());
-        *self.count.lock() += 1;
+        state.seen.remove(jti);
+
+        if now.duration_since(state.last_sweep) >= self.sweep_interval {
+            state
+                .seen
+                .retain(|_, seen_at| now.duration_since(*seen_at) < self.ttl);
+            state.last_sweep = now;
+        }
+
+        if state.seen.len() >= self.max_entries {
+            return Err(crate::error::AuthError::DpopCapacityExceeded);
+        }
+
+        state.seen.insert(*jti, now);
         Ok(())
     }
 
-    fn force_rotate(&self, now: Instant) {
-        let mut last = self.last_rotation.lock();
-        for b in &self.buckets {
-            let mut g = b.lock();
-            *self.count.lock() -= g.len();
-            g.clear();
-        }
-        *last = now;
-    }
-
     pub fn len(&self) -> usize {
-        *self.count.lock()
+        self.state.lock().seen.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -146,8 +125,7 @@ mod tests {
         t.check_and_record(&[1u8; 16]).unwrap();
         // Sleep briefly so the entry is "old enough" to expire.
         std::thread::sleep(Duration::from_millis(10));
-        // The reaping is opportunistic — call check_and_record on a new jti,
-        // which triggers retain() that drops expired entries.
+        // The reaping is opportunistic — a new identifier triggers a sweep.
         t.check_and_record(&[2u8; 16]).unwrap();
         // Old entry should have been reaped.
         assert_eq!(t.len(), 1);
@@ -174,5 +152,65 @@ mod tests {
             }
             other => panic!("expected DpopReplay, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn capacity_exhaustion_does_not_discard_live_replay_history() {
+        let tracker = JtiTracker::with_capacity(Duration::from_secs(60), 2).unwrap();
+        let first = [1u8; 16];
+        tracker.check_and_record(&first).unwrap();
+        tracker.check_and_record(&[2u8; 16]).unwrap();
+
+        assert!(matches!(
+            tracker.check_and_record(&[3u8; 16]),
+            Err(AuthError::DpopCapacityExceeded)
+        ));
+        assert!(matches!(
+            tracker.check_and_record(&first),
+            Err(AuthError::DpopReplay(_))
+        ));
+        assert_eq!(tracker.len(), 2);
+    }
+
+    #[test]
+    fn expired_entries_are_reclaimed_before_capacity_rejection() {
+        let tracker = JtiTracker::with_capacity(Duration::from_millis(20), 1).unwrap();
+        tracker.check_and_record(&[1u8; 16]).unwrap();
+        std::thread::sleep(Duration::from_millis(25));
+
+        tracker.check_and_record(&[2u8; 16]).unwrap();
+        assert_eq!(tracker.len(), 1);
+    }
+
+    #[test]
+    fn explicit_capacity_must_be_positive() {
+        assert!(matches!(
+            JtiTracker::with_capacity(Duration::from_secs(60), 0),
+            Err(AuthError::DpopInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn concurrent_replays_are_recorded_atomically() {
+        let tracker = std::sync::Arc::new(JtiTracker::new(Duration::from_secs(60)));
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let threads = (0..16)
+            .map(|_| {
+                let tracker = std::sync::Arc::clone(&tracker);
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    tracker.check_and_record(&[42u8; 16]).is_ok()
+                })
+            })
+            .collect::<Vec<_>>();
+        let accepted = threads
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .filter(|accepted| *accepted)
+            .count();
+
+        assert_eq!(accepted, 1);
+        assert_eq!(tracker.len(), 1);
     }
 }

@@ -28,6 +28,8 @@ pub enum AuthError {
     DpopHtuMismatch { expected: String, actual: String },
     #[error("dpop replay detected (jti={0})")]
     DpopReplay(String),
+    #[error("dpop replay tracker capacity exceeded")]
+    DpopCapacityExceeded,
     #[error("spiffe fetch failed: {0}")]
     SpiffeFetch(String),
     #[error("spiffe identity expired")]
