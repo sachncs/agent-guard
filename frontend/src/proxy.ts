@@ -33,6 +33,13 @@ export async function proxy(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next(), process.env.NODE_ENV === "production", https);
   }
 
+  // Health endpoints are intentionally public so kubelet probes can reach
+  // them before/without an authenticated browser session. Readiness performs
+  // its own configuration and dependency checks in the route handler.
+  if (pathname.startsWith("/api/health/")) {
+    return applySecurityHeaders(NextResponse.next(), process.env.NODE_ENV === "production", https);
+  }
+
   const cfg = authConfig();
 
   if (!cfg.valid) {

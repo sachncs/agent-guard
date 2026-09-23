@@ -84,6 +84,16 @@ describe("rate limiter", () => {
     assert.match(await request!.text(), /EVAL/);
   });
 
+  it("checks Redis connectivity without consuming a rate-limit slot", async () => {
+    let body = "";
+    const store = new RedisRateLimitStore("https://redis.example", "secret", async (_url, init) => {
+      body = String(init?.body);
+      return new Response(JSON.stringify({ result: "PONG" }), { status: 200 });
+    });
+    await store.healthCheck();
+    assert.deepEqual(JSON.parse(body), ["PING"]);
+  });
+
   it("fails closed when the shared store is unavailable", async () => {
     const store = new RedisRateLimitStore("https://redis.example", "secret", async () => {
       throw new Error("offline");

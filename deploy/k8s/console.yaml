@@ -31,9 +31,9 @@ spec:
             - {name: policies, mountPath: /var/lib/agentguard/policies, readOnly: true}
             - {name: audit, mountPath: /var/lib/agentguard/audit, readOnly: true}
             - {name: delegation, mountPath: /etc/agentguard/delegation, readOnly: true}
-          readinessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 10}
-          livenessProbe: {httpGet: {path: /login, port: http}, periodSeconds: 20}
-          startupProbe: {httpGet: {path: /login, port: http}, failureThreshold: 30, periodSeconds: 2}
+          readinessProbe: {httpGet: {path: /api/health/ready, port: http}, periodSeconds: 10, timeoutSeconds: 5}
+          livenessProbe: {httpGet: {path: /api/health/live, port: http}, periodSeconds: 20}
+          startupProbe: {httpGet: {path: /api/health/live, port: http}, failureThreshold: 30, periodSeconds: 2}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
             limits: {cpu: 500m, memory: 512Mi}

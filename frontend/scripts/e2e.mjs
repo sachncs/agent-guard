@@ -21,7 +21,8 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import https from "node:https";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ const PDP_PORT = 3173;
 const REDIS_PORT = 3174;
 const BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
 const ISSUER = `http://127.0.0.1:${IDP_PORT}`;
-const REDIS_URL = `http://127.0.0.1:${REDIS_PORT}`;
+const REDIS_URL = `https://127.0.0.1:${REDIS_PORT}`;
 const REDIS_TOKEN = "e2e-redis-token";
 const TEST_CLIENT_IP = "198.51.100.42";
 
@@ -160,10 +161,23 @@ async function startPdp() {
 
 // -------------------------------------------- Redis-compatible REST store
 
-async function startRedisRest() {
+async function startRedisRest(tlsDir) {
   const sessions = new Map();
   const rateWindows = new Map();
-  const server = http.createServer(async (req, res) => {
+  let available = true;
+  const keyPath = join(tlsDir, "redis-key.pem");
+  const certPath = join(tlsDir, "redis-cert.pem");
+  const cert = spawnSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyPath,
+    "-out", certPath, "-days", "1", "-subj", "/CN=127.0.0.1",
+    "-addext", "subjectAltName=IP:127.0.0.1",
+  ], { stdio: "ignore" });
+  assert.equal(cert.status, 0, "OpenSSL creates the local Redis test certificate");
+  const server = https.createServer({ key: readFileSync(keyPath), cert: readFileSync(certPath) }, async (req, res) => {
+    if (!available) {
+      res.writeHead(503).end();
+      return;
+    }
     if (req.method !== "POST") {
       res.writeHead(405).end();
       return;
@@ -184,7 +198,9 @@ async function startRedisRest() {
     }
 
     let result;
-    if (command[0] === "SET" && command[3] === "EX") {
+    if (command[0] === "PING") {
+      result = "PONG";
+    } else if (command[0] === "SET" && command[3] === "EX") {
       sessions.set(command[1], {
         value: command[2],
         expiresAt: Date.now() + Number(command[4]) * 1000,
@@ -215,7 +231,13 @@ async function startRedisRest() {
     res.end(JSON.stringify({ result }));
   });
   await new Promise((r) => server.listen(REDIS_PORT, "127.0.0.1", r));
-  return server;
+  return {
+    server,
+    certPath,
+    setAvailable(value) {
+      available = value;
+    },
+  };
 }
 
 // -------------------------------------------------------------- fake CLI
@@ -308,9 +330,10 @@ async function waitForApp() {
 
 async function main() {
   const fakeBin = writeFakeCli();
+  const tlsDir = mkdtempSync(join(tmpdir(), "ag-e2e-tls-"));
   const idpServer = await startIdp();
   const pdp = await startPdp();
-  const redisServer = await startRedisRest();
+  const redis = await startRedisRest(tlsDir);
 
   const env = {
     ...process.env,
@@ -326,6 +349,7 @@ async function main() {
     AGENTGUARD_RATE_LIMIT_STORE: "redis",
     AGENTGUARD_RATE_LIMIT_REDIS_URL: REDIS_URL,
     AGENTGUARD_RATE_LIMIT_REDIS_TOKEN: REDIS_TOKEN,
+    NODE_EXTRA_CA_CERTS: redis.certPath,
     AGENTGUARD_ADMIN_VALUES: "agentguard-admins",
     AGENTGUARD_TRUST_PROXY_HEADERS: "1",
     AGENTGUARD_PDP_URL: `http://127.0.0.1:${PDP_PORT}`,
@@ -338,7 +362,7 @@ async function main() {
   const build = spawnSync("pnpm", ["exec", "next", "build", "--webpack"], { cwd: process.cwd(), stdio: "inherit" });
   assert.equal(build.status, 0, "next build succeeds");
 
-  const app = spawn("pnpm", ["exec", "next", "start", "-p", String(FRONTEND_PORT), "-H", "127.0.0.1"], {
+  const app = spawn(process.execPath, [".next/standalone/frontend/server.js"], {
     cwd: process.cwd(),
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -346,6 +370,9 @@ async function main() {
   app.stderr.on("data", (d) => process.env.E2E_DEBUG && process.stderr.write(d));
   try {
     await waitForApp();
+
+    assert.equal((await fetch(`${BASE}/api/health/live`)).status, 200);
+    assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200);
 
     // --- 1. unauthenticated posture -------------------------------------
     const anonJar = new Jar();
@@ -506,12 +533,20 @@ async function main() {
     const afterLogout = await req(admin, "/api/log");
     assert.equal(afterLogout.status, 401, "session dead after logout");
 
+    redis.setAvailable(false);
+    assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
+      "readiness fails when shared stores are unavailable");
+    redis.setAvailable(true);
+    assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
+      "readiness recovers when shared stores recover");
+
     console.log("\nALL E2E ASSERTIONS PASSED");
   } finally {
     app.kill("SIGTERM");
     idpServer.close();
     pdp.server.close();
-    redisServer.close();
+    redis.server.close();
+    rmSync(tlsDir, { recursive: true, force: true });
   }
 
   // --- 8. fail-closed without configuration -------------------------------
@@ -521,9 +556,9 @@ async function main() {
     if (k.startsWith("AGENTGUARD_")) delete bareEnv[k];
   }
   const barePort = 3181;
-  const bare = spawn("pnpm", ["exec", "next", "start", "-p", String(barePort), "-H", "127.0.0.1"], {
+  const bare = spawn(process.execPath, [".next/standalone/frontend/server.js"], {
     cwd: process.cwd(),
-    env: bareEnv,
+    env: { ...bareEnv, PORT: String(barePort), HOSTNAME: "127.0.0.1" },
     stdio: "ignore",
   });
   try {
@@ -539,6 +574,8 @@ async function main() {
     assert.ok(up, "bare instance started");
     const bareRoot = await fetch(`http://127.0.0.1:${barePort}/`);
     assert.equal(bareRoot.status, 503, "pages fail closed without auth config");
+    assert.equal((await fetch(`http://127.0.0.1:${barePort}/api/health/live`)).status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${barePort}/api/health/ready`)).status, 503);
     const bareApi = await fetch(`http://127.0.0.1:${barePort}/api/log`);
     assert.equal(bareApi.status, 503, "APIs fail closed without auth config");
     console.log("FAIL-CLOSED VERIFIED");

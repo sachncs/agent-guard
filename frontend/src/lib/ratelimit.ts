@@ -20,6 +20,7 @@ export interface RateLimitResult {
 
 export interface RateLimitStore {
   consume(key: string, limitPerMinute: number): Promise<RateLimitResult>;
+  healthCheck(): Promise<void>;
 }
 
 interface Bucket {
@@ -54,6 +55,8 @@ export class MemoryRateLimitStore implements RateLimitStore {
     bucket.count += 1;
     return { allowed: true, remaining: Math.max(0, limitPerMinute - bucket.count) };
   }
+
+  async healthCheck(): Promise<void> {}
 }
 
 /** Redis-compatible REST store using an atomic INCR + EXPIRE script. */
@@ -91,6 +94,18 @@ export class RedisRateLimitStore implements RateLimitStore {
       remaining: Math.max(0, limitPerMinute - payload.result),
     };
   }
+
+  async healthCheck(): Promise<void> {
+    const response = await this.fetchImpl(this.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(["PING"]),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!response.ok) throw new Error(`rate-limit store returned ${response.status}`);
+    const payload = (await response.json()) as { result?: unknown };
+    if (payload.result !== "PONG") throw new Error("rate-limit store health check failed");
+  }
 }
 
 const memoryStore = new MemoryRateLimitStore();
@@ -98,6 +113,11 @@ let configuredStore: RateLimitStore | undefined;
 
 export function configureRateLimitStore(store: RateLimitStore | undefined): void {
   configuredStore = store;
+}
+
+/** Check configuration and connectivity without consuming a rate-limit slot. */
+export async function checkRateLimitStore(): Promise<void> {
+  await activeStore().healthCheck();
 }
 
 function activeStore(): RateLimitStore {

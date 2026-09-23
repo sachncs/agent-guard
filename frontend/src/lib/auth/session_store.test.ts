@@ -27,7 +27,9 @@ describe("session stores", () => {
         signal = init?.signal as AbortSignal;
         const command = JSON.parse(String(init?.body)) as string[];
         commands.push(command);
-        const result = command[0] === "GET" ? JSON.stringify(claims) : "OK";
+        const result = command[0] === "GET"
+          ? JSON.stringify(claims)
+          : command[0] === "PING" ? "PONG" : "OK";
         return new Response(JSON.stringify({ result }), { status: 200 });
       },
     );
@@ -38,7 +40,8 @@ describe("session stores", () => {
       name: undefined,
     });
     await store.delete("sid");
-    assert.deepEqual(commands.map(([command]) => command), ["SET", "GET", "DEL"]);
+    await store.healthCheck();
+    assert.deepEqual(commands.map(([command]) => command), ["SET", "GET", "DEL", "PING"]);
     assert.equal(commands[0][4], "600");
     assert.ok(signal, "shared-store requests have a bounded timeout");
   });

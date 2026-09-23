@@ -55,7 +55,16 @@ production image includes the pinned `agentguard` CLI;
 mount the policy directory and audit file read-only, as the Kubernetes
 reference does, and keep both paths private to the console runtime.
 
-## Roles and failure behavior
+## Health probes and failure behavior
+
+The Kubernetes readiness probe uses `/api/health/ready`: it requires valid
+console auth configuration and successful bounded `PING` checks to both shared
+Redis-compatible stores. An unavailable or malformed store therefore removes
+the pod from service. Liveness and startup use `/api/health/live`, which only
+reports whether the process can serve HTTP; external outages do not trigger
+restart loops.
+
+## Roles
 
 Every authenticated user is a viewer. Only explicitly configured admin claim
 values can issue or verify delegation tokens. Expired or invalid sessions are

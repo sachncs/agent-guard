@@ -5,6 +5,7 @@ export interface SessionStore {
   put(id: string, claims: SessionClaims, ttlSeconds: number): Promise<void>;
   get(id: string): Promise<SessionClaims | null>;
   delete(id: string): Promise<void>;
+  healthCheck(): Promise<void>;
 }
 
 interface StoredSession {
@@ -46,6 +47,8 @@ export class MemorySessionStore implements SessionStore {
   async delete(id: string): Promise<void> {
     this.sessions.delete(id);
   }
+
+  async healthCheck(): Promise<void> {}
 }
 
 /** Redis-compatible REST session store (for example, Upstash Redis). */
@@ -114,5 +117,11 @@ export class RedisSessionStore implements SessionStore {
 
   async delete(id: string): Promise<void> {
     await this.command(["DEL", `${this.prefix}${id}`]);
+  }
+
+  async healthCheck(): Promise<void> {
+    if (await this.command(["PING"]) !== "PONG") {
+      throw new Error("session store health check failed");
+    }
   }
 }
