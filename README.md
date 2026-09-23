@@ -35,7 +35,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 
 - **Per-call authorization** — does this user/agent have permission to call this tool on this resource, right now, with this context?
 - **Tamper-evident audit trail** — hash-chained decision log, exportable to your SIEM in CEF/LEEF/ECS/JSONL
-- **Scoped delegation** — parent agent gives a sub-agent a *scoped subset* of permissions, time-boxed, and sender-constrained (DPoP)
+- **Delegation primitives** — signed, expiring grants carry action/resource scope; the consuming tool adapter must verify the grant and enforce that scope. DPoP validation is a library capability, not automatically bound to delegation tokens.
 - **Schema-validated policies** — security teams write Cedar, not imperative code; validated at authoring time
 - **Composable identity primitives** — API-key authentication in the standalone PDP plus library JWT, OIDC, DPoP, and SPIFFE validators; RFC 8725 BCP crypto and RFC 8693-style delegation without proprietary protocols
 - **Observable decisions** — Prometheus metrics, trace correlation, and pluggable telemetry sinks
@@ -180,7 +180,7 @@ const decision = client.check(
 );
 // raises AuthorizationDenied on deny; StepUpRequired when step-up is demanded
 
-// Scoped delegation (RFC 8693-style, JWS-signed, time-boxed):
+// Mint an RFC 8693-style, JWS-signed, time-boxed delegation grant:
 client.delegate(
   'Agent::"research"',
   'Agent::"summarizer"',
@@ -189,6 +189,12 @@ client.delegate(
   300,
 );
 ```
+
+Minting or signature verification alone does **not** authorize a tool call or
+enforce the grant's scope. The standalone PDP does not consume delegation
+tokens; the integration at the tool boundary must verify expiry, audience,
+sender binding, and action/resource scope before execution. See
+[identity and delegation](docs/identity.md) for the enforcement contract.
 
 ### Verify and audit
 

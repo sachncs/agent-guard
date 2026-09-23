@@ -72,6 +72,8 @@ requireText(".github/workflows/ci.yml", "Swatinem/rust-cache@v2");
 requireText(".github/workflows/ci.yml", "cargo test -p agentguard-server --all-features");
 requireText(".github/workflows/ci.yml", "cargo llvm-cov report --summary-only --fail-under-lines 80");
 requireText("README.md", "embedded library callers");
+requireText("README.md", "The standalone PDP does not consume delegation");
+requireText("README.md", "the integration at the tool boundary must verify expiry");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
 requireText("scripts/k8s-smoke.sh", "agentguard audit verify");
