@@ -60,6 +60,7 @@ const VIEWER_CLAIMS = { sub: "viewer-user", email: "viewer@example.com", groups:
 const ADMIN_CLAIMS = { sub: "admin-user", email: "admin@example.com", groups: ["agentguard-admins"] };
 
 async function startIdp(tls) {
+  let discoveryAvailable = true;
   const { publicKey, privateKey } = await generateKeyPair("RS256", {
     extractable: true,
   });
@@ -71,6 +72,11 @@ async function startIdp(tls) {
   const server = https.createServer(tls, async (req, res) => {
     const url = new URL(req.url, ISSUER);
     if (url.pathname === "/.well-known/openid-configuration") {
+      if (!discoveryAvailable) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "private issuer diagnostic" }));
+        return;
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -125,7 +131,12 @@ async function startIdp(tls) {
     res.writeHead(404).end();
   });
   await new Promise((r) => server.listen(IDP_PORT, "127.0.0.1", r));
-  return server;
+  return {
+    server,
+    setDiscoveryAvailable(value) {
+      discoveryAvailable = value;
+    },
+  };
 }
 
 // ---------------------------------------------------------------- fake PDP
@@ -361,7 +372,7 @@ async function main() {
   const fakeBin = writeFakeCli();
   const tlsDir = mkdtempSync(join(tmpdir(), "ag-e2e-tls-"));
   const tls = createTestTls(tlsDir);
-  const idpServer = await startIdp(tls);
+  const idp = await startIdp(tls);
   const pdp = await startPdp();
   const redis = await startRedisRest(tls);
 
@@ -418,6 +429,19 @@ async function main() {
       body: "{}",
     });
     assert.equal(del401.status, 401);
+
+    idp.setDiscoveryAvailable(false);
+    const idpFailure = await req(new Jar(), "/api/auth/login");
+    assert.equal(idpFailure.status, 502, "OIDC discovery failures return a gateway error");
+    const idpFailureBody = await idpFailure.json();
+    assert.equal(idpFailureBody.kind, "idp_error");
+    assert.equal(
+      idpFailureBody.error,
+      "The identity provider is temporarily unavailable. Try again shortly."
+    );
+    assert.match(idpFailureBody.reference, /^[0-9a-f-]{36}$/);
+    assert.doesNotMatch(JSON.stringify(idpFailureBody), /private issuer diagnostic/);
+    idp.setDiscoveryAvailable(true);
 
     // --- 2. viewer login -------------------------------------------------
     const viewer = new Jar();
@@ -608,7 +632,7 @@ async function main() {
     console.log("\nALL E2E ASSERTIONS PASSED");
   } finally {
     app.kill("SIGTERM");
-    idpServer.close();
+    idp.server.close();
     pdp.server.close();
     redis.server.close();
     rmSync(tlsDir, { recursive: true, force: true });
