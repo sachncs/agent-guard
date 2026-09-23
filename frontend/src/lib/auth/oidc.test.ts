@@ -6,6 +6,7 @@ import {
   buildLoginRedirect,
   completeLogin,
   discover,
+  LoginFailed,
   OidcError,
   resetDiscoveryCache,
 } from "./oidc.ts";
@@ -124,6 +125,16 @@ describe("OIDC discovery", () => {
     assert.equal(calls, 2);
   });
 
+  it("rejects oversized discovery responses before parsing", async () => {
+    globalThis.fetch = async () => new Response("{}", {
+      headers: { "content-length": String(64 * 1024 + 1) },
+    });
+    await assert.rejects(discover(config), {
+      name: OidcError.name,
+      message: "discovery document is invalid or exceeds the size limit",
+    });
+  });
+
   it("reuses the JWKS resolver across login callbacks", async () => {
     const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
     const jwk = await exportJWK(publicKey);
@@ -138,6 +149,7 @@ describe("OIDC discovery", () => {
     let includeIssuedAt = true;
     let includeExpiration = true;
     let issuedAtOffsetSeconds = 0;
+    let oversizedTokenResponse = false;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -148,6 +160,11 @@ describe("OIDC discovery", () => {
         });
       }
       if (url.pathname === "/token" && init?.method === "POST") {
+        if (oversizedTokenResponse) {
+          return new Response("{}", {
+            headers: { "content-length": String(256 * 1024 + 1) },
+          });
+        }
         const nonce = nonces[tokenCalls++];
         const claims = {
           sub: tokenSubject,
@@ -191,6 +208,13 @@ describe("OIDC discovery", () => {
         redirectUri,
       );
     };
+    const oversizedLogin = await buildLoginRedirect(config, redirectUri);
+    oversizedTokenResponse = true;
+    await assert.rejects(
+      complete(oversizedLogin, "oversized-token"),
+      (error: unknown) => error instanceof LoginFailed && error.message === "token endpoint returned an invalid response",
+    );
+    oversizedTokenResponse = false;
     assert.equal((await complete(first, "first-code")).sub, "oidc-user");
     assert.equal((await complete(second, "second-code")).sub, "oidc-user");
 

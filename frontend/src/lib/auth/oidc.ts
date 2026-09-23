@@ -6,12 +6,14 @@
  */
 
 import {
+  customFetch,
   SignJWT,
   base64url,
   createRemoteJWKSet,
   jwtVerify,
 } from "jose";
 import { z } from "zod";
+import { readBoundedJson } from "../bounded_json";
 
 import type { AuthConfig } from "./config";
 import type { Role } from "./rbac";
@@ -47,6 +49,9 @@ interface CacheEntry {
 const DISCOVERY_TTL_MS = 10 * 60 * 1000;
 const MAX_DISCOVERY_CACHE_ENTRIES = 64;
 const MAX_JWKS_CACHE_ENTRIES = 64;
+const MAX_DISCOVERY_RESPONSE_BYTES = 64 * 1024;
+const MAX_TOKEN_RESPONSE_BYTES = 256 * 1024;
+const MAX_JWKS_RESPONSE_BYTES = 256 * 1024;
 
 const discoveryCache = new Map<string, CacheEntry>();
 const discoveryInFlight = new Map<string, Promise<DiscoveredEndpoints>>();
@@ -67,7 +72,18 @@ function remoteJwks(uri: string): ReturnType<typeof createRemoteJWKSet> {
     return cached;
   }
 
-  const resolver = createRemoteJWKSet(new URL(uri));
+  const resolver = createRemoteJWKSet(new URL(uri), {
+    [customFetch]: async (url, options) => {
+      const response = await fetch(url, {
+        ...options,
+        cache: "no-store",
+        redirect: "error",
+      });
+      if (response.status !== 200) return response;
+      const jwks = await readBoundedJson(response, MAX_JWKS_RESPONSE_BYTES, "OIDC JWKS");
+      return Response.json(jwks);
+    },
+  });
   jwksCache.set(uri, resolver);
   if (jwksCache.size > MAX_JWKS_CACHE_ENTRIES) {
     const oldestUri = jwksCache.keys().next().value;
@@ -102,7 +118,13 @@ export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints>
     if (!res.ok) {
       throw new OidcError(`discovery failed: issuer returned HTTP ${res.status}`);
     }
-    const parsed = discoverySchema.safeParse(await res.json());
+    let document: unknown;
+    try {
+      document = await readBoundedJson(res, MAX_DISCOVERY_RESPONSE_BYTES, "OIDC discovery");
+    } catch {
+      throw new OidcError("discovery document is invalid or exceeds the size limit");
+    }
+    const parsed = discoverySchema.safeParse(document);
     if (!parsed.success) {
       throw new OidcError("discovery document missing required endpoints");
     }
@@ -277,7 +299,13 @@ export async function completeLogin(
   if (!tokenRes.ok) {
     throw new LoginFailed(`token endpoint returned HTTP ${tokenRes.status}`);
   }
-  const parsedTokens = tokenResponseSchema.safeParse(await tokenRes.json());
+  let tokenDocument: unknown;
+  try {
+    tokenDocument = await readBoundedJson(tokenRes, MAX_TOKEN_RESPONSE_BYTES, "OIDC token");
+  } catch {
+    throw new LoginFailed("token endpoint returned an invalid response");
+  }
+  const parsedTokens = tokenResponseSchema.safeParse(tokenDocument);
   if (!parsedTokens.success) {
     throw new LoginFailed("token response missing id_token");
   }
