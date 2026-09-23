@@ -133,6 +133,8 @@ kubectl -n "$namespace" exec "$pod" -- test -s /var/lib/agentguard/audit/decisio
 kubectl -n "$namespace" exec "$pod" -- agentguard audit verify \
   --audit /var/lib/agentguard/audit/decisions.jsonl \
   --secret-file /etc/agentguard/secrets/chain-secret
+audit_records_before_upgrade=$(kubectl -n "$namespace" exec "$pod" -- \
+  wc -l /var/lib/agentguard/audit/decisions.jsonl | tr -d '[:space:]')
 
 # Exercise graceful replacement and a real rollback operation using the same
 # verified image under a new immutable tag.
@@ -144,5 +146,16 @@ kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
 pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
 kubectl -n "$namespace" delete pod "$pod" --wait=false
 kubectl -n "$namespace" rollout status deployment/agentguard-pdp --timeout=180s
+pod=$(kubectl -n "$namespace" get pods -l app=agentguard-pdp -o jsonpath='{.items[0].metadata.name}')
+audit_records_after_recovery=$(kubectl -n "$namespace" exec "$pod" -- \
+  wc -l /var/lib/agentguard/audit/decisions.jsonl | tr -d '[:space:]')
+[[ "$audit_records_after_recovery" == "$audit_records_before_upgrade" ]] || {
+  echo "audit record count changed across upgrade/rollback/pod replacement " \
+    "($audit_records_before_upgrade -> $audit_records_after_recovery)" >&2
+  exit 1
+}
+kubectl -n "$namespace" exec "$pod" -- agentguard audit verify \
+  --audit /var/lib/agentguard/audit/decisions.jsonl \
+  --secret-file /etc/agentguard/secrets/chain-secret
 
 echo "Kubernetes PDP smoke contract passed"

@@ -44,6 +44,10 @@ if (failures.length === 0) {
     'authorization: Bearer $raw_key',
     'api-key revoke',
     '[[ "$status" == 401 ]]',
+    "audit_records_before_upgrade=",
+    "audit_records_after_recovery=",
+    'agentguard audit verify',
+    "audit record count changed across upgrade/rollback/pod replacement",
   ]) {
     const present = smoke.includes(value);
     if (value === 'AGENTGUARD_AUTH=disabled' ? present : !present) {
