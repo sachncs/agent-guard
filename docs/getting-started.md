@@ -125,16 +125,24 @@ client.check(
 );
 ```
 
+The SDK is CLI-backed and evaluates against the local policy store; it does
+not discover or call a remote PDP. `Client.check` is synchronous, so do not
+call it from latency-sensitive or concurrent server handlers. The SDK does not
+automatically intercept framework tools: call it in your tool handler, or
+implement an adapter that guards every execution path.
+
 For Strands Agents (TypeScript), see
-[`examples/strands-tool-authz`](../examples/strands-tool-authz/) — a
-`BeforeToolCallEvent` intervention authorizes every tool call against the
-AuthZEN PDP and cancels denied calls.
+[`examples/strands-tool-authz`](../examples/strands-tool-authz/) — its
+`guarded` wrapper calls the standalone AuthZEN PDP before each wrapped tool
+callback and fails closed when the PDP denies or cannot be reached.
 
 Prefer no SDK at all? Run `agentguard-server` and POST to
 `/access/v1/evaluation` from any language — every decision still lands in
 the audit log.
 
-Every call is now authorized. Denials raise `AuthorizationDenied`.
+Only calls routed through the guard are authorized. Denials raise
+`AuthorizationDenied`; make sure retries, alternate tool paths, and delegated
+calls use the same enforcement boundary.
 
 ### 6. Test interactively
 
@@ -146,12 +154,12 @@ Where `request.json` looks like:
 
 ```json
 {
-  "principal": {"type": "user", "uid": "alice"},
-  "action": {"tool": "send_email"},
-  "resource": {"entity_type": "Mailbox", "uid": "alice@acme"},
+  "principal": {"type": "agent", "uid": "research"},
+  "action": {"tool": "repo_read"},
+  "resource": {"entity_type": "Repository", "uid": "demo"},
   "context": {
-    "args": {"to": "[email protected]", "subject": "hi", "body": "yo"},
-    "session": {"ip": "10.0.0.1", "user_agent": "...", "mfa": true, "ts": 0}
+    "args": {"repo": "demo"},
+    "session": {"ip": "127.0.0.1"}
   }
 }
 ```
@@ -170,14 +178,16 @@ agentguard log tail --n 20
 
 ### 8. Run as a server (multi-process / networked)
 
-`agentguard-server` exposes the same engine over AuthZEN HTTP +
-gRPC. The CLI auto-detects a running server when `AGENTGUARD_URL`
-is set and shells out to it; otherwise it falls back to in-process
-evaluation.
+`agentguard-server` exposes a separate AuthZEN HTTP API over the same core
+engine. CLI `authorize` and `sim` always evaluate in-process; setting
+`AGENTGUARD_URL` does not turn them into remote clients. Use an HTTP client or
+an adapter such as the Strands example to call a remote PDP.
 
 ```bash
-export AGENTGUARD_URL=http://localhost:8443/access/v1/evaluation
-agentguard authorize request.json
+curl --fail-with-body http://127.0.0.1:8443/access/v1/evaluation \\
+  -H 'content-type: application/json' \\
+  -H 'authorization: Bearer <configured-api-key>' \\
+  -d '{"subject":{"type":"Agent","id":"research"},"action":{"type":"Action","id":"ToolCall::repo_read"},"resource":{"type":"Repository","id":"demo"},"context":{"repo":"demo","session":{"ip":"127.0.0.1"}}}'
 ```
 
 ### 9. Caching + policy changes
@@ -221,8 +231,11 @@ const token = client.delegate(
 subAgent.runWithCredentials({ agentguardToken: token });
 ```
 
-The sub-agent's authorization engine verifies the token before evaluating any
-request.
+The token is a signed grant, not automatic enforcement. The receiving
+application must verify its signature, expiry, audience, and sender binding,
+then enforce its action/resource scopes and confirm the parent was allowed to
+delegate them before the sub-agent executes a tool. The standalone PDP does not
+automatically consume delegation tokens.
 
 ## Writing Cedar policies
 

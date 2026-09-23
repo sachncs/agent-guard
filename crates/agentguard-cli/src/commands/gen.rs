@@ -245,3 +245,57 @@ fn strip_fences(s: &str) -> String {
     }
     s.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_content, strip_fences};
+    use serde_json::json;
+
+    #[test]
+    fn extracts_openai_chat_completion_content() {
+        let response = json!({
+            "choices": [{"message": {"content": "permit (principal, action, resource);"}}]
+        });
+        assert_eq!(
+            extract_content(&response, "openai").as_deref(),
+            Some("permit (principal, action, resource);")
+        );
+    }
+
+    #[test]
+    fn extracts_anthropic_message_content() {
+        let response = json!({"content": [{"text": "permit (principal, action, resource);"}]});
+        assert_eq!(
+            extract_content(&response, "anthropic").as_deref(),
+            Some("permit (principal, action, resource);")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_or_malformed_provider_responses() {
+        let response = json!({"choices": []});
+        assert_eq!(extract_content(&response, "openai"), None);
+        assert_eq!(extract_content(&response, "unknown"), None);
+    }
+
+    #[test]
+    fn strips_language_and_generic_markdown_fences() {
+        assert_eq!(
+            strip_fences("  ```cedar\npermit (principal, action, resource);\n```  "),
+            "permit (principal, action, resource);"
+        );
+        assert_eq!(
+            strip_fences("```\npermit (principal, action, resource);\n```"),
+            "permit (principal, action, resource);"
+        );
+    }
+
+    #[test]
+    fn leaves_unfenced_and_unterminated_content_intact() {
+        assert_eq!(
+            strip_fences(" permit (principal, action, resource); "),
+            "permit (principal, action, resource);"
+        );
+        assert_eq!(strip_fences("```cedar\npermit"), "```cedar\npermit");
+    }
+}
