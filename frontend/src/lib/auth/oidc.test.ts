@@ -1,7 +1,14 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { exportJWK, generateKeyPair, SignJWT, jwtVerify } from "jose";
 import type { AuthConfig } from "./config.ts";
-import { discover, OidcError, resetDiscoveryCache } from "./oidc.ts";
+import {
+  buildLoginRedirect,
+  completeLogin,
+  discover,
+  OidcError,
+  resetDiscoveryCache,
+} from "./oidc.ts";
 
 const config: AuthConfig = {
   oidc: {
@@ -44,5 +51,136 @@ describe("OIDC discovery", () => {
       name: OidcError.name,
       message: /HTTPS in production/,
     });
+  });
+
+  it("isolates cached endpoints by issuer and reuses each issuer's discovery", async () => {
+    const requested: string[] = [];
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      requested.push(url.href);
+      const host = url.hostname;
+      return Response.json({
+        authorization_endpoint: `https://${host}/authorize`,
+        token_endpoint: `https://${host}/token`,
+        jwks_uri: `https://${host}/jwks`,
+      });
+    };
+    const secondConfig: AuthConfig = {
+      ...config,
+      oidc: { ...config.oidc, issuer: "https://other-idp.example" },
+    };
+
+    const first = await discover(config);
+    const firstCached = await discover(config);
+    const second = await discover(secondConfig);
+
+    assert.equal(first.tokenEndpoint, "https://idp.example/token");
+    assert.deepEqual(firstCached, first);
+    assert.equal(second.tokenEndpoint, "https://other-idp.example/token");
+    assert.deepEqual(requested, [
+      "https://idp.example/.well-known/openid-configuration",
+      "https://other-idp.example/.well-known/openid-configuration",
+    ]);
+  });
+
+  it("coalesces concurrent cold discovery requests for one issuer", async () => {
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    globalThis.fetch = async (input) => {
+      calls += 1;
+      await gate;
+      const host = new URL(String(input)).hostname;
+      return Response.json({
+        authorization_endpoint: `https://${host}/authorize`,
+        token_endpoint: `https://${host}/token`,
+        jwks_uri: `https://${host}/jwks`,
+      });
+    };
+
+    const pending = Array.from({ length: 8 }, () => discover(config));
+    assert.equal(calls, 1);
+    release();
+    const results = await Promise.all(pending);
+    assert.equal(calls, 1);
+    assert.ok(results.every((result) => result.tokenEndpoint === "https://idp.example/token"));
+  });
+
+  it("does not cache failed discovery and retries on the next request", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (calls === 1) return new Response("unavailable", { status: 503 });
+      return Response.json({
+        authorization_endpoint: "https://idp.example/authorize",
+        token_endpoint: "https://idp.example/token",
+        jwks_uri: "https://idp.example/jwks",
+      });
+    };
+
+    await assert.rejects(discover(config), /issuer returned HTTP 503/);
+    const recovered = await discover(config);
+    assert.equal(recovered.tokenEndpoint, "https://idp.example/token");
+    assert.equal(calls, 2);
+  });
+
+  it("reuses the JWKS resolver across login callbacks", async () => {
+    const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
+    const jwk = await exportJWK(publicKey);
+    jwk.kid = "oidc-test-key";
+    jwk.alg = "RS256";
+    const nonces: string[] = [];
+    let tokenCalls = 0;
+    let jwksCalls = 0;
+    globalThis.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/.well-known/openid-configuration") {
+        return Response.json({
+          authorization_endpoint: "https://idp.example/authorize",
+          token_endpoint: "https://idp.example/token",
+          jwks_uri: "https://idp.example/jwks",
+        });
+      }
+      if (url.pathname === "/token" && init?.method === "POST") {
+        const nonce = nonces[tokenCalls++];
+        const idToken = await new SignJWT({ sub: "oidc-user", nonce })
+          .setProtectedHeader({ alg: "RS256", kid: "oidc-test-key" })
+          .setIssuer(config.oidc.issuer)
+          .setAudience(config.oidc.clientId)
+          .setIssuedAt()
+          .setExpirationTime("5m")
+          .sign(privateKey);
+        return Response.json({ id_token: idToken });
+      }
+      if (url.pathname === "/jwks") {
+        jwksCalls += 1;
+        return Response.json({ keys: [jwk] });
+      }
+      throw new Error(`unexpected OIDC request: ${url.href}`);
+    };
+
+    const redirectUri = "https://console.example/api/auth/callback";
+    const first = await buildLoginRedirect(config, redirectUri);
+    const firstState = (await jwtVerify(first.stateJwt, config.sessionSecret)).payload;
+    const second = await buildLoginRedirect(config, redirectUri);
+    const secondState = (await jwtVerify(second.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(firstState.nonce), String(secondState.nonce));
+
+    const complete = async (
+      login: Awaited<ReturnType<typeof buildLoginRedirect>>,
+      code: string,
+    ) => {
+      const state = new URL(login.authorizeUrl).searchParams.get("state");
+      return completeLogin(
+        config,
+        new URLSearchParams({ code, state: state ?? "" }),
+        login.stateJwt,
+        redirectUri,
+      );
+    };
+    assert.equal((await complete(first, "first-code")).sub, "oidc-user");
+    assert.equal((await complete(second, "second-code")).sub, "oidc-user");
+    assert.equal(tokenCalls, 2);
+    assert.equal(jwksCalls, 1, "the cached jose resolver reuses the fetched key set");
   });
 });

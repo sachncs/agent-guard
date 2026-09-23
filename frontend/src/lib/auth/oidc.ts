@@ -45,51 +45,101 @@ interface CacheEntry {
 }
 
 const DISCOVERY_TTL_MS = 10 * 60 * 1000;
+const MAX_DISCOVERY_CACHE_ENTRIES = 64;
+const MAX_JWKS_CACHE_ENTRIES = 64;
 
-let cache: CacheEntry | undefined;
+const discoveryCache = new Map<string, CacheEntry>();
+const discoveryInFlight = new Map<string, Promise<DiscoveredEndpoints>>();
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 /** Test hook: drop the memoized discovery document. */
 export function resetDiscoveryCache(): void {
-  cache = undefined;
+  discoveryCache.clear();
+  discoveryInFlight.clear();
+  jwksCache.clear();
+}
+
+function remoteJwks(uri: string): ReturnType<typeof createRemoteJWKSet> {
+  const cached = jwksCache.get(uri);
+  if (cached) {
+    jwksCache.delete(uri);
+    jwksCache.set(uri, cached);
+    return cached;
+  }
+
+  const resolver = createRemoteJWKSet(new URL(uri));
+  jwksCache.set(uri, resolver);
+  if (jwksCache.size > MAX_JWKS_CACHE_ENTRIES) {
+    const oldestUri = jwksCache.keys().next().value;
+    if (oldestUri) jwksCache.delete(oldestUri);
+  }
+  return resolver;
 }
 
 /** Fetch (and cache) the issuer's OIDC discovery document. */
 export async function discover(config: AuthConfig): Promise<DiscoveredEndpoints> {
-  if (cache && Date.now() - cache.fetchedAt < DISCOVERY_TTL_MS) {
-    return cache.endpoints;
+  const issuer = config.oidc.issuer.replace(/\/+$/, "");
+  const now = Date.now();
+  const cached = discoveryCache.get(issuer);
+  if (cached && now - cached.fetchedAt < DISCOVERY_TTL_MS) {
+    // Maintain LRU order while keeping the TTL anchored to fetch time.
+    discoveryCache.delete(issuer);
+    discoveryCache.set(issuer, cached);
+    return cached.endpoints;
   }
-  const url = `${config.oidc.issuer}/.well-known/openid-configuration`;
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(5_000),
-    cache: "no-store",
-    redirect: "error",
-  });
-  if (!res.ok) {
-    throw new OidcError(`discovery failed: issuer returned HTTP ${res.status}`);
+  if (cached) discoveryCache.delete(issuer);
+
+  const inFlight = discoveryInFlight.get(issuer);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const url = `${issuer}/.well-known/openid-configuration`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5_000),
+      cache: "no-store",
+      redirect: "error",
+    });
+    if (!res.ok) {
+      throw new OidcError(`discovery failed: issuer returned HTTP ${res.status}`);
+    }
+    const parsed = discoverySchema.safeParse(await res.json());
+    if (!parsed.success) {
+      throw new OidcError("discovery document missing required endpoints");
+    }
+    const doc = parsed.data;
+    const endpoints: DiscoveredEndpoints = {
+      authorizationEndpoint: doc.authorization_endpoint,
+      tokenEndpoint: doc.token_endpoint,
+      jwksUri: doc.jwks_uri,
+      endSessionEndpoint: doc.end_session_endpoint,
+    };
+    for (const endpoint of [
+      endpoints.authorizationEndpoint,
+      endpoints.tokenEndpoint,
+      endpoints.jwksUri,
+      endpoints.endSessionEndpoint,
+    ]) {
+      if (!endpoint) continue;
+      const issue = validateOidcEndpoint(endpoint);
+      if (issue) throw new OidcError(`discovery endpoint ${issue}`);
+    }
+
+    discoveryCache.delete(issuer);
+    discoveryCache.set(issuer, { endpoints, fetchedAt: Date.now() });
+    if (discoveryCache.size > MAX_DISCOVERY_CACHE_ENTRIES) {
+      const oldestIssuer = discoveryCache.keys().next().value;
+      if (oldestIssuer) discoveryCache.delete(oldestIssuer);
+    }
+    return endpoints;
+  })();
+  discoveryInFlight.set(issuer, request);
+  try {
+    return await request;
+  } finally {
+    if (discoveryInFlight.get(issuer) === request) {
+      discoveryInFlight.delete(issuer);
+    }
   }
-  const parsed = discoverySchema.safeParse(await res.json());
-  if (!parsed.success) {
-    throw new OidcError("discovery document missing required endpoints");
-  }
-  const doc = parsed.data;
-  const endpoints: DiscoveredEndpoints = {
-    authorizationEndpoint: doc.authorization_endpoint,
-    tokenEndpoint: doc.token_endpoint,
-    jwksUri: doc.jwks_uri,
-    endSessionEndpoint: doc.end_session_endpoint,
-  };
-  for (const endpoint of [
-    endpoints.authorizationEndpoint,
-    endpoints.tokenEndpoint,
-    endpoints.jwksUri,
-    endpoints.endSessionEndpoint,
-  ]) {
-    if (!endpoint) continue;
-    const issue = validateOidcEndpoint(endpoint);
-    if (issue) throw new OidcError(`discovery endpoint ${issue}`);
-  }
-  cache = { endpoints, fetchedAt: Date.now() };
-  return endpoints;
 }
 
 /** Error raised for OIDC protocol/discovery failures. */
@@ -233,7 +283,7 @@ export async function completeLogin(
   }
   const tokens = parsedTokens.data;
 
-  const JWKS = createRemoteJWKSet(new URL(endpoints.jwksUri));
+  const JWKS = remoteJwks(endpoints.jwksUri);
   let claims: Record<string, unknown>;
   try {
     ({ payload: claims } = await jwtVerify(tokens.id_token, JWKS, {
