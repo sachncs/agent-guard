@@ -14,18 +14,23 @@ export async function POST(request: Request) {
     );
   }
   const insecure = cfg.valid ? cfg.config.insecureCookie : true;
+  let revocationFailed = false;
   if (cfg.valid) {
-    await revokeSession(
-      cfg.config.sessionSecret,
-      parseCookieHeader(request.headers.get("cookie"))[SESSION_COOKIE],
-      cfg.config.sessionStore,
-    );
+    try {
+      await revokeSession(
+        cfg.config.sessionSecret,
+        parseCookieHeader(request.headers.get("cookie"))[SESSION_COOKIE],
+        cfg.config.sessionStore,
+      );
+    } catch {
+      revocationFailed = true;
+    }
   }
 
   return new Response(null, {
-    status: 302,
+    status: 303,
     headers: {
-      Location: "/login",
+      Location: revocationFailed ? "/login?error=session_revoke_failed" : "/login",
       "Cache-Control": "no-store",
       "Set-Cookie": serializeSetCookie(SESSION_COOKIE, "", {
         maxAge: 0,

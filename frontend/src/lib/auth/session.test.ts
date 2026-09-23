@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   SESSION_COOKIE,
   parseCookieHeader,
+  revokeSession,
   serializeSetCookie,
   signSession,
   verifySession,
@@ -68,6 +69,31 @@ describe("session tokens", () => {
     };
 
     assert.deepEqual(await verifySession(SECRET, token, mismatchedStore), { ok: false });
+  });
+
+  it("surfaces shared-store revocation failures for valid sessions", async () => {
+    const token = await signSession(SECRET, { sub: "u", admin: false });
+    const failingStore = {
+      put: async () => {},
+      get: async () => null,
+      delete: async () => { throw new Error("session store unavailable"); },
+      healthCheck: async () => {},
+    };
+
+    await assert.rejects(revokeSession(SECRET, token, failingStore), /session store unavailable/);
+  });
+
+  it("keeps logout idempotent for invalid tokens without touching shared storage", async () => {
+    let deleteCalls = 0;
+    const store = {
+      put: async () => {},
+      get: async () => null,
+      delete: async () => { deleteCalls += 1; },
+      healthCheck: async () => {},
+    };
+
+    await revokeSession(SECRET, "invalid-token", store);
+    assert.equal(deleteCalls, 0);
   });
 });
 

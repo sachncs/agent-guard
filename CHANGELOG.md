@@ -41,6 +41,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Require fresh OIDC ID-token `exp`, `iat`, and valid `sub` claims; validate
   the authorized party against the console client for multi-audience tokens
   and whenever `azp` is present.
+- Surface shared-session revocation failures on logout instead of silently
+  treating a failed Redis delete as a successful server-side revocation.
 - Upgrade the optional SPIFFE Workload API client and HTTP TLS server adapter,
   remove the unused gRPC TLS feature, and eliminate the deferred RustSec
   advisory ignores so dependency auditing is blocking without exceptions.

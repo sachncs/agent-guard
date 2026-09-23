@@ -20,7 +20,9 @@ export default async function LoginPage({
         <CardContent className="space-y-4">
           {error && (
             <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Sign-in failed. Check the console logs or try again.
+              {error === "session_revoke_failed"
+                ? "Your browser session was cleared, but the shared session store could not confirm server-side revocation. A copied token may remain usable until it expires; contact an administrator."
+                : "Sign-in failed. Check the console logs or try again."}
             </p>
           )}
           <a

@@ -95,16 +95,20 @@ export async function revokeSession(
   store?: SessionStore,
 ): Promise<void> {
   if (!store || !token) return;
+  let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
   try {
-    const { payload } = await jwtVerify(token, secret, {
+    ({ payload } = await jwtVerify(token, secret, {
       issuer: "agentguard-console",
       audience: "agentguard-console",
       algorithms: ["HS256"],
-    });
-    if (typeof payload.jti === "string") await store.delete(payload.jti);
+    }));
   } catch {
-    // Logout is idempotent; clearing the cookie is sufficient for invalid JWTs.
+    // Invalid or expired tokens are already unusable, so logout stays idempotent.
+    return;
   }
+  // Do not hide shared-store failures: clearing only this browser's cookie
+  // does not revoke a stolen token that may still be valid elsewhere.
+  if (typeof payload.jti === "string") await store.delete(payload.jti);
 }
 
 /** Minimal RFC 6265 parser for the request Cookie header. */

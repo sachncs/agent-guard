@@ -15,7 +15,8 @@
  *   4. Validation errors return 400, rate limits return 429
  *   5. Simulator decisions come from the PDP over HTTP
  *   6. Without auth configuration the whole console fails closed (503)
- *   7. Chromium verifies the public brand mark, responsive navigation, dark
+ *   7. Logout reports shared-store revocation failures without claiming success
+ *   8. Chromium verifies the public brand mark, responsive navigation, dark
  *      theme, viewport overflow, and reduced-motion behavior in production
  *
  * Run: pnpm --filter frontend exec node scripts/e2e.mjs
@@ -397,6 +398,7 @@ async function startRedisRest(tls) {
   const sessions = new Map();
   const rateWindows = new Map();
   let available = true;
+  let failDelete = false;
   const server = https.createServer(tls, async (req, res) => {
     if (!available) {
       res.writeHead(503).end();
@@ -435,6 +437,10 @@ async function startRedisRest(tls) {
       if (stored && stored.expiresAt <= Date.now()) sessions.delete(command[1]);
       result = stored && stored.expiresAt > Date.now() ? stored.value : null;
     } else if (command[0] === "DEL") {
+      if (failDelete) {
+        res.writeHead(503).end();
+        return;
+      }
       result = sessions.delete(command[1]) ? 1 : 0;
     } else if (command[0] === "EVAL" && command[2] === "1") {
       const key = command[3];
@@ -461,6 +467,9 @@ async function startRedisRest(tls) {
     server,
     setAvailable(value) {
       available = value;
+    },
+    setDeleteFailure(value) {
+      failDelete = value;
     },
   };
 }
@@ -1015,9 +1024,31 @@ async function main() {
       "cross-site logout does not revoke the session");
 
     const logout = await req(admin, "/api/auth/logout", { method: "POST" });
-    assert.equal(logout.status, 302);
+    assert.equal(logout.status, 303);
     const afterLogout = await req(admin, "/api/log");
     assert.equal(afterLogout.status, 401, "session dead after logout");
+
+    const revocationFailureAdmin = new Jar();
+    await login("admin", revocationFailureAdmin, tls.cert);
+    const copiedSession = new Jar();
+    copiedSession.cookies.set("ag_session", revocationFailureAdmin.cookies.get("ag_session"));
+    redis.setDeleteFailure(true);
+    const failedLogout = await req(revocationFailureAdmin, "/api/auth/logout", { method: "POST" });
+    assert.equal(failedLogout.status, 303);
+    assert.equal(
+      new URL(failedLogout.headers.get("location"), BASE).searchParams.get("error"),
+      "session_revoke_failed",
+      "logout must disclose that server-side revocation did not complete",
+    );
+    assert.equal((await req(copiedSession, "/api/log")).status, 200,
+      "a copied session remains active when the backing store rejects deletion");
+    const logoutErrorPage = await req(new Jar(), failedLogout.headers.get("location"));
+    assert.match(await logoutErrorPage.text(), /could not confirm server-side revocation/);
+    redis.setDeleteFailure(false);
+    const retriedLogout = await req(copiedSession, "/api/auth/logout", { method: "POST" });
+    assert.equal(retriedLogout.status, 303);
+    assert.equal((await req(copiedSession, "/api/log")).status, 401,
+      "a retry revokes the copied session after the shared store recovers");
 
     redis.setAvailable(false);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
