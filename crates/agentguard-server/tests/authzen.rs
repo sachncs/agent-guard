@@ -282,74 +282,6 @@ async fn readyz_returns_503_when_no_audit() {
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn readyz_fails_after_audit_storage_becomes_unavailable() {
-    let full = std::path::Path::new("/dev/full");
-    if !full.exists() {
-        return;
-    }
-    let dir = tempfile::tempdir().unwrap();
-    PolicyStore::open(dir.path())
-        .unwrap()
-        .write_policy("allow", "permit(principal, action, resource);")
-        .unwrap();
-    let audit_path = dir.path().join("audit.jsonl");
-    std::os::unix::fs::symlink(full, &audit_path).unwrap();
-    let state = build_state(
-        dir.path().to_path_buf(),
-        Some(audit_path),
-        Some(b"test-key".to_vec()),
-        AuthLayer::Disabled,
-    )
-    .await
-    .unwrap();
-    let app = router(state);
-
-    let initial_ready = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/readyz")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(initial_ready.status(), StatusCode::OK);
-
-    let body = serde_json::json!({
-        "subject": {"type": "User", "id": "alice"},
-        "action": {"type": "Action", "id": "read"},
-        "resource": {"type": "Document", "id": "doc"},
-        "context": {}
-    });
-    let failed_decision = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/access/v1/evaluation")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(failed_decision.status(), StatusCode::INTERNAL_SERVER_ERROR);
-
-    let after_failure = app
-        .oneshot(
-            Request::builder()
-                .uri("/readyz")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(after_failure.status(), StatusCode::SERVICE_UNAVAILABLE);
-}
-
 #[tokio::test]
 async fn evaluation_records_audit_entry() {
     // Each successful evaluation must produce exactly one audit log
@@ -812,13 +744,10 @@ async fn metrics_endpoint_renders_prometheus_text() {
 }
 
 #[tokio::test]
-async fn audit_failure_returns_500() {
-    // When audit is configured but the file can't be opened for
-    // write, the server must fail at build time (build_state
-    // surfaces the I/O error). The runtime 500 case is covered by
-    // a separate unit test below; this test exercises the
-    // build-time refusal which is the most common deployment
-    // misconfiguration.
+async fn audit_open_failure_fails_startup() {
+    // A special audit destination must be rejected before the server can
+    // become ready. A device symlink is deterministic even when the test
+    // process runs as root, which can bypass ordinary permission bits.
     let dir = tempfile::tempdir().unwrap();
     let store = PolicyStore::open(dir.path()).unwrap();
     store
@@ -826,22 +755,23 @@ async fn audit_failure_returns_500() {
         .unwrap();
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
+        let full = std::path::Path::new("/dev/full");
+        if !full.exists() {
+            return;
+        }
         let audit_path = dir.path().join("audit.jsonl");
-        std::fs::write(&audit_path, b"").unwrap();
-        std::fs::set_permissions(&audit_path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        std::os::unix::fs::symlink(full, &audit_path).unwrap();
         let result = build_state(
             dir.path().to_path_buf(),
-            Some(audit_path.clone()),
+            Some(audit_path),
             Some(b"test-key".to_vec()),
             _AuthLayer::Disabled,
         )
         .await;
-        let _ = std::fs::set_permissions(&audit_path, std::fs::Permissions::from_mode(0o600));
-        assert!(
-            result.is_err(),
-            "build_state must fail when audit log is unwritable"
-        );
+        let error = result
+            .err()
+            .expect("build_state must reject non-regular audit storage");
+        assert!(error.contains("regular file"), "unexpected error: {error}");
     }
     #[cfg(not(unix))]
     {
