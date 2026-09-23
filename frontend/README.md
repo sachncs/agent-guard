@@ -74,9 +74,9 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | *(required)* | Client secret (`client_secret_post`) |
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |
 | `AGENTGUARD_SESSION_STORE` | `memory` in development, `redis` in production | Shared session backend mode |
-| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential |
+| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `memory` in development, `redis` in production | Shared rate-limit backend mode |
-| `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential |
+| `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_TRUST_PROXY_HEADERS` | `0` in development; `1` required in production | Trust a reverse proxy that overwrites `X-Forwarded-For` with one client IP |
 | `AGENTGUARD_ADMIN_CLAIM` | `groups` | ID-token claim checked for admin membership |
 | `AGENTGUARD_ADMIN_VALUES` | *(empty ⇒ no admins)* | Comma-separated claim values granting admin |

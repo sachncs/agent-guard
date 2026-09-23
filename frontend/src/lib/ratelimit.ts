@@ -8,6 +8,7 @@
  */
 
 import { isIP } from "node:net";
+import { validateSharedStoreUrl } from "./shared_store_url.ts";
 
 const WINDOW_SECONDS = 60;
 const WINDOW_MS = WINDOW_SECONDS * 1000;
@@ -115,6 +116,8 @@ function activeStore(): RateLimitStore {
   const url = process.env.AGENTGUARD_RATE_LIMIT_REDIS_URL;
   const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
   if (!url || !token) throw new Error("Redis rate limiting is not configured");
+  const issue = validateSharedStoreUrl(url);
+  if (issue) throw new Error(`AGENTGUARD_RATE_LIMIT_REDIS_URL ${issue}`);
   configuredStore = new RedisRateLimitStore(url, token);
   return configuredStore;
 }

@@ -75,6 +75,28 @@ describe("auth config", () => {
     delete (process.env as Record<string, string | undefined>).NODE_ENV;
   });
 
+  it("rejects non-HTTPS and credential-bearing production session URLs", () => {
+    for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
+    env.AGENTGUARD_TRUST_PROXY_HEADERS = "1";
+    try {
+      env.AGENTGUARD_SESSION_REDIS_URL = "http://redis.example";
+      assert.equal(authConfig().valid, false);
+      resetAuthConfigCache();
+      env.AGENTGUARD_SESSION_REDIS_URL = "https://user:pass@redis.example";
+      const cfg = authConfig();
+      assert.equal(cfg.valid, false);
+      if (!cfg.valid) assert.match(cfg.reason, /URL credentials/);
+    } finally {
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      resetAuthConfigCache();
+    }
+  });
+
   it("requires explicitly trusted proxy headers in production", () => {
     for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
     const env = process.env as Record<string, string | undefined>;

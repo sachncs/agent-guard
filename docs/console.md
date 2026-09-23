@@ -36,12 +36,12 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | Never commit or bake into the image |
 | `AGENTGUARD_SESSION_SECRET` | At least 32 random characters; rotate deliberately |
 | `AGENTGUARD_SESSION_STORE` | `redis` in production; `memory` only for development |
-| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state |
+| `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state; endpoint must use HTTPS and credentials must be supplied separately |
 | `AGENTGUARD_ADMIN_CLAIM` / `AGENTGUARD_ADMIN_VALUES` | Explicit admin mapping; empty values grant viewer only |
 | `AGENTGUARD_PDP_URL` / `AGENTGUARD_PDP_BEARER` | Private PDP URL and optional bearer credential |
 | `AGENTGUARD_DELEGATION_KEY_FILE` | Persistent Ed25519 private key for admin token issuance |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `redis` in production; `memory` only for development/e2e |
-| `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting |
+| `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | Required for production rate limiting; endpoint must use HTTPS and credentials must be supplied separately |
 | `AGENTGUARD_TRUST_PROXY_HEADERS` | `1` in production, only behind the trusted reverse proxy |
 | `AGENTGUARD_INSECURE_COOKIE` | Local HTTP only; never set in production |
 

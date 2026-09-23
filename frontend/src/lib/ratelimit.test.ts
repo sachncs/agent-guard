@@ -108,6 +108,36 @@ describe("rate limiter", () => {
     resetRateLimiter();
   });
 
+  it("fails closed without sending credentials to a non-HTTPS production endpoint", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previous = {
+      nodeEnv: env.NODE_ENV,
+      store: env.AGENTGUARD_RATE_LIMIT_STORE,
+      url: env.AGENTGUARD_RATE_LIMIT_REDIS_URL,
+      token: env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN,
+    };
+    env.NODE_ENV = "production";
+    env.AGENTGUARD_RATE_LIMIT_STORE = "redis";
+    env.AGENTGUARD_RATE_LIMIT_REDIS_URL = "http://redis.example";
+    env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN = "secret";
+    resetRateLimiter();
+    try {
+      assert.deepEqual(await rateLimit("unsafe", 5), { allowed: false, remaining: 0 });
+    } finally {
+      if (previous.nodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previous.nodeEnv;
+      for (const [key, value] of [
+        ["AGENTGUARD_RATE_LIMIT_STORE", previous.store],
+        ["AGENTGUARD_RATE_LIMIT_REDIS_URL", previous.url],
+        ["AGENTGUARD_RATE_LIMIT_REDIS_TOKEN", previous.token],
+      ] as const) {
+        if (value === undefined) delete env[key];
+        else env[key] = value;
+      }
+      resetRateLimiter();
+    }
+  });
+
   it("rejects an explicit memory rate-limit store in production", async () => {
     const env = process.env as Record<string, string | undefined>;
     const previousNodeEnv = env.NODE_ENV;

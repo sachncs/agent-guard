@@ -1,5 +1,6 @@
 import { RedisSessionStore } from "./session_store.ts";
 import type { SessionStore } from "./session_store.ts";
+import { validateSharedStoreUrl } from "../shared_store_url.ts";
 
 /**
  * Console authentication configuration.
@@ -90,6 +91,15 @@ function readEnv(): AuthConfigResult {
       reason:
         "production console sessions require AGENTGUARD_SESSION_REDIS_URL and AGENTGUARD_SESSION_REDIS_TOKEN",
     };
+  }
+  if (sessionStoreMode === "redis" && sessionRedisUrl) {
+    const issue = validateSharedStoreUrl(sessionRedisUrl);
+    if (issue) {
+      return {
+        valid: false,
+        reason: `AGENTGUARD_SESSION_REDIS_URL ${issue}`,
+      };
+    }
   }
   if (
     process.env.AGENTGUARD_TRUST_PROXY_HEADERS !== undefined &&
