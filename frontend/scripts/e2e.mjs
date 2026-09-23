@@ -21,11 +21,12 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import https from "node:https";
 import http from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 const FRONTEND_PORT = 3171;
@@ -37,6 +38,8 @@ const ISSUER = `https://127.0.0.1:${IDP_PORT}`;
 const REDIS_URL = `https://127.0.0.1:${REDIS_PORT}`;
 const REDIS_TOKEN = "e2e-redis-token";
 const TEST_CLIENT_IP = "198.51.100.42";
+const REAL_PDP = process.env.AGENTGUARD_E2E_REAL_PDP === "1";
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -142,6 +145,8 @@ async function startIdp(tls) {
 // ---------------------------------------------------------------- fake PDP
 
 async function startPdp() {
+  if (REAL_PDP) return startRealPdp();
+
   let responseMode = "decision";
   let lastEvaluation;
   const server = http.createServer((req, res) => {
@@ -181,12 +186,119 @@ async function startPdp() {
   });
   await new Promise((r) => server.listen(PDP_PORT, "127.0.0.1", r));
   return {
-    server,
+    close: () => new Promise((resolve) => server.close(resolve)),
     setResponseMode(mode) {
       responseMode = mode;
     },
     lastEvaluation() {
       return structuredClone(lastEvaluation);
+    },
+  };
+}
+
+async function startRealPdp() {
+  const dir = mkdtempSync(join(tmpdir(), "agentguard-real-pdp-"));
+  const store = join(dir, "store");
+  const policies = join(store, "policies");
+  mkdirSync(policies, { recursive: true });
+  copyFileSync(join(REPO_ROOT, "schemas/starter.cedarschema"), join(store, "schema.cedarschema"));
+  writeFileSync(join(policies, "10_e2e.cedar"), `permit (
+  principal == Agent::"research",
+  action == Action::"ToolCall::repo_read",
+  resource == Repository::"demo"
+) when {
+  context.repo == "demo" &&
+  context.session has ip &&
+  context.session.ip == "127.0.0.1"
+};\n`);
+  const auditPath = join(dir, "audit.jsonl");
+  const secretPath = join(dir, "chain-secret");
+  writeFileSync(secretPath, "real-pdp-e2e-chain-secret", { mode: 0o600 });
+  const binary = process.env.AGENTGUARD_SERVER_BIN
+    ?? join(REPO_ROOT, "target/debug/agentguard-server");
+  let child;
+  let output = "";
+  let spawnError;
+
+  const start = async () => {
+    child = spawn(binary, [], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        AGENTGUARD_LISTEN: `tcp://127.0.0.1:${PDP_PORT}`,
+        AGENTGUARD_STORE: store,
+        AGENTGUARD_AUDIT: auditPath,
+        AGENTGUARD_CHAIN_SECRET: secretPath,
+        AGENTGUARD_AUTH: "disabled",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.once("error", (error) => {
+      spawnError = error;
+      output += `${error}\n`;
+    });
+    child.stdout.on("data", (data) => {
+      output += data;
+      if (process.env.E2E_DEBUG) process.stdout.write(data);
+    });
+    child.stderr.on("data", (data) => {
+      output += data;
+      if (process.env.E2E_DEBUG) process.stderr.write(data);
+    });
+
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (spawnError) throw new Error(`could not start real PDP: ${spawnError.message}`);
+      if (child.exitCode !== null) {
+        throw new Error(`real PDP exited before readiness (${child.exitCode}):\n${output}`);
+      }
+      try {
+        const response = await fetch(`http://127.0.0.1:${PDP_PORT}/readyz`, {
+          signal: AbortSignal.timeout(500),
+        });
+        if (response.status === 200) return;
+      } catch {}
+      await sleep(100);
+    }
+    throw new Error(`real PDP did not become ready:\n${output}`);
+  };
+
+  const stop = async () => {
+    if (!child) return;
+    const current = child;
+    child = undefined;
+    if (current.exitCode !== null) return;
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        current.kill("SIGKILL");
+        resolve();
+      }, 5_000);
+      current.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      current.kill("SIGTERM");
+    });
+  };
+
+  try {
+    await start();
+  } catch (error) {
+    await stop();
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+
+  return {
+    auditPath,
+    async start() {
+      output = "";
+      spawnError = undefined;
+      await start();
+    },
+    stop,
+    async close() {
+      await stop();
+      rmSync(dir, { recursive: true, force: true });
     },
   };
 }
@@ -497,22 +609,50 @@ async function main() {
     assert.equal(allowRes.status, 200);
     const allowDecision = await allowRes.json();
     assert.equal(allowDecision.effect, "allow");
-    assert.deepEqual(allowDecision.reasons, ["explicit permit"]);
-    assert.deepEqual(pdp.lastEvaluation().context, {
-      repo: "demo",
-      session: { ip: "127.0.0.1" },
-    }, "console flattens Cedar context args and prevents session spoofing");
+    if (!REAL_PDP) {
+      assert.deepEqual(allowDecision.reasons, ["explicit permit"]);
+      assert.deepEqual(pdp.lastEvaluation().context, {
+        repo: "demo",
+        session: { ip: "127.0.0.1" },
+      }, "console flattens Cedar context args and prevents session spoofing");
+    }
 
     const denyRes = await req(viewer, "/api/authorize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        uid: "alice", tool: "send_email", resourceType: "Resource", resourceId: "forbidden",
+        uid: "research", principalType: "agent", tool: "repo_read",
+        resourceType: "Repository", resourceId: "forbidden",
+        args: { repo: "demo" }, session: { ip: "127.0.0.1" },
       }),
     });
     const denyDecision = await denyRes.json();
     assert.equal(denyDecision.effect, "deny");
 
+    if (REAL_PDP) {
+      const records = readFileSync(pdp.auditPath, "utf8").trim().split("\n").map(JSON.parse);
+      assert.equal(records.length, 2, "allow and deny decisions are durably audited");
+      assert.deepEqual(records.map((record) => record.effect), ["allow", "deny"]);
+      assert.ok(records.every((record) => record.record_hash && record.chain_id),
+        "audit records include chained-integrity metadata");
+
+      await pdp.stop();
+      const stoppedPdp = await req(viewer, "/api/authorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: "research", principalType: "agent", tool: "repo_read",
+          resourceType: "Repository", resourceId: "demo", args: { repo: "demo" },
+          session: { ip: "127.0.0.1" },
+        }),
+      });
+      assert.equal(stoppedPdp.status, 503, "PDP outage fails authorization closed");
+      assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
+        "readiness fails while real PDP is stopped");
+      await pdp.start();
+      assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
+        "readiness recovers after real PDP restart");
+    } else {
     // PDP failures must never be converted into an authorization decision.
     pdp.setResponseMode("unavailable");
     const unavailablePdp = await req(viewer, "/api/authorize", {
@@ -553,6 +693,7 @@ async function main() {
     pdp.setResponseMode("decision");
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
       "readiness recovers when the PDP recovers");
+    }
 
     const invalidAuthz = await req(viewer, "/api/authorize", {
       method: "POST",
@@ -621,10 +762,16 @@ async function main() {
       const response = await req(viewer, "/api/authorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid: "alice", tool: "web_search", resourceType: "Resource",
-          resourceId: `rate-${i}`,
-        }),
+        body: JSON.stringify(REAL_PDP
+          ? {
+              uid: "research", principalType: "agent", tool: "repo_read",
+              resourceType: "Repository", resourceId: "demo", args: { repo: "demo" },
+              session: { ip: "127.0.0.1" },
+            }
+          : {
+              uid: "alice", tool: "web_search", resourceType: "Resource",
+              resourceId: `rate-${i}`,
+            }),
       });
       if (response.status === 429) {
         simulatorRateLimited = true;
@@ -651,7 +798,7 @@ async function main() {
   } finally {
     app.kill("SIGTERM");
     idp.server.close();
-    pdp.server.close();
+    await pdp.close();
     redis.server.close();
     rmSync(tlsDir, { recursive: true, force: true });
   }

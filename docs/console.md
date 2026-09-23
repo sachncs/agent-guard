@@ -23,11 +23,22 @@ pnpm --filter frontend dev
 
 Authentication is fail-closed. Without all required OIDC and session settings,
 the console returns `503` rather than exposing an open mode. The end-to-end
-test supplies an isolated IdP, PDP, and Redis-compatible REST store, then runs
+test supplies an isolated IdP, mock PDP, and Redis-compatible REST store, then runs
 the production build through the full sign-in and simulator flow:
 
 ```bash
 pnpm --filter frontend exec node scripts/e2e.mjs
+```
+
+For integration against the actual Rust PDP, install `protoc`, build the server,
+then run the same production-console test with `AGENTGUARD_E2E_REAL_PDP=1`. This
+mode loads an isolated Cedar schema and policy, checks real allow/deny decisions
+and chained audit persistence, then stops and restarts the PDP to verify
+fail-closed authorization and readiness recovery:
+
+```bash
+cargo build -p agentguard-server
+AGENTGUARD_E2E_REAL_PDP=1 pnpm --filter frontend exec node scripts/e2e.mjs
 ```
 
 ## Production configuration
