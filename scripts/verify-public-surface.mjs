@@ -79,6 +79,8 @@ requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
 requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
 requireText("docs/production.md", "never becomes an implicit production fallback");
 requireText("docs/production.md", "corrupted chained audit tail refuses startup");
+requireText("docs/production.md", "regular file, not a symlink, FIFO, or device");
+requireText("docs/production.md", "owner-only (`0600`) audit-file permissions");
 requireText("docs/operations/runbook.md", "Do not increase PDP replicas");
 requireText("docs/operations/runbook.md", "coordinated,\ndurable audit backend");
 requireText("docs/operations/runbook.md", 'AGENTGUARD_GRPC_LISTEN="127.0.0.1:9443"');

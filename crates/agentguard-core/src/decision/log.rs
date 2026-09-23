@@ -123,7 +123,7 @@ impl DecisionLog {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let f = OpenOptions::new().create(true).append(true).open(&path)?;
+        let f = open_audit_file(&path)?;
         let chain_id_path = chain_id_sidecar_path(&path);
         match root_key {
             None => Ok(Self {
@@ -301,11 +301,7 @@ impl DecisionLog {
             let rotated_sidecar = chain_id_sidecar_path(rotated);
             let _ = std::fs::rename(&self.chain_id_path, rotated_sidecar);
         }
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(Error::from)
+        open_audit_file(&self.path).map_err(Error::from)
     }
 
     /// Path the log was opened at. Useful for `agentguard doctor` and
@@ -456,7 +452,7 @@ impl DecisionLog {
     /// Returns `Error::Io` if the file cannot be read, `Error::Json`
     /// if a record cannot be parsed or is missing chain metadata.
     pub fn read_all_chained(path: impl AsRef<Path>) -> Result<Vec<ChainedRecord>> {
-        let f = File::open(path.as_ref())?;
+        let f = open_existing_audit_file(path.as_ref())?;
         let r = BufReader::new(f);
         let mut out = Vec::new();
         for line in r.lines() {
@@ -476,7 +472,7 @@ impl DecisionLog {
     fn read_all_mixed_paths(paths: &[PathBuf]) -> Result<Vec<DecisionRecord>> {
         let mut out = Vec::new();
         for path in paths {
-            let f = File::open(path)?;
+            let f = open_existing_audit_file(path)?;
             let r = BufReader::new(f);
             for (idx, line) in r.lines().enumerate() {
                 let line = line?;
@@ -651,6 +647,56 @@ fn rotation_order(path: &Path, prefix: &str) -> (String, u32) {
 
 fn latest_rotated_log(log_path: &Path) -> Result<Option<PathBuf>> {
     Ok(rotated_logs(log_path)?.pop())
+}
+
+/// Open an existing audit path only when it is a regular file. Checking the
+/// directory entry before opening prevents FIFOs and device nodes from
+/// blocking startup or audit inspection; the descriptor check also catches
+/// replacement races that resolve to a non-regular file.
+fn open_existing_audit_file(path: &Path) -> std::io::Result<File> {
+    validate_audit_path(path)?;
+    let file = File::open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("audit path must be a regular file: {}", path.display()),
+        ));
+    }
+    Ok(file)
+}
+
+/// Open (or create) the active append-only audit file, rejecting symlinks,
+/// FIFOs, sockets, and device nodes instead of treating them as durable files.
+fn open_audit_file(path: &Path) -> std::io::Result<File> {
+    validate_audit_path(path)?;
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("audit path must be a regular file: {}", path.display()),
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+
+fn validate_audit_path(path: &Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(()),
+        Ok(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "audit path must be a regular file, not a symlink or special file: {}",
+                path.display()
+            ),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Append one complete JSONL record and durably persist it. If a write or
@@ -891,13 +937,23 @@ mod tests {
         };
 
         for chained in [false, true] {
-            let path = dir.path().join(format!("full-{chained}.jsonl"));
-            std::os::unix::fs::symlink(full, &path).unwrap();
+            let path = dir.path().join(format!("write-failure-{chained}.jsonl"));
             let log = if chained {
                 DecisionLog::open_with_chain(&path, b"test-root").unwrap()
             } else {
                 DecisionLog::open(&path).unwrap()
             };
+            // Inject the special device only after normal startup has
+            // validated and opened a regular audit file. Reading /dev/full
+            // yields an unbounded zero stream on Linux, so using it as the
+            // chained startup path would test an infinite scan, not a failed
+            // append.
+            let failing_writer = OpenOptions::new().write(true).open(full).unwrap();
+            match &log.mode {
+                LogMode::Plain(file) | LogMode::Chained { file, .. } => {
+                    *file.lock().unwrap() = Some(failing_writer);
+                }
+            }
 
             assert!(
                 log.append(&rec).is_err(),
@@ -909,6 +965,51 @@ mod tests {
                 .to_string()
                 .contains("unavailable after a prior storage failure"));
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn audit_open_rejects_special_files_and_symlinks_before_reading_them() {
+        let full = Path::new("/dev/full");
+        if !full.exists() {
+            return;
+        }
+        let plain_error = DecisionLog::open(full)
+            .err()
+            .expect("special files must not be accepted as plain audit logs");
+        assert!(plain_error.to_string().contains("regular file"));
+
+        let chained_error = DecisionLog::open_with_chain(full, b"test-root")
+            .err()
+            .expect("special files must be rejected before verification");
+        assert!(chained_error.to_string().contains("regular file"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("audit.jsonl");
+        std::os::unix::fs::symlink(full, &link).unwrap();
+        let symlink_error = DecisionLog::open_with_chain(&link, b"test-root")
+            .err()
+            .expect("symlinks must be rejected before verification");
+        assert!(symlink_error.to_string().contains("regular file"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn audit_log_permissions_are_private_on_open() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        std::fs::write(&path, b"").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let _log = DecisionLog::open(&path).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "audit records must not be group/world readable"
+        );
     }
 
     /// T5: read_all handles a mixed-format log (plain + chained
