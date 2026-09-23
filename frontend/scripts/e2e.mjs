@@ -733,7 +733,7 @@ async function main() {
         });
         assert.equal(await mobileNavigation.isVisible(), false);
         await browserPage.getByText("Menu", { exact: true }).click();
-        assert.equal(await mobileNavigation.isVisible(), true, "mobile navigation opens by keyboard/mouse");
+        assert.equal(await mobileNavigation.isVisible(), true, "mobile navigation opens by pointer");
         assert.equal(await mobileNavigation.getByRole("link", { name: "Policy Simulator" }).isVisible(), true);
         await browserPage.getByText("Menu", { exact: true }).click();
       } else {
@@ -744,6 +744,41 @@ async function main() {
         );
       }
     }
+    // Prove the mobile disclosure and route links are operable without a
+    // pointer, and that keyboard focus remains visually apparent.
+    await browserPage.setViewportSize({ width: 375, height: 900 });
+    await browserPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    const menuSummary = browserPage.locator("details > summary");
+    await menuSummary.focus();
+    await browserPage.keyboard.press("Enter");
+    const mobileNavigation = browserPage.getByRole("navigation", {
+      name: "Mobile console navigation",
+    });
+    assert.equal(await mobileNavigation.isVisible(), true, "Enter opens mobile navigation");
+    await browserPage.keyboard.press("Tab");
+    await browserPage.keyboard.press("Tab");
+    assert.equal(
+      await browserPage.evaluate(() => document.activeElement?.textContent?.trim()),
+      "Policy Simulator",
+      "Tab reaches the Policy Simulator link in document order",
+    );
+    const keyboardFocus = await browserPage.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return null;
+      const style = getComputedStyle(active);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    assert.ok(
+      keyboardFocus && keyboardFocus.outlineStyle !== "none" && parseFloat(keyboardFocus.outlineWidth) > 0,
+      "keyboard focus has a visible outline",
+    );
+    await browserPage.keyboard.press("Enter");
+    await browserPage.waitForURL(`${BASE}/simulator`);
+    assert.equal(
+      await browserPage.getByRole("heading", { name: "Policy Simulator" }).isVisible(),
+      true,
+      "keyboard activation navigates to the simulator",
+    );
     const reducedMotionDuration = await browserPage
       .locator('a[aria-current="page"]')
       .first()
