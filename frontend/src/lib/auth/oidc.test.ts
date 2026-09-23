@@ -137,6 +137,7 @@ describe("OIDC discovery", () => {
     let tokenSubject = "oidc-user";
     let includeIssuedAt = true;
     let includeExpiration = true;
+    let issuedAtOffsetSeconds = 0;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === "/.well-known/openid-configuration") {
@@ -157,7 +158,9 @@ describe("OIDC discovery", () => {
           .setProtectedHeader({ alg: "RS256", kid: "oidc-test-key" })
           .setIssuer(config.oidc.issuer)
           .setAudience(tokenAudience);
-        if (includeIssuedAt) token = token.setIssuedAt();
+        if (includeIssuedAt) {
+          token = token.setIssuedAt(Math.floor(Date.now() / 1000) + issuedAtOffsetSeconds);
+        }
         if (includeExpiration) token = token.setExpirationTime("5m");
         const idToken = await token.sign(privateKey);
         return Response.json({ id_token: idToken });
@@ -205,6 +208,20 @@ describe("OIDC discovery", () => {
     await assert.rejects(complete(missingIssuedAtLogin, "missing-iat"), /ID token validation failed/);
     includeIssuedAt = true;
 
+    const staleTokenLogin = await buildLoginRedirect(config, redirectUri);
+    const staleTokenState = (await jwtVerify(staleTokenLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(staleTokenState.nonce));
+    issuedAtOffsetSeconds = -12 * 60;
+    await assert.rejects(complete(staleTokenLogin, "stale-token"), /ID token validation failed/);
+    issuedAtOffsetSeconds = 0;
+
+    const futureTokenLogin = await buildLoginRedirect(config, redirectUri);
+    const futureTokenState = (await jwtVerify(futureTokenLogin.stateJwt, config.sessionSecret)).payload;
+    nonces.push(String(futureTokenState.nonce));
+    issuedAtOffsetSeconds = 2 * 60;
+    await assert.rejects(complete(futureTokenLogin, "future-token"), /ID token validation failed/);
+    issuedAtOffsetSeconds = 0;
+
     const emptySubjectLogin = await buildLoginRedirect(config, redirectUri);
     const emptySubjectState = (await jwtVerify(emptySubjectLogin.stateJwt, config.sessionSecret)).payload;
     nonces.push(String(emptySubjectState.nonce));
@@ -235,7 +252,7 @@ describe("OIDC discovery", () => {
     nonces.push(String(validAzpState.nonce));
     tokenAzp = config.oidc.clientId;
     assert.equal((await complete(validAzpLogin, "valid-azp")).sub, "oidc-user");
-    assert.equal(tokenCalls, 9);
+    assert.equal(tokenCalls, 11);
     assert.equal(jwksCalls, 1, "the cached jose resolver reuses the fetched key set");
   });
 });

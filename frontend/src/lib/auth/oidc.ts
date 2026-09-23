@@ -290,6 +290,8 @@ export async function completeLogin(
       issuer: config.oidc.issuer,
       audience: config.oidc.clientId,
       requiredClaims: ["exp", "iat", "sub"],
+      maxTokenAge: "10m",
+      clockTolerance: 60,
     }));
   } catch {
     throw new LoginFailed("ID token validation failed");
