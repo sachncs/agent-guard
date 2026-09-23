@@ -19,6 +19,7 @@ describe("readBoundedJson", () => {
       ),
       (error: unknown) =>
         error instanceof BoundedJsonResponseError &&
+        error.kind === "timeout" &&
         error.message === "test upstream response body timed out",
     );
     assert.equal(canceled, true);

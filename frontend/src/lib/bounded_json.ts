@@ -1,7 +1,24 @@
 import "server-only";
 
-/** A remote JSON response violated the caller's transport contract. */
-export class BoundedJsonResponseError extends Error {}
+export type BoundedJsonFailureKind =
+  | "size_limit"
+  | "timeout"
+  | "empty"
+  | "read"
+  | "utf8"
+  | "json";
+
+/** A bounded JSON stream violated the caller's transport contract. */
+export class BoundedJsonResponseError extends Error {
+  constructor(
+    readonly kind: BoundedJsonFailureKind,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "BoundedJsonResponseError";
+  }
+}
 
 /** Read, bound, UTF-8 decode, and parse an upstream JSON response. */
 export async function readBoundedJson(
@@ -23,9 +40,9 @@ export async function readBoundedJson(
     Number(declaredLength) > maxBytes
   ) {
     await response.body?.cancel().catch(() => undefined);
-    throw new BoundedJsonResponseError(`${source} response exceeded the size limit`);
+    throw new BoundedJsonResponseError("size_limit", `${source} response exceeded the size limit`);
   }
-  if (!response.body) throw new BoundedJsonResponseError(`${source} returned an empty response`);
+  if (!response.body) throw new BoundedJsonResponseError("empty", `${source} returned an empty response`);
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -38,7 +55,7 @@ export async function readBoundedJson(
       totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
         await reader.cancel().catch(() => undefined);
-        throw new BoundedJsonResponseError(`${source} response exceeded the size limit`);
+        throw new BoundedJsonResponseError("size_limit", `${source} response exceeded the size limit`);
       }
       chunks.push(value);
     }
@@ -50,14 +67,14 @@ export async function readBoundedJson(
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           void reader.cancel().catch(() => undefined);
-          reject(new BoundedJsonResponseError(`${source} response body timed out`));
+          reject(new BoundedJsonResponseError("timeout", `${source} response body timed out`));
         }, timeoutMs);
       });
       await Promise.race([readBody(), timeout]);
     }
   } catch (error) {
     if (error instanceof BoundedJsonResponseError) throw error;
-    throw new BoundedJsonResponseError(`${source} response body could not be read`, { cause: error });
+    throw new BoundedJsonResponseError("read", `${source} response body could not be read`, { cause: error });
   } finally {
     if (timer) clearTimeout(timer);
     reader.releaseLock();
@@ -73,11 +90,11 @@ export async function readBoundedJson(
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
-    throw new BoundedJsonResponseError(`${source} returned invalid UTF-8`, { cause: error });
+    throw new BoundedJsonResponseError("utf8", `${source} returned invalid UTF-8`, { cause: error });
   }
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new BoundedJsonResponseError(`${source} returned invalid JSON`, { cause: error });
+    throw new BoundedJsonResponseError("json", `${source} returned invalid JSON`, { cause: error });
   }
 }

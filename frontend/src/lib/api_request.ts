@@ -25,17 +25,14 @@ export async function parseJsonBody<S extends z.ZodType>(
       timeoutMs,
     );
   } catch (error) {
-    if (
-      error instanceof BoundedJsonResponseError &&
-      error.message.includes("exceeded the size limit")
-    ) {
+    if (error instanceof BoundedJsonResponseError && error.kind === "size_limit") {
       return {
         ok: false,
         status: 413,
         error: `request body exceeds the ${MAX_API_REQUEST_BYTES}-byte limit`,
       };
     }
-    if (error instanceof BoundedJsonResponseError && error.message.includes("timed out")) {
+    if (error instanceof BoundedJsonResponseError && error.kind === "timeout") {
       return { ok: false, status: 408, error: "request body read timed out" };
     }
     return { ok: false, status: 400, error: "request body must be valid JSON" };
