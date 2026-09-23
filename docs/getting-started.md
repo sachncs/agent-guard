@@ -89,40 +89,31 @@ action "ToolCall::my_custom_tool" appliesTo {
 };
 ```
 
-### 4. Write policies
+### 4. Write a least-privilege policy
 
-Cedar is deny-by-default. Add `permit` rules to allow specific actions:
-
-```cedar
-// alice can read her own docs.
-permit (
-  principal == User::"alice",
-  action == Action::"ToolCall::read_doc",
-  resource.owner == principal
-);
-
-// agents can fetch web pages from anywhwere
-permit (
-  principal is Agent,
-  action == Action::"ToolCall::web_fetch",
-  resource
-);
-
-// sensitive tools require MFA
-forbid (
-  principal,
-  action in [Action::"ToolCall::send_email", Action::"ToolCall::shell_exec"],
-  resource
-) when {
-  !(context.session.mfa == true)
-};
-```
-
-Validate:
+The generated `10_admin.cedar` and `20_agents.cedar` files grant broad
+development access. Replace them before trying the SDK example; adding a
+narrow rule alongside those defaults would not restrict their existing grants.
+This policy allows Alice to send email only to her mailbox, and only with
+MFA:
 
 ```bash
+rm .agentguard/policies/10_admin.cedar .agentguard/policies/20_agents.cedar
+cat > .agentguard/policies/10_alice_send_email.cedar <<'CEDAR'
+permit (
+  principal == User::"alice",
+  action == Action::"ToolCall::send_email",
+  resource == Mailbox::"alice@acme"
+) when {
+  context.session has mfa &&
+  context.session.mfa == true
+};
+CEDAR
 agentguard validate
 ```
+
+Validation should report no errors. A different user, mailbox, action, or
+request without verified MFA receives a deny.
 
 ### 5. Hook into your agent
 
@@ -138,7 +129,10 @@ client.check(
   Principal.user("alice"),
   Action.tool("send_email"),
   { entity_type: "Mailbox", uid: "alice@acme" },
-  { args: { to: "[email protected]" }, session: { mfa: true } }
+  {
+    args: { to: "[email protected]", subject: "Hello", body: "Hi Alice" },
+    session: { mfa: true }
+  }
 );
 ```
 
@@ -193,7 +187,7 @@ agentguard log tail --n 20
 14:22:55 ✓ ALLOW Agent::"research" send_email alice@acme
 ```
 
-### 8. Run as a server (multi-process / networked)
+### 8. Run as a server for HTTP integrations
 
 `agentguard-server` exposes a separate AuthZEN HTTP API over the same core
 engine. CLI `authorize` and `sim` always evaluate in-process; setting
@@ -280,7 +274,7 @@ permit (principal, action, resource) when {
 
 // Deny unless MFA.
 forbid (principal, action, resource) when {
-  !(context.session.mfa == true)
+  !(context.session has mfa && context.session.mfa == true)
 };
 ```
 

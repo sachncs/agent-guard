@@ -167,6 +167,34 @@ fn quickstart_allow_deny_and_chained_audit_flow_works_as_documented() {
     let dir = tempfile::tempdir().unwrap();
     initialize(&dir);
 
+    let policies = dir.path().join(".agentguard/policies");
+    std::fs::remove_file(policies.join("10_admin.cedar")).unwrap();
+    std::fs::remove_file(policies.join("20_agents.cedar")).unwrap();
+    std::fs::write(
+        policies.join("10_alice_send_email.cedar"),
+        r#"permit (
+  principal == User::"alice",
+  action == Action::"ToolCall::send_email",
+  resource == Mailbox::"alice@acme"
+) when {
+  context.session has mfa &&
+  context.session.mfa == true
+};
+"#,
+    )
+    .unwrap();
+    let validated = agentguard_bin()
+        .args(["validate"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        validated.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&validated.stdout),
+        String::from_utf8_lossy(&validated.stderr)
+    );
+
     let secret = dir.path().join(".chain-secret");
     std::fs::write(
         &secret,
@@ -176,15 +204,15 @@ fn quickstart_allow_deny_and_chained_audit_flow_works_as_documented() {
     let audit = dir.path().join(".audit/decisions.jsonl");
     let allow_request = dir.path().join("allow.json");
     let deny_request = dir.path().join("deny.json");
-    for (path, principal_type, principal_id) in [
-        (&allow_request, "agent", "research"),
-        (&deny_request, "user", "bob"),
-    ] {
+    for (path, mfa) in [(&allow_request, true), (&deny_request, false)] {
         let request = serde_json::json!({
-            "principal": {"type": principal_type, "uid": principal_id},
-            "action": {"tool": "repo_read"},
-            "resource": {"entity_type": "Repository", "uid": "demo"},
-            "context": {"args": {"repo": "demo"}, "session": {"ip": "127.0.0.1"}}
+            "principal": {"type": "user", "uid": "alice"},
+            "action": {"tool": "send_email"},
+            "resource": {"entity_type": "Mailbox", "uid": "alice@acme"},
+            "context": {
+                "args": {"to": "[email protected]", "subject": "Hello", "body": "Hi Alice"},
+                "session": {"ip": "127.0.0.1", "mfa": mfa}
+            }
         });
         std::fs::write(path, serde_json::to_vec(&request).unwrap()).unwrap();
     }
