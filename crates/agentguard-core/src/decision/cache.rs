@@ -245,7 +245,7 @@ impl DecisionCache {
     /// range. Use [`Self::try_new`] when values come from application
     /// configuration or another fallible input.
     pub fn new(config: CacheConfig, clock: Arc<dyn Clock>) -> Self {
-        Self::try_new(config, clock).expect("DecisionCache capacity must be greater than zero")
+        Self::try_new(config, clock).expect("DecisionCache configuration must be valid")
     }
 
     /// A disabled cache (every call is a miss).

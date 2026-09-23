@@ -428,6 +428,19 @@ mod tests {
     }
 
     #[test]
+    fn try_with_cache_returns_invalid_configuration_without_panicking() {
+        let config = crate::decision::cache::CacheConfig {
+            capacity: 0,
+            ..crate::decision::cache::CacheConfig::default()
+        };
+        let error = make_authorizer()
+            .try_with_cache(config)
+            .err()
+            .expect("invalid cache config should return an error");
+        assert_eq!(error, "cache capacity must be greater than zero");
+    }
+
+    #[test]
     fn cache_hit_on_second_identical_request() {
         let authorizer =
             make_authorizer().with_cache(crate::decision::cache::CacheConfig::default());
