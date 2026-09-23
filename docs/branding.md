@@ -22,6 +22,11 @@ The selected mark is shipped in `site/public/` and `frontend/public/`:
 - `agentguard-wordmark-dark.svg` — dark-surface wordmark
 - `og-image.svg` — 1200×630 social preview
 
+The Astro site navigation and footer load `agentguard-mark.svg` directly; the
+frontend mark and favicon are kept byte-identical to that canonical light mark
+and checked by the site test suite. The monochrome asset remains available for
+surfaces that need a single-color treatment.
+
 ## Usage rules
 
 - Keep at least one mark-height of clear space around the glyph.
