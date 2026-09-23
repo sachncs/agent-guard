@@ -55,6 +55,35 @@ async function findAvailablePort() {
   return port;
 }
 
+async function stopChildGracefully(child, name, timeoutMs = 5_000) {
+  if (child.pid === undefined) return;
+  if (child.exitCode !== null || child.signalCode !== null) {
+    if (child.exitCode === 0 || child.exitCode === 143 || child.signalCode === "SIGTERM") return;
+    throw new Error(`${name} exited unexpectedly (code ${child.exitCode}, signal ${child.signalCode})`);
+  }
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`${name} did not exit after SIGTERM within ${timeoutMs} ms`));
+    }, timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(new Error(`${name} process error during shutdown: ${error.message}`));
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      // Next's standalone server flushes and closes its request handlers on
+      // SIGTERM, then exits with the conventional signal-derived code 143.
+      if (signal === "SIGTERM" || code === 0 || code === 143) resolve();
+      else reject(new Error(`${name} exited unexpectedly (code ${code}, signal ${signal})`));
+    });
+    if (!child.kill("SIGTERM")) {
+      clearTimeout(timer);
+      reject(new Error(`${name} could not be sent SIGTERM`));
+    }
+  });
+}
+
 function createTestTls(tlsDir) {
   const keyPath = join(tlsDir, "test-key.pem");
   const certPath = join(tlsDir, "test-cert.pem");
@@ -911,7 +940,7 @@ async function main() {
 
     console.log("\nALL E2E ASSERTIONS PASSED");
   } finally {
-    app.kill("SIGTERM");
+    await stopChildGracefully(app, "configured console");
     idp.server.close();
     await pdp.close();
     redis.server.close();
@@ -949,7 +978,7 @@ async function main() {
     assert.equal(bareApi.status, 503, "APIs fail closed without auth config");
     console.log("FAIL-CLOSED VERIFIED");
   } finally {
-    bare.kill("SIGTERM");
+    await stopChildGracefully(bare, "fail-closed console");
   }
 }
 
