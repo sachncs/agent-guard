@@ -13,12 +13,33 @@ image=${AGENTGUARD_K8S_IMAGE:-agentguard-server:smoke}
 rollback_image=${AGENTGUARD_K8S_ROLLBACK_IMAGE:-agentguard-server:smoke-rollback}
 port=${AGENTGUARD_K8S_PORT:-18443}
 kind_cluster=${AGENTGUARD_KIND_CLUSTER:-kind}
+confirm_cluster=${AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER:-}
 
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
 command -v kind >/dev/null || { echo "kind is required" >&2; exit 1; }
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "node is required" >&2; exit 1; }
+command -v grep >/dev/null || { echo "grep is required" >&2; exit 1; }
+
+# This smoke test creates and overwrites resources in the fixed `agentguard`
+# namespace. Refuse to touch a cluster unless it is the explicitly confirmed
+# disposable Kind cluster selected by this invocation.
+expected_context="kind-$kind_cluster"
+current_context=$(kubectl config current-context)
+if [[ "$current_context" != "$expected_context" ]]; then
+  echo "refusing to mutate Kubernetes context '$current_context'; expected '$expected_context'" >&2
+  exit 1
+fi
+kind_clusters=$(kind get clusters)
+if ! grep -Fxq "$kind_cluster" <<<"$kind_clusters"; then
+  echo "refusing to mutate: Kind cluster '$kind_cluster' does not exist" >&2
+  exit 1
+fi
+if [[ "$confirm_cluster" != "$kind_cluster" ]]; then
+  echo "refusing to mutate disposable cluster; set AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER=$kind_cluster to confirm" >&2
+  exit 1
+fi
 
 key_dir=$(mktemp -d "$PWD/.k8s-smoke.XXXXXX")
 key_store="$key_dir/keys.json"

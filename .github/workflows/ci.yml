@@ -267,6 +267,7 @@ jobs:
       - name: Run Kubernetes startup, decision, audit, termination, and rollback smoke test
         env:
           AGENTGUARD_KIND_CLUSTER: agentguard-smoke
+          AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER: agentguard-smoke
         run: ./scripts/k8s-smoke.sh
 
   deny:

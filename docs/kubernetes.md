@@ -206,16 +206,26 @@ Before routing traffic, verify:
 6. Console login, viewer access, admin access, PDP failure handling, and rate
    limiting behave as expected.
 
-CI runs the PDP portion automatically in a disposable kind cluster. To run the
-same contract locally, start kind and run from the repository root:
+CI runs the PDP portion automatically in a disposable kind cluster. The script
+creates or overwrites resources in the fixed `agentguard` namespace, so it
+refuses to run against any context except the explicitly confirmed disposable
+Kind cluster. To run the same contract locally from the repository root:
 
 ```bash
+kind create cluster --name agentguard-smoke-local
+export AGENTGUARD_KIND_CLUSTER=agentguard-smoke-local
+export AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER=agentguard-smoke-local
 docker build --tag agentguard-server:smoke .
 docker tag agentguard-server:smoke agentguard-server:smoke-rollback
-kind load docker-image agentguard-server:smoke
-kind load docker-image agentguard-server:smoke-rollback
+kind load docker-image agentguard-server:smoke --name "$AGENTGUARD_KIND_CLUSTER"
+kind load docker-image agentguard-server:smoke-rollback --name "$AGENTGUARD_KIND_CLUSTER"
 ./scripts/k8s-smoke.sh
+kind delete cluster --name "$AGENTGUARD_KIND_CLUSTER"
 ```
+
+If the script fails, it intentionally leaves cluster resources in place for
+diagnostics. Inspect the failure, then delete this disposable cluster manually
+when finished.
 
 The smoke script binds the disposable PDP to the pod network and disables
 authentication only inside the isolated test namespace; the production

@@ -55,6 +55,25 @@ if (failures.length === 0) {
   }
 
   const smoke = readFileSync("scripts/k8s-smoke.sh", "utf8");
+  for (const value of [
+    'confirm_cluster=${AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER:-}',
+    'expected_context="kind-$kind_cluster"',
+    'current_context=$(kubectl config current-context)',
+    'kind_clusters=$(kind get clusters)',
+    '[[ "$confirm_cluster" != "$kind_cluster" ]]',
+  ]) {
+    if (!smoke.includes(value)) failures.push(`k8s-smoke.sh must guard disposable-cluster mutations (${value})`);
+  }
+  const preflightEnd = smoke.indexOf('key_dir=$(mktemp');
+  const firstMutation = smoke.indexOf('kubectl create namespace');
+  if (
+    preflightEnd < 0 || firstMutation < preflightEnd ||
+    smoke.indexOf('current_context=$(kubectl config current-context)') > preflightEnd ||
+    smoke.indexOf('kind_clusters=$(kind get clusters)') > preflightEnd ||
+    smoke.indexOf('[[ "$confirm_cluster" != "$kind_cluster" ]]') > preflightEnd
+  ) {
+    failures.push("k8s-smoke.sh must validate context, cluster existence, and explicit confirmation before mutations");
+  }
   if (!smoke.includes("AGENTGUARD_PDP_BEARER=unused-smoke")) {
     failures.push("k8s-smoke.sh must satisfy the console PDP credential Secret reference");
   }
