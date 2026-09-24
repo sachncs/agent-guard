@@ -394,12 +394,15 @@ crates remain source-distributed and are not published to crates.io.
 
 ## Roadmap
 
-The current supported baseline is Docker plus Kubernetes with the shipped PDP,
-console, atomic policy reload, persistent audit volume, and Redis-compatible
-console rate limiting. Future work includes policy A/B testing, multi-tenant
-audit namespaces, and a stable API/LTS support window. See
-[CHANGELOG.md](CHANGELOG.md) for shipped changes; no roadmap item is a current
-production guarantee.
+The supported production baseline is Docker on Kubernetes with one PDP
+replica, one console replica, atomic policy reload, operator-managed persistent
+audit storage, and Redis-compatible shared stores for console sessions and rate
+limits. Multi-replica PDP operation, distributed audit storage, policy A/B
+testing, and a stable API/LTS support window are not part of the current
+contract. See the [compatibility policy](docs/compatibility.md) and
+[production guide](docs/production.md) for deployment boundaries, and
+[CHANGELOG.md](CHANGELOG.md) for shipped changes; roadmap items are not current
+production guarantees.
 
 ## Contributing
 
