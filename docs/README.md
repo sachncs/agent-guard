@@ -29,7 +29,7 @@ repository and are reviewed with the implementation.
 ## Integrate and reference
 
 - [HTTP, SDK, CLI, and Rust surfaces](reference.md)
-- [Configuration](../README.md#configuration)
+- [Configuration reference](configuration.md)
 - [Identity and delegation](identity.md)
 - [Compatibility and deprecation policy](compatibility.md)
 
