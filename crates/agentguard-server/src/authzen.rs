@@ -1081,6 +1081,16 @@ mod summarize_tests {
             .unwrap();
         assert!(handle.reload().is_err());
         assert_eq!(handle.policy_count(), 2);
+
+        std::fs::remove_file(store.policies_dir().join("broken.cedar")).unwrap();
+        std::fs::write(
+            store.policies_dir().join("oversized.cedar"),
+            vec![b'x'; 1_048_577],
+        )
+        .unwrap();
+        let error = handle.reload().unwrap_err();
+        assert!(error.contains("policy size limit"));
+        assert_eq!(handle.policy_count(), 2);
     }
 
     #[tokio::test]

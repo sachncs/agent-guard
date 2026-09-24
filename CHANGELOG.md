@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fail policy loading closed when the store tree, Cedar-file count, or source
+  byte limits are exceeded instead of silently truncating later policies;
+  bound schema and aggregate policy reads to protect startup and reload from
+  oversized operator input.
+
 ### Added
 
 - Add the `agentguard-redis-store` crate with bounded, fail-closed Redis REST

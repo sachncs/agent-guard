@@ -4,9 +4,16 @@ use crate::error::Result;
 use crate::policy::types::{PolicySource, Severity, ValidationIssue, ValidationReport};
 use crate::schema::SchemaParsed;
 use cedar_policy::{Policy, PolicyId, PolicySet, ValidationMode, Validator};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use walkdir::WalkDir;
+
+const MAX_POLICY_FILES: usize = 1024;
+const MAX_POLICY_TREE_ENTRIES: usize = 4096;
+const MAX_POLICY_FILE_BYTES: u64 = 1_048_576;
+const MAX_TOTAL_POLICY_BYTES: u64 = 16_777_216;
+const MAX_SCHEMA_BYTES: u64 = 1_048_576;
 
 #[derive(Debug, Clone)]
 pub struct PolicyStore {
@@ -43,59 +50,69 @@ impl PolicyStore {
             return Ok((set, sources));
         }
 
-        // ponytail: cap file count + per-file size so a hostile /
-        // misconfigured directory can't OOM the process. Both
-        // bounds are documented in the agentguard docs.
-        const MAX_FILES: usize = 1024;
-        const MAX_FILE_BYTES: u64 = 1_048_576; // 1 MiB
-
-        for (i, entry) in WalkDir::new(&dir)
-            .sort_by_file_name()
-            .into_iter()
-            .enumerate()
-        {
-            if i >= MAX_FILES {
-                tracing::warn!(
-                    max = MAX_FILES,
-                    "policies directory has more than the cap; \
-                     truncating and ignoring the rest"
-                );
-                break;
-            }
+        let mut policy_count = 0usize;
+        let mut total_bytes = 0u64;
+        let mut entries_seen = 0usize;
+        for entry in WalkDir::new(&dir) {
             let entry = entry.map_err(|e| crate::error::Error::Walk(e.to_string()))?;
+            entries_seen += 1;
+            if entries_seen > MAX_POLICY_TREE_ENTRIES {
+                return Err(crate::error::Error::PolicyParse {
+                    message: format!(
+                        "policy store tree exceeds the limit of {MAX_POLICY_TREE_ENTRIES} entries"
+                    ),
+                    file: entry.path().display().to_string(),
+                });
+            }
             if entry.file_type().is_file()
                 && entry.path().extension().and_then(|s| s.to_str()) == Some("cedar")
             {
-                let metadata = entry
-                    .metadata()
-                    .map_err(|e| crate::error::Error::Io(e.to_string()))?;
-                if metadata.len() > MAX_FILE_BYTES {
+                policy_count += 1;
+                if policy_count > MAX_POLICY_FILES {
                     return Err(crate::error::Error::PolicyParse {
-                        message: format!(
-                            "{} exceeds the per-file size cap ({} > {})",
-                            entry.path().display(),
-                            metadata.len(),
-                            MAX_FILE_BYTES
-                        ),
-                        file: String::new(),
+                        message: format!("policy count exceeds the limit of {MAX_POLICY_FILES}"),
+                        file: entry.path().display().to_string(),
                     });
                 }
-                let src = std::fs::read_to_string(entry.path())?;
-                let file_set =
-                    PolicySet::from_str(&src).map_err(|e| crate::error::Error::PolicyParse {
-                        message: e.to_string(),
-                        file: src.clone(),
-                    })?;
-                set.merge(&file_set, true)
-                    .map_err(|e| crate::error::Error::PolicyParse {
-                        message: e.to_string(),
-                        file: src.clone(),
-                    })?;
+                let src = read_bounded_text(entry.path(), MAX_POLICY_FILE_BYTES, "policy")?;
+                total_bytes = total_bytes.checked_add(src.len() as u64).ok_or_else(|| {
+                    crate::error::Error::PolicyParse {
+                        message: "total policy source size overflow".into(),
+                        file: entry.path().display().to_string(),
+                    }
+                })?;
+                if total_bytes > MAX_TOTAL_POLICY_BYTES {
+                    return Err(crate::error::Error::PolicyParse {
+                        message: format!(
+                            "total policy source size exceeds the limit of {MAX_TOTAL_POLICY_BYTES} bytes"
+                        ),
+                        file: entry.path().display().to_string(),
+                    });
+                }
                 sources.push(PolicySource {
                     path: entry.path().to_path_buf(),
                     text: src,
                 });
             }
+        }
+
+        // Parse only after the complete input set is within its bounds. This
+        // prevents a directory with many large, valid prefix files from
+        // allocating policy ASTs before the total-size cap is enforced.
+        // Sort after the bounded walk to preserve deterministic source order
+        // without buffering an unbounded directory for WalkDir's sorter.
+        sources.sort_by(|left, right| left.path.cmp(&right.path));
+        for src in &sources {
+            let file_set =
+                PolicySet::from_str(&src.text).map_err(|e| crate::error::Error::PolicyParse {
+                    message: e.to_string(),
+                    file: src.path.display().to_string(),
+                })?;
+            set.merge(&file_set, true)
+                .map_err(|e| crate::error::Error::PolicyParse {
+                    message: e.to_string(),
+                    file: src.path.display().to_string(),
+                })?;
         }
 
         Ok((set, sources))
@@ -106,7 +123,7 @@ impl PolicyStore {
         if !p.exists() {
             return Ok(None);
         }
-        let text = std::fs::read_to_string(&p)?;
+        let text = read_bounded_text(&p, MAX_SCHEMA_BYTES, "schema")?;
         let (schema, _warnings) = cedar_policy::Schema::from_cedarschema_str(&text)
             .map_err(|e| crate::error::Error::Schema(e.to_string()))?;
         Ok(Some(SchemaParsed {
@@ -213,5 +230,124 @@ impl PolicyStore {
     pub fn write_schema(&self, text: &str) -> Result<()> {
         std::fs::write(self.schema_path(), text)?;
         Ok(())
+    }
+}
+
+fn read_bounded_text(path: &Path, max_bytes: u64, label: &str) -> Result<String> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(max_bytes + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(crate::error::Error::Other(format!(
+            "{} exceeds the {label} size limit of {max_bytes} bytes",
+            path.display()
+        )));
+    }
+    String::from_utf8(bytes).map_err(|error| {
+        crate::error::Error::Other(format!("{} is not valid UTF-8: {error}", path.display()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn policy_file_count_over_limit_fails_instead_of_silently_truncating() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        fs::create_dir_all(store.policies_dir()).unwrap();
+        for index in 0..=MAX_POLICY_FILES {
+            fs::write(store.policies_dir().join(format!("{index:04}.cedar")), "").unwrap();
+        }
+
+        let error = store.load_policies().unwrap_err();
+        assert!(error.to_string().contains("policy count exceeds"));
+    }
+
+    #[test]
+    fn policy_tree_entry_count_is_bounded() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        fs::create_dir_all(store.policies_dir()).unwrap();
+        for index in 0..MAX_POLICY_TREE_ENTRIES {
+            fs::write(
+                store.policies_dir().join(format!("{index:04}.txt")),
+                "ignored non-policy file",
+            )
+            .unwrap();
+        }
+
+        let error = store.load_policies().unwrap_err();
+        assert!(error.to_string().contains("policy store tree exceeds"));
+    }
+
+    #[test]
+    fn total_policy_source_size_is_bounded_before_policy_parsing() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        fs::create_dir_all(store.policies_dir()).unwrap();
+        let comment = format!("// {}\n", "x".repeat(MAX_POLICY_FILE_BYTES as usize - 4));
+        for index in 0..=MAX_TOTAL_POLICY_BYTES / MAX_POLICY_FILE_BYTES {
+            fs::write(
+                store.policies_dir().join(format!("{index:04}.cedar")),
+                &comment,
+            )
+            .unwrap();
+        }
+
+        let error = store.load_policies().unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("total policy source size exceeds"));
+    }
+
+    #[test]
+    fn individual_policy_file_size_is_bounded() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        fs::create_dir_all(store.policies_dir()).unwrap();
+        fs::write(
+            store.policies_dir().join("oversized.cedar"),
+            vec![b'x'; MAX_POLICY_FILE_BYTES as usize + 1],
+        )
+        .unwrap();
+
+        let error = store.load_policies().unwrap_err();
+        assert!(error.to_string().contains("policy size limit"));
+    }
+
+    #[test]
+    fn schema_size_is_bounded_before_schema_parsing() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        fs::write(
+            store.schema_path(),
+            vec![b'x'; MAX_SCHEMA_BYTES as usize + 1],
+        )
+        .unwrap();
+
+        let error = store.load_schema().unwrap_err();
+        assert!(error.to_string().contains("schema size limit"));
+    }
+
+    #[test]
+    fn policy_directories_do_not_consume_the_policy_file_limit() {
+        let dir = tempdir().unwrap();
+        let store = PolicyStore::open(dir.path()).unwrap();
+        let nested = store.policies_dir().join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            nested.join("allow.cedar"),
+            "permit(principal, action, resource);",
+        )
+        .unwrap();
+
+        let (policies, sources) = store.load_policies().unwrap();
+        assert_eq!(policies.policies().count(), 1);
+        assert_eq!(sources.len(), 1);
     }
 }

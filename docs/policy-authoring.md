@@ -54,6 +54,13 @@ restore the reviewed schema/policy files and restart or trigger the documented
 reload path. Keep the previous bundle, decision corpus, and audit records for
 the change window.
 
+Policy loading fails closed when the store tree contains more than 4,096
+filesystem entries, the store contains more than 1,024 Cedar files, any policy
+exceeds 1 MiB, the aggregate policy source exceeds 16 MiB, or the schema
+exceeds 1 MiB. Limits apply during startup and every reload. A limit violation
+keeps the last-known-good snapshot active; it never silently omits later
+policies.
+
 Delegation tokens describe authority but do not enforce tool scopes by
 themselves. The integration at the tool boundary must verify the signature,
 expiry, sender constraint, and requested scope before executing a tool.
