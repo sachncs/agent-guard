@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const homepage = await readFile(new URL('./src/pages/index.astro', import.meta.url), 'utf8');
 const concepts = await readFile(new URL('../docs/concepts.md', import.meta.url), 'utf8');
+const security = await readFile(new URL('../docs/security.md', import.meta.url), 'utf8');
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const footer = await readFile(new URL('./src/components/footer.astro', import.meta.url), 'utf8');
 const releaseWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
@@ -21,6 +22,13 @@ test('canonical concepts guide documents the implemented fallible cache configur
   assert.match(concepts, /Invalid\s+values fail startup/);
   assert.match(concepts, /Authorizer::try_with_cache/);
   assert.doesNotMatch(concepts, /CacheConfig::from_env/);
+});
+
+test('security guide defines the operator-local audit verification boundary', () => {
+  assert.match(security, /verifies the native HMAC chain with its chain secret/i);
+  assert.match(security, /anyone given the secret can create valid/i);
+  assert.match(security, /exported records do not carry the native\s+chain's cryptographic metadata/i);
+  assert.match(security, /no public-key-signed\s+export or handoff format/i);
 });
 
 test('public install and release claims match the GHCR-only binary release workflow', () => {

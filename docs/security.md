@@ -80,6 +80,17 @@ verification without a trusted checkpoint cannot prove that earlier records
 were not removed. The embedded authorizer does not create audit records unless
 the embedding application supplies that lifecycle.
 
+`agentguard audit verify` verifies the native HMAC chain with its chain secret.
+That verifier is also a signer: anyone given the secret can create valid
+HMAC-authenticated records. JSONL, CEF, LEEF, and ECS `audit export` output is
+for operational/SIEM ingestion; the exported records do not carry the native
+chain's cryptographic metadata and cannot be independently verified as
+AgentGuard-attested evidence. The current product has no public-key-signed
+export or handoff format. Do not give an external recipient the chain secret
+when the recipient must be able to verify evidence without gaining signing
+authority. A separately signed export attestation would be a distinct future
+capability, not a replacement for the native audit chain or delegation tokens.
+
 ## Explicit exclusions and limitations
 
 - AgentGuard does not detect every prompt injection, validate model reasoning,
