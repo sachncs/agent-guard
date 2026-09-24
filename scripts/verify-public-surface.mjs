@@ -35,6 +35,7 @@ for (const file of [
   "site/public/og-image.png",
   "site/public/brand/concept-boundary.svg",
   "docs/production.md",
+  "docs/configuration.md",
   "scripts/k8s-smoke.sh",
   "deploy/k8s/kustomization.yaml",
   ".dockerignore",
@@ -89,7 +90,10 @@ requireText("docs/architecture.md", "Embedded `Authorizer` calls return decision
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
 requireText("scripts/k8s-smoke.sh", "agentguard audit verify");
 requireText("frontend/README.md", "AGENTGUARD_SESSION_STORE");
-requireText("site/src/pages/docs/configuration.astro", "AGENTGUARD_SESSION_REDIS_URL");
+requireText("site/src/pages/docs/configuration.astro", "../../../../docs/configuration.md");
+requireText("docs/configuration.md", "AGENTGUARD_SESSION_REDIS_URL");
+requireText("docs/configuration.md", "AGENTGUARD_RATE_LIMIT_REDIS_URL");
+requireText("docs/README.md", "[Configuration reference](configuration.md)");
 requireText("site/src/pages/docs/reference.astro", "reference/generated/");
 requireText("site/src/pages/docs/reference.astro", "PUBLIC_AGENTGUARD_REFERENCE");
 requireText("scripts/stage-api-reference.mjs", "agentguard_server");
