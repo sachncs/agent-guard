@@ -23,6 +23,9 @@ spec:
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8443}]
           env:
+            # Make the pod-IP listener explicit instead of depending on the
+            # image default; the Kubernetes Service cannot reach loopback.
+            - {name: AGENTGUARD_LISTEN, value: tcp://0.0.0.0:8443}
             - {name: AGENTGUARD_AUTH, value: "apikey:/etc/agentguard/keys/keys.json"}
             - {name: AGENTGUARD_CHAIN_SECRET, value: /etc/agentguard/secrets/chain-secret}
             # Segment files for predictable archival; this does not enforce retention.

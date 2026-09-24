@@ -17,6 +17,7 @@ if (failures.length === 0) {
 
   const pdp = read("pdp.yaml");
   for (const value of [
+    "name: AGENTGUARD_LISTEN, value: tcp://0.0.0.0:8443",
     'value: "apikey:/etc/agentguard/keys/keys.json"',
     'name: AGENTGUARD_AUDIT_MAX_BYTES, value: "67108864"',
     "path: /readyz",
