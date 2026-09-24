@@ -285,7 +285,13 @@ jobs:
         env:
           AGENTGUARD_KIND_CLUSTER: agentguard-smoke
           AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER: agentguard-smoke
-        run: ./scripts/k8s-smoke.sh
+        run: timeout --foreground --signal=TERM --kill-after=20s 15m ./scripts/k8s-smoke.sh
+      - name: Capture Kubernetes smoke diagnostics
+        if: failure()
+        run: |
+          kubectl -n agentguard get pods -o wide || true
+          kubectl -n agentguard get deployments || true
+          kubectl -n agentguard get events --sort-by=.lastTimestamp | tail -n 50 || true
 
   deny:
     name: cargo-deny

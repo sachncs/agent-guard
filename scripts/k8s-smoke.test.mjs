@@ -8,7 +8,20 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const smokeScript = join(repoRoot, "scripts/k8s-smoke.sh");
+const ciWorkflow = join(repoRoot, ".github/workflows/ci.yml");
 const recordedCalls = (path) => existsSync(path) ? readFileSync(path, "utf8") : "";
+
+test("CI bounds the Kubernetes smoke and captures failure diagnostics", () => {
+  const workflow = readFileSync(ciWorkflow, "utf8");
+  assert.match(
+    workflow,
+    /name: Kubernetes PDP smoke\s+timeout-minutes: 30[\s\S]*?name: Run Kubernetes startup, decision, audit, termination, and rollback smoke test[\s\S]*?run: timeout --foreground --signal=TERM --kill-after=20s 15m \.\/scripts\/k8s-smoke\.sh/,
+  );
+  assert.match(
+    workflow,
+    /name: Capture Kubernetes smoke diagnostics\s+if: failure\(\)[\s\S]*?kubectl -n agentguard get pods -o wide[\s\S]*?kubectl -n agentguard get events --sort-by=\.lastTimestamp/,
+  );
+});
 
 function makeHarness({ context = "kind-agentguard-test", clusters = "agentguard-test" } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agentguard-k8s-guard-"));
