@@ -268,5 +268,17 @@ mod tests {
         assert_eq!(exported.len(), 2);
         assert_eq!(exported[0].id, "before-rotation");
         assert_eq!(exported[1].id, "after-rotation");
+
+        // SIEM JSONL is a DecisionRecord export, not the native chained
+        // format. Keep the external-verification boundary explicit: the
+        // exported records must not be mistaken for independently verifiable
+        // HMAC evidence.
+        let exported_lines = std::fs::read_to_string(output_path).unwrap();
+        for line in exported_lines.lines() {
+            let value: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert!(value.get("chain_id").is_none());
+            assert!(value.get("prev_hash").is_none());
+            assert!(value.get("record_hash").is_none());
+        }
     }
 }
