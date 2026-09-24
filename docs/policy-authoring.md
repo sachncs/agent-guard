@@ -61,6 +61,11 @@ exceeds 1 MiB. Limits apply during startup and every reload. A limit violation
 keeps the last-known-good snapshot active; it never silently omits later
 policies.
 
+The standalone watcher coalesces bursts of filesystem notifications and keeps
+its pending path and error samples bounded. Reload always reads the complete
+store snapshot, so coalescing duplicate change signals does not omit policy
+changes.
+
 Delegation tokens describe authority but do not enforce tool scopes by
 themselves. The integration at the tool boundary must verify the signature,
 expiry, sender constraint, and requested scope before executing a tool.

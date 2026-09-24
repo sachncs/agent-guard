@@ -22,7 +22,7 @@
 //! does not indicate watcher failure.
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use notify::{Config, Event, EventKind, PollWatcher, RecursiveMode, Watcher};
@@ -30,7 +30,9 @@ use notify::{Config, Event, EventKind, PollWatcher, RecursiveMode, Watcher};
 /// A debounced filesystem event for a watched policy directory.
 #[derive(Debug, Clone)]
 pub struct WatchEvent {
-    /// Paths of files that changed in this debounce window.
+    /// A bounded diagnostic sample of paths changed in this debounce window.
+    /// This is not a complete change set; consumers must reload the complete
+    /// policy store rather than update state based only on these paths.
     pub paths: Vec<PathBuf>,
     /// What kind of change occurred. See [`WatchEventKind`].
     pub kind: WatchEventKind,
@@ -51,6 +53,10 @@ pub enum WatchEventKind {
     Other,
 }
 
+const MAX_PENDING_WATCH_PATHS: usize = 128;
+const MAX_PENDING_WATCH_ERRORS: usize = 16;
+const MAX_WATCH_ERROR_BYTES: usize = 512;
+
 impl From<&EventKind> for WatchEventKind {
     fn from(k: &EventKind) -> Self {
         match k {
@@ -65,29 +71,75 @@ impl From<&EventKind> for WatchEventKind {
 /// A debounced filesystem watcher.
 ///
 /// The watcher runs a background thread that calls `notify`'s
-/// recommended backend. Events are coalesced on a single mpsc
-/// channel; drain with [`PolicyWatcher::events`].
+/// recommended backend. Event paths and errors are coalesced into bounded
+/// shared state; drain with [`PolicyWatcher::events`].
 pub struct PolicyWatcher {
     _inner: PollWatcher,
-    /// Batched filesystem events and runtime errors from notify.
-    rx: Receiver<WatchMessage>,
+    pending: Arc<Mutex<PendingSignals>>,
     debounce: Duration,
     last_emit: Option<Instant>,
-    pending: Vec<PathBuf>,
-    pending_kind: WatchEventKind,
+}
+
+struct PendingSignals {
+    changed: bool,
+    paths: Vec<PathBuf>,
+    kind: WatchEventKind,
     pending_errors: Vec<String>,
     last_error: Option<String>,
 }
 
-enum WatchMessage {
-    Event(Vec<PathBuf>, WatchEventKind),
-    Error(String),
+impl Default for PendingSignals {
+    fn default() -> Self {
+        Self {
+            changed: false,
+            paths: Vec::new(),
+            kind: WatchEventKind::Other,
+            pending_errors: Vec::new(),
+            last_error: None,
+        }
+    }
 }
 
-fn queue_new_error(errors: &mut Vec<String>, last_error: &mut Option<String>, error: String) {
+fn queue_new_error(errors: &mut Vec<String>, last_error: &mut Option<String>, mut error: String) {
+    if error.len() > MAX_WATCH_ERROR_BYTES {
+        let mut end = MAX_WATCH_ERROR_BYTES;
+        while !error.is_char_boundary(end) {
+            end -= 1;
+        }
+        error.truncate(end);
+    }
     if last_error.as_ref() != Some(&error) {
-        errors.push(error.clone());
+        if errors.len() < MAX_PENDING_WATCH_ERRORS {
+            errors.push(error.clone());
+        }
         *last_error = Some(error);
+    }
+}
+
+fn promote_kind(current: WatchEventKind, incoming: WatchEventKind) -> WatchEventKind {
+    match (current, incoming) {
+        (WatchEventKind::Create, _) | (_, WatchEventKind::Create) => WatchEventKind::Create,
+        (WatchEventKind::Write, _) | (_, WatchEventKind::Write) => WatchEventKind::Write,
+        (WatchEventKind::Remove, _) | (_, WatchEventKind::Remove) => WatchEventKind::Remove,
+        _ => WatchEventKind::Other,
+    }
+}
+
+impl PendingSignals {
+    fn record_event(&mut self, paths: impl IntoIterator<Item = PathBuf>, kind: WatchEventKind) {
+        self.changed = true;
+        self.last_error = None;
+        self.kind = promote_kind(self.kind, kind);
+        for path in paths {
+            if self.paths.len() == MAX_PENDING_WATCH_PATHS {
+                break;
+            }
+            self.paths.push(path);
+        }
+    }
+
+    fn record_error(&mut self, error: String) {
+        queue_new_error(&mut self.pending_errors, &mut self.last_error, error);
     }
 }
 
@@ -96,50 +148,30 @@ impl PolicyWatcher {
     /// are ready (i.e. nothing changed since the last call or the
     /// debounce window hasn't elapsed).
     pub fn events(&mut self) -> Vec<WatchEvent> {
-        // Drain all raw events from notify, accumulating into pending.
-        while let Ok(message) = self.rx.try_recv() {
-            match message {
-                WatchMessage::Event(paths, kind) => {
-                    self.last_error = None;
-                    self.pending.extend(paths);
-                    // Promote the kind: Create > Write > Remove > Other.
-                    self.pending_kind = match (self.pending_kind, kind) {
-                        (WatchEventKind::Create, _) | (_, WatchEventKind::Create) => {
-                            WatchEventKind::Create
-                        }
-                        (WatchEventKind::Write, _) | (_, WatchEventKind::Write) => {
-                            WatchEventKind::Write
-                        }
-                        (WatchEventKind::Remove, _) | (_, WatchEventKind::Remove) => {
-                            WatchEventKind::Remove
-                        }
-                        _ => WatchEventKind::Other,
-                    };
-                }
-                WatchMessage::Error(error) => {
-                    queue_new_error(&mut self.pending_errors, &mut self.last_error, error);
-                }
-            }
-        }
         let now = Instant::now();
         let ready = match self.last_emit {
             None => true,
             Some(t) => now.duration_since(t) >= self.debounce,
         };
-        if !ready || self.pending.is_empty() {
+        if !ready {
             return Vec::new();
         }
-        // Flush.
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        if !pending.changed {
+            return Vec::new();
+        }
         self.last_emit = Some(now);
-        let paths = std::mem::take(&mut self.pending);
-        let kind = std::mem::replace(&mut self.pending_kind, WatchEventKind::Other);
+        pending.changed = false;
+        let paths = std::mem::take(&mut pending.paths);
+        let kind = std::mem::replace(&mut pending.kind, WatchEventKind::Other);
         vec![WatchEvent { paths, kind }]
     }
 
     /// Drain newly observed runtime watcher errors. Identical errors are
     /// reported once until a successful filesystem event is observed.
     pub fn take_errors(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.pending_errors)
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        std::mem::take(&mut pending.pending_errors)
     }
 
     /// Stop watching. Idempotent. Drops the background thread and
@@ -157,7 +189,8 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
     let dir = std::fs::canonicalize(dir.as_ref())?;
     let policies_dir = dir.join("policies");
     let schema_path = dir.join("schema.cedarschema");
-    let (tx, rx) = channel();
+    let pending = Arc::new(Mutex::new(PendingSignals::default()));
+    let callback_pending = Arc::clone(&pending);
     let mut inner = PollWatcher::new(
         move |res: notify::Result<Event>| {
             // Collapse each notify::Event into (paths, kind). The kind
@@ -166,21 +199,30 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
             match res {
                 Ok(ev) => {
                     let kind = WatchEventKind::from(&ev.kind);
-                    let paths: Vec<PathBuf> = ev
-                        .paths
-                        .into_iter()
-                        .filter(|path| {
-                            path == &schema_path
-                                || (path.parent() == Some(policies_dir.as_path())
-                                    && path.extension().is_some_and(|ext| ext == "cedar"))
-                        })
-                        .collect();
-                    if !paths.is_empty() {
-                        let _ = tx.send(WatchMessage::Event(paths, kind));
+                    let paths = ev.paths.into_iter().filter(|path| {
+                        path == &schema_path
+                            || (path.parent() == Some(policies_dir.as_path())
+                                && path.extension().is_some_and(|ext| ext == "cedar"))
+                    });
+                    let mut bounded_paths = Vec::new();
+                    for path in paths {
+                        if bounded_paths.len() == MAX_PENDING_WATCH_PATHS {
+                            break;
+                        }
+                        bounded_paths.push(path);
+                    }
+                    if !bounded_paths.is_empty() {
+                        callback_pending
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .record_event(bounded_paths, kind);
                     }
                 }
                 Err(error) => {
-                    let _ = tx.send(WatchMessage::Error(error.to_string()));
+                    callback_pending
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .record_error(error.to_string());
                 }
             }
         },
@@ -194,13 +236,9 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
         .map_err(|e| std::io::Error::other(format!("notify watch: {e}")))?;
     Ok(PolicyWatcher {
         _inner: inner,
-        rx,
+        pending,
         debounce,
         last_emit: None,
-        pending: Vec::new(),
-        pending_kind: WatchEventKind::Other,
-        pending_errors: Vec::new(),
-        last_error: None,
     })
 }
 
@@ -332,6 +370,31 @@ mod tests {
         last_error = None; // A valid filesystem event clears the error state.
         queue_new_error(&mut errors, &mut last_error, "watch failed".to_owned());
         assert_eq!(errors, ["watch failed", "watch failed"]);
+    }
+
+    #[test]
+    fn pending_watcher_signals_coalesce_and_stay_bounded() {
+        let mut pending = PendingSignals::default();
+        let paths = (0..MAX_PENDING_WATCH_PATHS + 50)
+            .map(|index| PathBuf::from(format!("policies/{index}.cedar")));
+        pending.record_event(paths, WatchEventKind::Write);
+        pending.record_event(
+            [PathBuf::from("policies/important.cedar")],
+            WatchEventKind::Create,
+        );
+
+        assert!(pending.changed);
+        assert_eq!(pending.paths.len(), MAX_PENDING_WATCH_PATHS);
+        assert_eq!(pending.kind, WatchEventKind::Create);
+
+        for index in 0..MAX_PENDING_WATCH_ERRORS + 10 {
+            pending.record_error(format!("watch error {index}: {}", "x".repeat(1024)));
+        }
+        assert_eq!(pending.pending_errors.len(), MAX_PENDING_WATCH_ERRORS);
+        assert!(pending
+            .pending_errors
+            .iter()
+            .all(|error| error.len() <= MAX_WATCH_ERROR_BYTES));
     }
 
     /// The watcher stops cleanly when dropped (no panics, no leaked

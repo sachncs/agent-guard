@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Coalesce policy watcher notifications in bounded shared state so delayed
+  reloads cannot accumulate an unbounded event queue or path list.
 - Fail policy loading closed when the store tree, Cedar-file count, or source
   byte limits are exceeded instead of silently truncating later policies;
   bound schema and aggregate policy reads to protect startup and reload from
