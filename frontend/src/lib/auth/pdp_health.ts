@@ -17,5 +17,9 @@ export async function checkPdpReady(
   } catch {
     throw new Error("PDP readiness probe failed");
   }
-  if (!response.ok) throw new Error(`PDP is not ready (HTTP ${response.status})`);
+  const status = response.status;
+  // The health contract is the HTTP status alone. Release the unused body so
+  // repeated readiness probes do not hold response streams or connections.
+  await response.body?.cancel().catch(() => undefined);
+  if (!response.ok) throw new Error(`PDP is not ready (HTTP ${status})`);
 }
