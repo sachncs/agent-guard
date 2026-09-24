@@ -68,7 +68,29 @@ describe("session tokens", () => {
       healthCheck: async () => {},
     };
 
-    assert.deepEqual(await verifySession(SECRET, token, mismatchedStore), { ok: false });
+    assert.deepEqual(await verifySession(SECRET, token, mismatchedStore), {
+      ok: false,
+      reason: "invalid",
+    });
+  });
+
+  it("distinguishes shared-store outages from invalid or revoked sessions", async () => {
+    const store = {
+      put: async () => {},
+      get: async () => { throw new Error("private backend detail"); },
+      delete: async () => {},
+      healthCheck: async () => {},
+    };
+    const token = await signSession(SECRET, { sub: "viewer", admin: false });
+
+    assert.deepEqual(await verifySession(SECRET, token, store), {
+      ok: false,
+      reason: "store_unavailable",
+    });
+    assert.deepEqual(await verifySession(SECRET, "malformed-token", store), {
+      ok: false,
+      reason: "invalid",
+    });
   });
 
   it("surfaces shared-store revocation failures for valid sessions", async () => {

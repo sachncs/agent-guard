@@ -41,7 +41,9 @@ export async function signSession(
 }
 
 /** Discriminated result of a session verification. */
-export type VerifyResult<T> = { ok: true; claims: T } | { ok: false };
+export type VerifyResult<T> =
+  | { ok: true; claims: T }
+  | { ok: false; reason: "invalid" | "store_unavailable" };
 
 /** Verify a session JWT; returns `{ok: false}` for missing/invalid/expired tokens. */
 export async function verifySession(
@@ -49,43 +51,45 @@ export async function verifySession(
   token: string | undefined,
   store?: SessionStore,
 ): Promise<VerifyResult<SessionClaims>> {
-  if (!token) return { ok: false };
+  if (!token) return { ok: false, reason: "invalid" };
+  let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
   try {
-    const { payload } = await jwtVerify(token, secret, {
+    ({ payload } = await jwtVerify(token, secret, {
       issuer: "agentguard-console",
       audience: "agentguard-console",
       algorithms: ["HS256"],
-    });
-    if (
-      typeof payload.sub !== "string" ||
-      typeof payload.admin !== "boolean"
-    ) {
-      return { ok: false };
+    }));
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+  if (typeof payload.sub !== "string" || typeof payload.admin !== "boolean") {
+    return { ok: false, reason: "invalid" };
+  }
+  const claims = {
+    sub: payload.sub,
+    email: typeof payload.email === "string" ? payload.email : undefined,
+    name: typeof payload.name === "string" ? payload.name : undefined,
+    admin: payload.admin,
+  };
+  if (store) {
+    if (typeof payload.jti !== "string") return { ok: false, reason: "invalid" };
+    let stored: SessionClaims | null;
+    try {
+      stored = await store.get(payload.jti);
+    } catch {
+      // Keep invalid credentials distinct from a dependency outage. Callers
+      // must fail closed with 503 without clearing a potentially valid cookie.
+      return { ok: false, reason: "store_unavailable" };
     }
-    const claims = {
-      sub: payload.sub,
-      email: typeof payload.email === "string" ? payload.email : undefined,
-      name: typeof payload.name === "string" ? payload.name : undefined,
-      admin: payload.admin,
-    };
-    if (store) {
-      if (typeof payload.jti !== "string") return { ok: false };
-      const stored = await store.get(payload.jti);
       // The shared store is a revocation index, not a second authority for
       // identity or roles. Only the signed token may grant a subject/admin
       // claim; a stale, corrupted, or incorrectly keyed record must fail
       // closed instead of changing authorization after login.
       if (!stored || stored.sub !== claims.sub || stored.admin !== claims.admin) {
-        return { ok: false };
+        return { ok: false, reason: "invalid" };
       }
-    }
-    return {
-      ok: true,
-      claims,
-    };
-  } catch {
-    return { ok: false };
   }
+  return { ok: true, claims };
 }
 
 /** Revoke a server-side session record when a user logs out. */

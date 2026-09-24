@@ -74,6 +74,21 @@ export async function proxy(request: NextRequest) {
   );
 
   if (!session.ok) {
+    if (session.reason === "store_unavailable") {
+      const response = isApi
+        ? Response.json(
+            {
+              error: "session verification is temporarily unavailable",
+              kind: "session_store_unavailable",
+            },
+            { status: 503, headers: { "Cache-Control": "no-store" } },
+          )
+        : new NextResponse(sessionUnavailablePage(), {
+            status: 503,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+      return applySecurityHeaders(response, process.env.NODE_ENV === "production", https);
+    }
     if (isApi) {
       return applySecurityHeaders(
         Response.json({ error: "authentication required", kind: "unauthenticated" }, { status: 401 }),
@@ -102,6 +117,18 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image).*)"],
 };
+
+function sessionUnavailablePage(): string {
+  return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>AgentGuard Console</title></head>
+<body style="font-family: ui-monospace, monospace; max-width: 40rem; margin: 4rem auto; padding: 0 1rem;">
+<h1>AgentGuard Console</h1>
+<p><strong>Session verification is temporarily unavailable.</strong></p>
+<p>Your session has not been cleared. Try again shortly.</p>
+</body>
+</html>`;
+}
 
 function notConfiguredPage(reason: string): string {
   return `<!doctype html>

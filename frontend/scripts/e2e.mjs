@@ -1124,9 +1124,24 @@ async function main() {
     redis.setAvailable(false);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 503,
       "readiness fails when shared stores are unavailable");
+    const unavailableApi = await req(viewer, "/api/log");
+    assert.equal(unavailableApi.status, 503,
+      "session-store outage is not misreported as an expired login");
+    assert.deepEqual(await unavailableApi.json(), {
+      error: "session verification is temporarily unavailable",
+      kind: "session_store_unavailable",
+    });
+    const unavailablePage = await req(viewer, "/");
+    assert.equal(unavailablePage.status, 503,
+      "browser navigation reports temporary session verification failure");
+    assert.match(await unavailablePage.text(), /Your session has not been cleared/);
+    assert.equal(unavailablePage.headers.get("set-cookie"), null,
+      "transient store failure does not clear a valid browser session");
     redis.setAvailable(true);
     assert.equal((await fetch(`${BASE}/api/health/ready`)).status, 200,
       "readiness recovers when shared stores recover");
+    assert.equal((await req(viewer, "/api/log")).status, 200,
+      "existing sessions work again after shared storage recovers");
 
     console.log("\nALL E2E ASSERTIONS PASSED");
   } finally {

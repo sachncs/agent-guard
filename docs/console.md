@@ -94,9 +94,12 @@ process can serve HTTP; external outages do not trigger restart loops.
 
 Every authenticated user is a viewer. Only explicitly configured admin claim
 values can issue or verify delegation tokens. Expired or invalid sessions are
-cleared and redirected to login. Missing OIDC configuration, unavailable PDP
-responses, CLI failures, malformed upstream payloads, and audit failures are
-surfaced as errors; they never become an allow decision.
+cleared and redirected to login. If the shared session store is unavailable,
+the console returns `503` (including on browser navigation), preserves the
+session cookie, and allows the user to retry after storage recovers. Missing
+OIDC configuration, unavailable PDP responses, CLI failures, malformed
+upstream payloads, and audit failures are surfaced as errors; they never
+become an allow decision.
 
 Use Redis-compatible shared sessions and rate limiting for horizontally scaled
 console replicas. Login, delegation, verification, and simulator requests are
