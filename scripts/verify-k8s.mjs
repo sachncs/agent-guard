@@ -125,6 +125,24 @@ if (failures.length === 0) {
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   const productionGuide = readFileSync("docs/production.md", "utf8");
   const upgradesGuide = readFileSync("docs/upgrades.md", "utf8");
+  const sensitiveConsoleValues = [
+    "AGENTGUARD_OIDC_CLIENT_SECRET",
+    "AGENTGUARD_SESSION_SECRET",
+    "AGENTGUARD_SESSION_REDIS_TOKEN",
+    "AGENTGUARD_PDP_BEARER",
+    "AGENTGUARD_RATE_LIMIT_REDIS_TOKEN",
+  ];
+  for (const name of sensitiveConsoleValues) {
+    if (operationsGuide.includes(`--from-literal=${name}=`)) {
+      failures.push(`docs/kubernetes.md must not expose ${name} in a --from-literal argument`);
+    }
+    if (!operationsGuide.includes(`--from-file=${name}=`)) {
+      failures.push(`docs/kubernetes.md must load ${name} from a protected file`);
+    }
+  }
+  if (!operationsGuide.replaceAll(/\s+/g, " ").includes("without an unintended trailing newline")) {
+    failures.push("docs/kubernetes.md must explain exact secret-file byte handling");
+  }
   const productionOverlayTemplate = readFileSync(
     "deploy/overlays/production/kustomization.yaml.example",
     "utf8",
