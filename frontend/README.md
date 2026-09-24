@@ -55,6 +55,19 @@ the console answers `503` on every route — there is no open mode.
    IdP/PDP services plus a Redis-compatible REST test store and drives the
    production build end-to-end.
 
+4. Local console configuration. From the repository root, copy the example
+   and replace its OIDC placeholders with credentials for your local issuer:
+
+   ```bash
+   cp frontend/.env.example frontend/.env.local
+   openssl rand -base64 48 # use this as AGENTGUARD_SESSION_SECRET
+   ```
+
+   `frontend/.env.local` is ignored by Git. Never commit real client secrets.
+   The dev server intentionally returns `503` until the OIDC issuer, client
+   ID, client secret, and session secret are configured; it does not provide
+   an unauthenticated demo mode.
+
 ## Run
 
 From the repository root:
@@ -64,7 +77,9 @@ pnpm install
 pnpm --filter frontend dev
 ```
 
-Open <http://localhost:3000> and you will be redirected to `/login`.
+With valid local OIDC settings, open <http://localhost:3000>; unauthenticated
+requests redirect to `/login`. If the required values are absent or invalid,
+the console fails closed with an explanatory `503` response.
 
 ## Configuration
 

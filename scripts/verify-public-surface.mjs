@@ -115,6 +115,8 @@ requireText("docs/operations/runbook.md", 'AGENTGUARD_GRPC_LISTEN="127.0.0.1:944
 requireText("frontend/src/components/theme_provider.tsx", "enableSystem");
 requireText("frontend/src/components/theme_toggle.tsx", "aria-label");
 requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
+requireText("frontend/README.md", "cp frontend/.env.example frontend/.env.local");
+requireText("frontend/README.md", "fails closed with an explanatory `503`");
 requireText("README.md", "not standardized AuthZEN gRPC");
 requireText("docs/architecture.md", "repository-defined gRPC mirror");
 requireText("site/src/lib/content.ts", "repository-defined plaintext gRPC mirror");
