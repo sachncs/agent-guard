@@ -130,6 +130,11 @@ Signature verification alone is not authorization. A consuming adapter must:
 4. evaluate the effective Cedar policy; and
 5. apply revocation or replay state when the application requires it.
 
+The Rust compact-JWS parser rejects delegation tokens larger than 64 KiB
+before base64 decoding or JSON parsing. Applications should retain their own
+transport/request-size limits as well; this library bound is not a substitute
+for ingress limits.
+
 `VerifiedDelegation::allows(subject, action, resource, request_facts)` is a
 fail-closed scope check: the trusted subject, exact action, resource glob, and
 every declared constraint must match. It does not decide whether the issuer

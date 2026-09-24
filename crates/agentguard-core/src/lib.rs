@@ -26,7 +26,7 @@ pub use context::AgentContext;
 pub use decision::{AuthenticatedActor, DecisionCache, DecisionLog, DecisionRecord};
 pub use delegation::{
     DelegationClaims, DelegationConfig, DelegationSigner, DelegationSpec, DelegationToken,
-    DelegationVerifier, VerifiedDelegation,
+    DelegationVerifier, VerifiedDelegation, MAX_DELEGATION_TOKEN_BYTES,
 };
 pub use error::{Error, Result};
 pub use ids::{ActionId, PrincipalId, ResourceId};

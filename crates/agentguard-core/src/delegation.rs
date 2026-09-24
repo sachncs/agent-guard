@@ -13,6 +13,9 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Maximum compact JWS size accepted by the delegation parser.
+pub const MAX_DELEGATION_TOKEN_BYTES: usize = 64 * 1024;
+
 /// Standard JWS compact serialization: `base64url(header).base64url(payload).base64url(signature)`.
 ///
 /// The header carries `alg`, `kid`, `typ`.
@@ -606,6 +609,11 @@ impl DelegationToken {
     /// [`DelegationVerifier::verify`] before trusting any field
     /// of the returned value.
     pub fn parse(s: &str) -> Result<Self> {
+        if s.len() > MAX_DELEGATION_TOKEN_BYTES {
+            return Err(Error::InvalidToken(format!(
+                "delegation token exceeds the {MAX_DELEGATION_TOKEN_BYTES}-byte limit"
+            )));
+        }
         let parts: Vec<&str> = s.split('.').collect();
         if parts.len() != 3 {
             return Err(Error::InvalidToken("JWS must have 3 parts".into()));
@@ -1568,6 +1576,15 @@ mod tests {
         // No key registered — must fail.
         let res = verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
+    }
+
+    #[test]
+    fn parser_rejects_oversized_compact_tokens_before_decoding() {
+        let oversized = "a".repeat(MAX_DELEGATION_TOKEN_BYTES + 1);
+        assert!(matches!(
+            DelegationToken::parse(&oversized),
+            Err(Error::InvalidToken(_))
+        ));
     }
 
     #[test]
