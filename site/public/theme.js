@@ -11,7 +11,8 @@
       return null;
     }
   };
-  let preference = readPreference();
+  const preference = readPreference();
+  let hasManualChoice = preference !== null;
 
   const apply = (theme) => {
     root.dataset.theme = theme;
@@ -27,15 +28,14 @@
   apply(preference ?? (media.matches ? "dark" : "light"));
   document.addEventListener("DOMContentLoaded", () => apply(root.dataset.theme));
   media.addEventListener("change", (event) => {
-    preference = readPreference();
-    if (!preference) apply(event.matches ? "dark" : "light");
+    if (!hasManualChoice) apply(event.matches ? "dark" : "light");
   });
   document.addEventListener("click", (event) => {
     const toggle = event.target?.closest?.("[data-theme-toggle]");
     if (!toggle) return;
     const next = root.dataset.theme === "dark" ? "light" : "dark";
     apply(next);
-    preference = next;
+    hasManualChoice = true;
     try {
       localStorage.setItem(storageKey, next);
     } catch {

@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-function runTheme({ stored = null, prefersDark = false } = {}) {
+function runTheme({ stored = null, prefersDark = false, storageAvailable = true } = {}) {
   const attributes = {};
   const root = {
     dataset: {},
@@ -34,8 +34,14 @@ function runTheme({ stored = null, prefersDark = false } = {}) {
       }),
     },
     localStorage: {
-      getItem: (key) => values.get(key) ?? null,
-      setItem: (key, value) => values.set(key, value),
+      getItem: (key) => {
+        if (!storageAvailable) throw new Error("storage disabled");
+        return values.get(key) ?? null;
+      },
+      setItem: (key, value) => {
+        if (!storageAvailable) throw new Error("storage disabled");
+        values.set(key, value);
+      },
     },
   };
   vm.runInNewContext(read("./public/theme.js"), context);
@@ -66,6 +72,14 @@ test("a saved theme overrides the system and the control updates accessible stat
   assert.equal(theme.buttonAttributes["aria-pressed"], "true");
   theme.media({ matches: false });
   assert.equal(theme.root.dataset.theme, "dark", "system changes do not override an explicit selection");
+});
+
+test("manual theme selection remains stable for the page when storage is unavailable", () => {
+  const theme = runTheme({ storageAvailable: false, prefersDark: true });
+  theme.click({ target: { closest: () => ({}) } });
+  assert.equal(theme.root.dataset.theme, "light");
+  theme.media({ matches: true });
+  assert.equal(theme.root.dataset.theme, "light");
 });
 
 test("published layouts expose the theme control and light-mode design tokens", () => {
