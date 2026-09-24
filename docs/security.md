@@ -23,10 +23,12 @@ adapter:
 
 Timeouts, malformed responses, PDP failures, and configured audit failures
 must not become implicit permission. The Strands guard demonstrates fail-closed
-HTTP handling. Custom integrations must preserve that behavior. The CLI writes
-the decision to stdout before audit persistence completes, so callers must
-check its exit status as well as the reported effect. The embedded
-`Authorizer` does not write audit records automatically.
+HTTP handling. Custom integrations must preserve that behavior. The CLI emits
+its decision only after required audit persistence succeeds; on an audit error
+it exits unsuccessfully without writing a decision to stdout. The explicit
+`--skip-audit` option disables that guarantee and should only be used when the
+caller has another durable audit path. The embedded `Authorizer` does not write
+audit records automatically.
 
 ## Trust boundaries and identity
 

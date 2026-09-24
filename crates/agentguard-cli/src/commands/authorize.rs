@@ -83,29 +83,6 @@ pub async fn run(
         .await
         .map_err(|e| anyhow!("blocking task: {e}"))??;
 
-    if output == "json" {
-        println!("{}", serde_json::to_string_pretty(&decision)?);
-    } else {
-        let color = match decision.effect {
-            agentguard_core::authorize::Effect::Allow => "\x1b[32m",
-            _ => "\x1b[31m",
-        };
-        println!(
-            "{} {}\x1b[0m",
-            color,
-            format!("{:?}", decision.effect).to_uppercase()
-        );
-        println!("principal: {}", req.principal);
-        println!("action:    {}", req.action);
-        println!("resource:  {}", req.resource);
-        if !decision.policies.is_empty() {
-            println!("policies:  {}", decision.policies.join(", "));
-        }
-        for r in &decision.reasons {
-            println!("  - {}", r);
-        }
-    }
-
     if !no_audit {
         // Open hash-chained log if a secret file is provided via
         // --secret-file / AGENTGUARD_CHAIN_SECRET. Read errors
@@ -130,6 +107,33 @@ pub async fn run(
         })
         .await
         .map_err(|e| anyhow!("blocking task: {e}"))??;
+    }
+
+    // Do not expose an Allow (or any decision) to stdout until required audit
+    // persistence succeeds. Subprocess callers may consume stdout separately
+    // from the exit status, so emitting first could turn an audit failure into
+    // an apparent successful authorization for an incautious adapter.
+    if output == "json" {
+        println!("{}", serde_json::to_string_pretty(&decision)?);
+    } else {
+        let color = match decision.effect {
+            agentguard_core::authorize::Effect::Allow => "\x1b[32m",
+            _ => "\x1b[31m",
+        };
+        println!(
+            "{} {}\x1b[0m",
+            color,
+            format!("{:?}", decision.effect).to_uppercase()
+        );
+        println!("principal: {}", req.principal);
+        println!("action:    {}", req.action);
+        println!("resource:  {}", req.resource);
+        if !decision.policies.is_empty() {
+            println!("policies:  {}", decision.policies.join(", "));
+        }
+        for r in &decision.reasons {
+            println!("  - {}", r);
+        }
     }
 
     let outcome = AuthorizeOutcome {

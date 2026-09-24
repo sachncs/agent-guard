@@ -163,6 +163,37 @@ fn sim_allows_starter_agent_policy_and_authorize_denial_is_audited() {
 }
 
 #[test]
+fn authorize_emits_no_decision_when_required_audit_append_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    initialize(&dir);
+    let request = write_request(&dir, "agent", "research");
+    let audit_parent = dir.path().join("not-a-directory");
+    std::fs::write(&audit_parent, "block audit directory creation").unwrap();
+    let audit_path = audit_parent.join("decisions.jsonl");
+
+    let out = agentguard_bin()
+        .args([
+            "--output",
+            "json",
+            "--audit",
+            audit_path.to_str().unwrap(),
+            "authorize",
+            &request,
+        ])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    assert!(
+        out.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(!out.stderr.is_empty(), "audit failure should be reported");
+}
+
+#[test]
 fn quickstart_allow_deny_and_chained_audit_flow_works_as_documented() {
     let dir = tempfile::tempdir().unwrap();
     initialize(&dir);
