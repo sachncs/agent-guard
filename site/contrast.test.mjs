@@ -10,6 +10,7 @@ const baseLayout = readFileSync(
   new URL("./src/layouts/base.astro", import.meta.url),
   "utf8",
 );
+const siteCss = readFileSync(new URL("./src/styles/globals.css", import.meta.url), "utf8");
 
 function declarations(block) {
   return Object.fromEntries(
@@ -58,6 +59,20 @@ test("published dark theme applies high-contrast shared semantic tokens", () => 
     assert.ok(
       contrastRatio(dark[key], background) >= 4.5,
       `${key} must meet WCAG AA for normal text on the published dark background`,
+    );
+  }
+});
+
+test("published light theme meets WCAG AA for semantic text and status colors", () => {
+  const lightBlock = siteCss.match(/\[data-theme="light"\]\s*\{([^}]+)\}/)?.[1];
+  assert.ok(lightBlock, "site light theme overrides its semantic tokens");
+  const light = declarations(lightBlock);
+  const background = light["--bg"];
+  for (const key of ["--fg", "--muted", "--accent", "--warn", "--deny"]) {
+    assert.ok(light[key], `light mode defines ${key}`);
+    assert.ok(
+      contrastRatio(light[key], background) >= 4.5,
+      `${key} must meet WCAG AA for normal text on the light background`,
     );
   }
 });
