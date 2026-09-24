@@ -138,6 +138,7 @@ if (failures.length === 0) {
   for (const value of [
     "deploy/overlays/production/kustomization.yaml.example",
     "replace its registry",
+    "node scripts/validate-production-overlay.mjs",
     "kubectl -n agentguard apply -k deploy/overlays/production",
   ]) if (!upgradesGuide.includes(value)) {
     failures.push(`docs/upgrades.md must explain how to use the production overlay template: ${value}`);
@@ -160,6 +161,7 @@ if (failures.length === 0) {
     "digest: sha256:REPLACE_WITH_64_HEX_PDP_DIGEST",
     "digest: sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST",
     "cp deploy/overlays/production/kustomization.yaml.example",
+    "node scripts/validate-production-overlay.mjs",
     "kubectl apply -k deploy/overlays/production",
   ]) if (!operationsGuide.includes(value)) {
     failures.push(`docs/kubernetes.md must document the production overlay template: ${value}`);

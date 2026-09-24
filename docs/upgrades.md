@@ -21,7 +21,8 @@ If this is a new environment, first copy
 `deploy/overlays/production/kustomization.yaml` and replace its registry
 names and digest placeholders. For an existing environment, update both image
 digests in that production Kustomize overlay. Review the resulting diff, then
-wait for readiness:
+run `node scripts/validate-production-overlay.mjs` to catch missing or mutable
+image references before applying. Then wait for readiness:
 
 ```sh
 kubectl -n agentguard apply -k deploy/overlays/production

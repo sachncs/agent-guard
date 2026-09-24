@@ -175,9 +175,11 @@ images:
 ```
 
 Keep this overlay in the deployment configuration repository, review its diff,
-and promote the same digest values between environments. Apply and verify it:
+and promote the same digest values between environments. Validate the composed
+workloads and immutable image references before applying:
 
 ```bash
+node scripts/validate-production-overlay.mjs
 kubectl apply -k deploy/overlays/production
 kubectl -n agentguard rollout status deployment/agentguard-pdp
 kubectl -n agentguard rollout status deployment/agentguard-console
