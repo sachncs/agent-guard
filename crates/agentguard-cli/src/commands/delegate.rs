@@ -78,7 +78,7 @@ pub fn verify(token_str: &str, keys_path: impl AsRef<Path>, output: &str) -> Res
             chrono::Utc::now().timestamp(),
         )
         .map_err(|e| anyhow!("verify: {}", e))?;
-    let claims = &verified.claims;
+    let claims = verified.claims();
 
     if output == "json" {
         println!("{}", serde_json::to_string_pretty(claims)?);

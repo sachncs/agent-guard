@@ -124,9 +124,17 @@ Signature verification alone is not authorization. A consuming adapter must:
 
 1. authorize the parent before it issues a grant;
 2. verify the signature, audience, key identity, and time claims;
-3. enforce action/resource/constraint scope and any sender binding;
+3. bind the trusted acting identity to `VerifiedDelegation::allows` and enforce
+   action/resource/constraint scope plus any sender binding;
 4. evaluate the effective Cedar policy; and
 5. apply revocation or replay state when the application requires it.
+
+`VerifiedDelegation::allows(subject, action, resource, request_facts)` is a
+fail-closed scope check: the trusted subject, exact action, resource glob, and
+every declared constraint must match. It does not decide whether the issuer
+was authorized to delegate, evaluate Cedar policy, or provide revocation.
+Never pass an untrusted request field as `subject` or rely on this scope check
+as a replacement for the PDP decision.
 
 AgentGuard does not ship an OAuth token-exchange endpoint or a delegation-token
 revocation service. RFC 8693-style actor claims are primitives for an adapter,

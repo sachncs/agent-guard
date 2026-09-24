@@ -467,9 +467,61 @@ impl DelegationToken {
 /// A successfully verified delegation token.
 #[derive(Debug, Clone)]
 pub struct VerifiedDelegation {
-    pub claims: DelegationClaims,
-    pub kid: String,
-    pub alg: Algorithm,
+    claims: DelegationClaims,
+    kid: String,
+    alg: Algorithm,
+}
+
+impl VerifiedDelegation {
+    /// Read claims only after successful cryptographic and standard-claim
+    /// verification. The returned reference prevents callers from widening
+    /// scopes after verification.
+    pub fn claims(&self) -> &DelegationClaims {
+        &self.claims
+    }
+
+    pub fn key_id(&self) -> &str {
+        &self.kid
+    }
+
+    pub fn algorithm(&self) -> Algorithm {
+        self.alg
+    }
+
+    /// Check whether this verified grant covers one concrete request.
+    ///
+    /// `subject` must be the trusted identity of the acting agent, not a
+    /// value copied from an untrusted request. `request_facts` is the JSON
+    /// object against which optional constraints are evaluated. Missing
+    /// action/resource scopes and missing constraint paths fail closed.
+    /// This check does not establish that the issuer had authority to mint
+    /// the grant, nor does it provide revocation; callers must enforce those
+    /// properties separately.
+    pub fn allows(
+        &self,
+        subject: &str,
+        action: &str,
+        resource: &str,
+        request_facts: &serde_json::Value,
+    ) -> bool {
+        self.claims.sub == subject
+            && self
+                .claims
+                .allowed_actions
+                .iter()
+                .any(|allowed| allowed == action)
+            && self
+                .claims
+                .resource_patterns
+                .iter()
+                .any(|pattern| glob_match(pattern, resource))
+            && self.claims.constraints.as_ref().is_none_or(|constraints| {
+                constraints
+                    .expressions
+                    .iter()
+                    .all(|expression| expression.evaluate(request_facts))
+            })
+    }
 }
 
 /// Verifies JWS tokens using a key registry of public keys.
@@ -580,8 +632,8 @@ impl DelegationVerifier {
     ///     vec!["Mailbox::*".into()],
     ///     DelegationConfig::default()).unwrap();
     /// let verified = verifier.verify(&token.jws, "aud", 0).unwrap();
-    /// assert_eq!(verified.claims.iss, "alice");
-    /// assert_eq!(verified.claims.aud, "aud");
+    /// assert_eq!(verified.claims().iss, "alice");
+    /// assert_eq!(verified.claims().aud, "aud");
     /// ```
     pub fn verify(
         &self,
@@ -749,9 +801,83 @@ mod tests {
                 chrono::Utc::now().timestamp(),
             )
             .unwrap();
-        assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
-        assert_eq!(v.claims.aud, "agentguard://prod/email");
-        assert_eq!(v.kid, signer.key_id());
+        assert_eq!(v.claims().sub, "Agent::\"summarizer\"");
+        assert_eq!(v.claims().aud, "agentguard://prod/email");
+        assert_eq!(v.key_id(), signer.key_id());
+    }
+
+    #[test]
+    fn verified_grant_enforces_subject_action_resource_and_constraints() {
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint_with(
+                "Agent::parent",
+                "Agent::worker",
+                "agentguard://prod/tools",
+                vec!["ToolCall::read_doc".into()],
+                vec!["Document::team-*".into()],
+                DelegationConfig::default(),
+                |claims| {
+                    claims.constraints = Some(ConstraintSet::new(vec![ConstraintExpr::Equals {
+                        path: "context.tenant".into(),
+                        value: serde_json::json!("team-a"),
+                    }]));
+                },
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let verified = verifier
+            .verify(
+                token.to_jws(),
+                "agentguard://prod/tools",
+                chrono::Utc::now().timestamp(),
+            )
+            .unwrap();
+        let facts = serde_json::json!({"context": {"tenant": "team-a"}});
+
+        assert!(verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &facts,
+        ));
+        assert!(!verified.allows(
+            "Agent::other",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &facts,
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::write_doc",
+            "Document::team-42",
+            &facts,
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::external",
+            &facts,
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &serde_json::json!({"context": {"tenant": "team-b"}}),
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &serde_json::json!({}),
+        ));
     }
 
     #[test]
@@ -1023,7 +1149,7 @@ mod tests {
         let v = verifier
             .verify(token.to_jws(), "aud", chrono::Utc::now().timestamp())
             .unwrap();
-        assert_eq!(v.claims.sub, "Agent::\"summarizer\"");
-        assert_eq!(v.claims.act.as_ref().unwrap().sub, "Agent::\"research\"");
+        assert_eq!(v.claims().sub, "Agent::\"summarizer\"");
+        assert_eq!(v.claims().act.as_ref().unwrap().sub, "Agent::\"research\"");
     }
 }

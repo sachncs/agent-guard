@@ -88,9 +88,11 @@ the embedding application supplies that lifecycle.
 - The simulator uses a privileged `authorize:any` service key to evaluate
   selected subjects. Protect it server-side and restrict console users through
   OIDC and role configuration.
-- Delegation primitives sign and verify tokens but do not independently
-  enforce delegated action/resource scope, establish parent authority, or
-  provide revocation. Applications must implement those checks.
+- Delegation scope checking is available on verified claims through
+  `VerifiedDelegation::allows`; the application must supply the trusted acting
+  identity and request facts. This does not establish parent authority,
+  evaluate Cedar policy, or provide revocation. Applications must enforce
+  those controls separately.
 - JWT, DPoP, and SPIFFE are library capabilities, not standalone server auth
   modes. Standalone API-key authentication is the supported PDP mode.
 - The standalone gRPC listener is plaintext and restricted to loopback; do not

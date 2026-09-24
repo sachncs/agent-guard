@@ -87,8 +87,9 @@ requireText(".github/workflows/ci.yml", "cargo llvm-cov report --summary-only --
 requireText(".github/workflows/ci.yml", "pnpm audit:dependencies");
 requireText("package.json", "pnpm --dir site audit --audit-level=moderate");
 requireText("README.md", "embedded library callers");
-requireText("README.md", "The standalone PDP does not consume delegation");
-requireText("README.md", "the integration at the tool boundary must verify expiry");
+requireText("README.md", "consume delegation tokens. The integration at the tool boundary must bind");
+requireText("README.md", "`VerifiedDelegation::allows`");
+requireText("docs/identity.md", "fail-closed scope check");
 requireText("docs/architecture.md", "Embedded `Authorizer` calls return decisions without");
 requireText("scripts/k8s-smoke.sh", "AGENTGUARD_KIND_CLUSTER");
 requireText("scripts/k8s-smoke.sh", "agentguard audit verify");

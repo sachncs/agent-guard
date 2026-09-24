@@ -195,10 +195,12 @@ The SDK runs the local CLI; it is not a remote PDP client. The synchronous
 block the event loop. Async calls have per-client concurrency, timeout, and
 output bounds.
 
-Minting or signature verification alone does **not** authorize a tool call or
-enforce the grant's scope. The standalone PDP does not consume delegation
-tokens; the integration at the tool boundary must verify expiry, audience,
-sender binding, and action/resource scope before execution. See
+Minting or signature verification alone does **not** authorize a tool call.
+The Rust library's `VerifiedDelegation::allows` provides a fail-closed
+subject/action/resource/constraint scope check, but the standalone PDP does not
+consume delegation tokens. The integration at the tool boundary must bind the
+trusted actor, establish parent authority, evaluate Cedar policy, and apply
+revocation where required. See
 [identity and delegation](docs/identity.md) for the enforcement contract.
 
 ### Verify and audit
