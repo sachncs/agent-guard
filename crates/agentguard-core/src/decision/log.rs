@@ -1041,6 +1041,55 @@ mod tests {
     }
 
     #[test]
+    fn chained_log_recovers_identity_from_rotated_segment_without_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("recover-rotated-sidecar.jsonl");
+        let record = |id: &str| DecisionRecord {
+            id: id.into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "read".into(),
+            resource: "document".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+            authenticated_actor: None,
+        };
+
+        let original_id = {
+            let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+            log.append(&record("before-rotation")).unwrap();
+            let id = log.chain_id().unwrap();
+            log.rotate().unwrap();
+            id
+        };
+        let rotated = latest_rotated_log(&path).unwrap().unwrap();
+        std::fs::remove_file(chain_id_sidecar_path(&rotated)).unwrap();
+
+        let recovered = DecisionLog::open_with_chain(&path, b"root").unwrap();
+        assert_eq!(recovered.chain_id(), Some(original_id));
+        assert!(
+            chain_id_sidecar_path(&path).exists(),
+            "recovery must persist the restored identity for the active segment"
+        );
+        recovered.append(&record("after-rotation")).unwrap();
+        drop(recovered);
+
+        assert_eq!(
+            DecisionLog::verify_chain(&path, b"root").unwrap(),
+            original_id
+        );
+        assert_eq!(DecisionLog::read_all(&path).unwrap().len(), 2);
+    }
+
+    #[test]
     fn chained_append_advances_head() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("chained.jsonl");
