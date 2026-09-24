@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Handle early child-process stdin closure in the async TypeScript SDK as a
+  fail-closed `CLIUnavailable` error instead of an unhandled stream `EPIPE`.
 - Add verified delegation-scope enforcement and child-grant attenuation for
   action, resource, constraints, expiry, and parent signing-key identity.
 - Bound compact delegation JWS parsing to 64 KiB and reject wrong token types,

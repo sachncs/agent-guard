@@ -36,6 +36,10 @@ case "\$FAKE_AGENTGUARD_MODE" in
     printf '{"effect":"allow","policies":["p-async"],"reasons":[],"request":%s}' "$request" ;;
   hang)
     exec sleep 5 ;;
+  closestdin)
+    exec 0<&-
+    sleep 0.05
+    echo '{"effect":"allow","policies":["p-ignored"],"reasons":[],"request":{}}' ;;
   fail)
     echo 'boom' >&2
     exit 3 ;;
@@ -337,6 +341,28 @@ describe("Client", () => {
         assert.match(error.message, /timed out after 25 ms/);
         return true;
       });
+    } finally {
+      delete process.env.FAKE_AGENTGUARD_MODE;
+    }
+  });
+
+  it("fails closed when the CLI closes stdin before receiving the request", async () => {
+    process.env.FAKE_AGENTGUARD_MODE = "closestdin";
+    try {
+      const client = new Client({ cliBin: fakeCli });
+      await assert.rejects(
+        client.authorizeAsync(
+          { type: "user", uid: "alice" },
+          { tool: "repo_read" },
+          { entity_type: "Repository", uid: "demo" },
+          { args: { payload: "x".repeat(1024 * 1024) } },
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof CLIUnavailable);
+          assert.match(error.message, /failed to receive request/);
+          return true;
+        },
+      );
     } finally {
       delete process.env.FAKE_AGENTGUARD_MODE;
     }

@@ -243,7 +243,13 @@ export class Client {
       };
       child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
       child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
-      child.stdin.end(stdin);
+      // The child can exit (or close stdin) before the request has been
+      // delivered. Writable EPIPE is otherwise an unhandled stream error and
+      // can crash the host process. Fail closed: a response from a process
+      // that did not receive its request is not an authorization result.
+      child.stdin.once("error", (error) => finish(() => reject(
+        new CLIUnavailable(`agentguard CLI failed to receive request: ${error.message}`)
+      )));
       child.once("error", (error) => finish(() => reject(
         new CLIUnavailable(`agentguard CLI failed to spawn: ${error.message}`)
       )));
@@ -259,6 +265,7 @@ export class Client {
           ));
         }
       }));
+      child.stdin.end(stdin);
     });
   }
 
