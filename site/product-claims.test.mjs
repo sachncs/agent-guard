@@ -23,12 +23,15 @@ test('canonical concepts guide documents the implemented fallible cache configur
   assert.doesNotMatch(concepts, /CacheConfig::from_env/);
 });
 
-test('public install and release claims match the source-only release workflow', () => {
+test('public install and release claims match the GHCR-only binary release workflow', () => {
   assert.match(readme, /cargo install --path crates\/agentguard-cli/);
-  assert.match(readme, /does not publish Cargo crates, npm packages, or\s+OCI images/i);
+  assert.match(readme, /Rust workspace\s+crates remain source-distributed and are not published to crates\.io/i);
+  assert.match(readme, /versioned GHCR images/i);
   assert.doesNotMatch(readme, /crates\.io\/crates\/agentguard-core|img\.shields\.io\/crates\/v\/agentguard-core/i);
   assert.doesNotMatch(readme, /CI publishes Rust crates|publishes .*TypeScript package/i);
   assert.match(footer, /\$\{site\.repo\}\/releases/);
   assert.doesNotMatch(footer, /crates\.io\/crates\/agentguard-core/i);
   assert.doesNotMatch(releaseWorkflow, /cargo publish|npm publish/);
+  assert.match(releaseWorkflow, /packages: write/);
+  assert.match(releaseWorkflow, /ghcr\.io/);
 });
