@@ -23,6 +23,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add an accessible three-step console onboarding path from simulation through
+  audit review to Cedar policy authoring.
 - Add the `agentguard-redis-store` crate with bounded, fail-closed Redis REST
   storage for shared delegation revocation.
 - Document Redis eviction, durability, and stale-restore hazards for delegation

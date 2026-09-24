@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import Link from "next/link";
 import type { AuthorizationEffect, LogRecord } from "@/lib/api_types";
 import { decisionPresentation } from "@/lib/decision_presentation";
 import {
@@ -12,6 +11,7 @@ import {
 import { fetchApi } from "@/lib/fetch_api";
 import { LatestRequest } from "@/lib/latest_request";
 import { CliAlert } from "@/components/cli_alert";
+import { GettingStarted } from "@/components/getting_started";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -131,12 +131,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <Card className="border-brand-100 bg-brand-50/70">
-        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="font-medium">New to AgentGuard?</p><p className="mt-1 text-sm text-muted-foreground">Run a safe authorization request in the simulator, then inspect its audit record here.</p></div>
-          <Button asChild><Link href="/simulator">Open simulator</Link></Button>
-        </CardContent>
-      </Card>
+      <GettingStarted />
 
       {cliMissing && error && <CliAlert message={error} />}
 
@@ -188,7 +183,7 @@ export default function DashboardPage() {
         </Button>
       </form>
 
-      <Card>
+      <Card id="audit-log">
         <CardContent className="px-0">
           {loading && records.length === 0 ? (
             <p role="status" className="text-muted-foreground px-6 py-10 text-center text-sm">

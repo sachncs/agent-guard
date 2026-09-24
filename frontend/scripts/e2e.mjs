@@ -733,6 +733,22 @@ async function main() {
     }]);
     await browserPage.goto(`${BASE}/`, { waitUntil: "networkidle" });
     await browserPage.getByRole("heading", { name: "Authorization overview" }).waitFor();
+    await browserPage.getByRole("heading", { name: "Getting started" }).waitFor();
+    assert.equal(
+      await browserPage.getByRole("link", { name: "Try a policy request" }).getAttribute("href"),
+      "/simulator",
+      "onboarding starts with the authorization simulator",
+    );
+    assert.equal(
+      await browserPage.getByRole("link", { name: /Policy authoring guide/ }).getAttribute("href"),
+      "https://sachncs.github.io/agent-guard/docs/policy-authoring/",
+      "onboarding links to the canonical policy guide",
+    );
+    assert.equal(
+      await browserPage.getByRole("link", { name: /Inspect the audit record/ }).getAttribute("href"),
+      "#audit-log",
+      "onboarding links its audit-review step to the decision history",
+    );
     assert.deepEqual(browserRuntimeErrors, [], "dashboard hydration produces no browser runtime errors");
     const themeToggle = browserPage.getByRole("button", { name: "Toggle color theme" });
     await themeToggle.click();
