@@ -15,6 +15,10 @@ or disaster-recovery testing.
 - The deployment manifests, image digests, and configuration export.
 - Console session/rate-limit Redis data according to the organization's
   recovery point objective.
+- Delegation revocation Redis state for at least the maximum accepted token
+  lifetime plus verifier clock skew. Treat it as security state: configure
+  `maxmemory-policy noeviction`, durable persistence, and backups/replication
+  appropriate to the required recovery point objective.
 
 ## Backup procedure
 
@@ -32,6 +36,14 @@ For Kubernetes, snapshot the audit PVC using the storage provider's supported
 mechanism. Store backups encrypted, restrict access to the security/platform
 team, and test a restore into an isolated namespace at least once per release
 cycle.
+
+Do not resume delegated tool execution from a stale revocation snapshot without
+accounting for revocations newer than that snapshot. If revocation state may
+have been lost, keep delegated execution disabled until the store is recovered
+or rotate affected delegation signing keys and remove the old verification
+keys to invalidate outstanding grants. Restoring an older snapshot can
+resurrect a revoked grant until its expiry; document this risk and the recovery
+decision in the incident record.
 
 The reference manifest rotates the active file at 64 MiB, but retains every
 segment on the PVC. Configure external archival and PVC-capacity alerts for

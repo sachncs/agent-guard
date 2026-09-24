@@ -135,7 +135,13 @@ The core crate exposes the async `DelegationRevocationStore` port. The
 for multi-process deployments; it hashes token ids into namespaced keys,
 retains revocation through token expiry plus configured clock skew, and fails
 closed on transport or protocol errors. Configure it with shared storage and a
-unique prefix per environment:
+unique prefix per environment. The adapter uses the Redis `EVAL` and `EXISTS`
+commands and expects the service's JSON command-result envelope. Use a Redis
+configuration with `maxmemory-policy noeviction`, durable persistence, and
+replication/availability appropriate to the application's threat model; alert
+on memory pressure and persistence/replication lag. Revocation entries are
+security state, not cache data. A Redis service that silently evicts keys can
+make a revoked, otherwise-valid token appear active.
 
 ```rust
 use agentguard_redis_store::RedisDelegationRevocationStore;
@@ -153,7 +159,9 @@ let store = Arc::new(RedisDelegationRevocationStore::new(
 The standalone PDP does not consume delegation tokens or expose a revocation
 endpoint; this adapter is for applications enforcing delegation at their own
 tool boundary. Keep credentials in a secret manager and test store outage and
-recovery behavior in the consuming service.
+recovery behavior against the exact Redis-compatible service in the consuming
+service; the crate's protocol tests use a local mock and do not certify any
+provider's command compatibility or durability guarantees.
 
 The Rust compact-JWS parser rejects delegation tokens larger than 64 KiB
 before base64 decoding or JSON parsing. Applications should retain their own

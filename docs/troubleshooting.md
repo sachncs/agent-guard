@@ -47,3 +47,11 @@ Token minting and verification are primitives, not enforcement. The tool
 adapter must verify the delegation and compare its scope with the requested
 action/resource before invocation. Review the integration boundary and audit
 the final decision.
+
+If revocation checks report an error, do not fall back to local memory or skip
+the check. Verify Redis reachability, TLS, credentials, memory pressure,
+`maxmemory-policy noeviction`, and persistence/replication health. If state may
+have been evicted or restored from a stale backup, disable delegated execution
+until state is reconciled or rotate affected delegation signing keys and remove
+their old verification keys; absence of a key in Redis cannot distinguish an
+unrevoked token from a lost revocation record.

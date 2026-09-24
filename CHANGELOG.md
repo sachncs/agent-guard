@@ -10,6 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Add the `agentguard-redis-store` crate with bounded, fail-closed Redis REST
   storage for shared delegation revocation.
+- Document Redis eviction, durability, and stale-restore hazards for delegation
+  revocation state, including fail-safe recovery actions.
 - Handle early child-process stdin closure in the async TypeScript SDK as a
   fail-closed `CLIUnavailable` error instead of an unhandled stream `EPIPE`.
 - Add verified delegation-scope enforcement and child-grant attenuation for
