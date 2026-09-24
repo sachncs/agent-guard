@@ -37,7 +37,10 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
         </details>
         {user && (
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="hidden text-muted-foreground md:inline">
+            <span
+              className="hidden max-w-48 truncate text-muted-foreground lg:inline"
+              title={user.email ?? user.name ?? user.sub}
+            >
               {user.email ?? user.name ?? user.sub}
             </span>
             <Badge variant={user.admin ? "default" : "outline"}>{user.admin ? "admin" : "viewer"}</Badge>

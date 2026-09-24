@@ -735,8 +735,13 @@ async function main() {
     await browserPage.waitForFunction(() => !document.documentElement.classList.contains("dark"));
     await themeToggle.click();
     await browserPage.waitForFunction(() => document.documentElement.classList.contains("dark"));
-    for (const width of [320, 375, 768, 1280]) {
+    for (const width of [320, 375, 768, 1024, 1280]) {
       await browserPage.setViewportSize({ width, height: 900 });
+      assert.equal(
+        await browserPage.getByText("viewer@example.com", { exact: true }).isVisible(),
+        width >= 1024,
+        `signed-in identity follows the desktop-only breakpoint at ${width}px`,
+      );
       const layout = await browserPage.evaluate(() => ({
         document: document.documentElement.scrollWidth,
         body: document.body.scrollWidth,
