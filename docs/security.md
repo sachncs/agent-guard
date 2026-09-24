@@ -90,9 +90,10 @@ the embedding application supplies that lifecycle.
   OIDC and role configuration.
 - Delegation scope checking is available on verified claims through
   `VerifiedDelegation::allows`; the application must supply the trusted acting
-  identity and request facts. This does not establish parent authority,
-  evaluate Cedar policy, or provide revocation. Applications must enforce
-  those controls separately.
+  identity and request facts. `DelegationSigner::mint_attenuated` constrains
+  child grants to verified parent scopes and lifetime. Neither helper
+  authorizes the original parent grant, evaluates Cedar policy, nor provides
+  revocation. Applications must enforce those controls separately.
 - JWT, DPoP, and SPIFFE are library capabilities, not standalone server auth
   modes. Standalone API-key authentication is the supported PDP mode.
 - The standalone gRPC listener is plaintext and restricted to loopback; do not

@@ -136,6 +136,15 @@ was authorized to delegate, evaluate Cedar policy, or provide revocation.
 Never pass an untrusted request field as `subject` or rely on this scope check
 as a replacement for the PDP decision.
 
+For delegation chains, `DelegationSigner::mint_attenuated` accepts only a
+verified parent grant. Child actions must be a subset, resources must be
+parent-matched literals or identical parent patterns, inherited constraints
+cannot be removed or changed, and child lifetime cannot exceed the parent's
+remaining lifetime. Pattern containment is intentionally conservative; the
+helper rejects broader child wildcard patterns instead of trying to infer
+arbitrary glob-language inclusion. The application must still authorize the
+parent's original grant and maintain revocation state where required.
+
 AgentGuard does not ship an OAuth token-exchange endpoint or a delegation-token
 revocation service. RFC 8693-style actor claims are primitives for an adapter,
 not a claim that the standalone PDP enforces parent authority automatically.

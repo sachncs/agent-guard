@@ -286,6 +286,41 @@ impl Default for DelegationConfig {
     }
 }
 
+/// Input for minting a child delegation from a verified parent.
+#[derive(Debug, Clone)]
+pub struct DelegationSpec {
+    sub: String,
+    aud: String,
+    allowed_actions: Vec<String>,
+    resource_patterns: Vec<String>,
+    constraints: Option<ConstraintSet>,
+    config: DelegationConfig,
+}
+
+impl DelegationSpec {
+    pub fn new(
+        sub: impl Into<String>,
+        aud: impl Into<String>,
+        allowed_actions: Vec<String>,
+        resource_patterns: Vec<String>,
+        config: DelegationConfig,
+    ) -> Self {
+        Self {
+            sub: sub.into(),
+            aud: aud.into(),
+            allowed_actions,
+            resource_patterns,
+            constraints: None,
+            config,
+        }
+    }
+
+    pub fn with_constraints(mut self, constraints: ConstraintSet) -> Self {
+        self.constraints = Some(constraints);
+        self
+    }
+}
+
 /// Signer that mints JWS tokens.
 #[derive(Clone)]
 pub struct DelegationSigner {
@@ -400,6 +435,112 @@ impl DelegationSigner {
             extra: IndexMap::new(),
         };
         mutate(&mut claims);
+        self.sign_jws(&claims)
+    }
+
+    /// Mint a child grant that cannot outlive or broaden the supplied,
+    /// cryptographically verified parent grant.
+    ///
+    /// Actions must be present in the parent grant. Literal child resources
+    /// must match a parent resource pattern; child patterns containing `*`
+    /// are accepted only when identical to a parent pattern. If the parent
+    /// has constraints, the child must preserve them exactly. A child may add
+    /// constraints when the parent is unconstrained.
+    pub fn mint_attenuated(
+        &self,
+        parent: &VerifiedDelegation,
+        spec: DelegationSpec,
+    ) -> Result<DelegationToken> {
+        let DelegationSpec {
+            sub,
+            aud,
+            allowed_actions,
+            resource_patterns,
+            constraints,
+            config,
+        } = spec;
+        let now = chrono::Utc::now().timestamp();
+        if parent.claims.exp <= now {
+            return Err(Error::InvalidToken(
+                "cannot delegate from an expired parent grant".into(),
+            ));
+        }
+        let ttl_seconds = i64::try_from(config.ttl.as_secs()).map_err(|_| {
+            Error::InvalidToken("child grant TTL exceeds supported timestamp range".into())
+        })?;
+        let exp = now
+            .checked_add(ttl_seconds)
+            .ok_or_else(|| Error::InvalidToken("child grant expiry overflows timestamp".into()))?;
+        if exp > parent.claims.exp {
+            return Err(Error::InvalidToken(
+                "child grant TTL exceeds parent grant lifetime".into(),
+            ));
+        }
+        if allowed_actions.iter().any(|action| {
+            !parent
+                .claims
+                .allowed_actions
+                .iter()
+                .any(|parent_action| parent_action == action)
+        }) {
+            return Err(Error::InvalidToken(
+                "child grant contains an action outside the parent scope".into(),
+            ));
+        }
+        if resource_patterns.iter().any(|child| {
+            if child.contains('*') {
+                !parent
+                    .claims
+                    .resource_patterns
+                    .iter()
+                    .any(|parent_pattern| parent_pattern == child)
+            } else {
+                !parent
+                    .claims
+                    .resource_patterns
+                    .iter()
+                    .any(|parent_pattern| glob_match(parent_pattern, child))
+            }
+        }) {
+            return Err(Error::InvalidToken(
+                "child grant contains a resource outside the parent scope".into(),
+            ));
+        }
+        if let Some(parent_constraints) = &parent.claims.constraints {
+            let child_constraints = constraints.as_ref().ok_or_else(|| {
+                Error::InvalidToken("child grant cannot remove parent constraints".into())
+            })?;
+            if serde_json::to_value(parent_constraints)? != serde_json::to_value(child_constraints)?
+            {
+                return Err(Error::InvalidToken(
+                    "child grant cannot change parent constraints".into(),
+                ));
+            }
+        }
+
+        if parent.claims.nbf.is_some_and(|nbf| nbf >= exp) {
+            return Err(Error::InvalidToken(
+                "child grant expires before its inherited not-before time".into(),
+            ));
+        }
+        let claims = DelegationClaims {
+            iss: parent.claims.sub.clone(),
+            sub,
+            aud,
+            iat: now,
+            exp,
+            nbf: parent.claims.nbf,
+            jti: uuid::Uuid::new_v4().to_string(),
+            allowed_actions,
+            resource_patterns,
+            act: Some(Box::new(ActClaim {
+                sub: parent.claims.sub.clone(),
+                iss: Some(parent.claims.iss.clone()),
+                act: parent.claims.act.clone(),
+            })),
+            constraints,
+            extra: IndexMap::new(),
+        };
         self.sign_jws(&claims)
     }
 
@@ -796,6 +937,24 @@ impl DelegationSigner {
 mod tests {
     use super::*;
 
+    fn child_spec(
+        sub: &str,
+        aud: &str,
+        actions: Vec<String>,
+        resources: Vec<String>,
+        ttl_seconds: u64,
+    ) -> DelegationSpec {
+        DelegationSpec::new(
+            sub,
+            aud,
+            actions,
+            resources,
+            DelegationConfig {
+                ttl: Duration::from_secs(ttl_seconds),
+            },
+        )
+    }
+
     #[test]
     fn mint_and_verify_roundtrip() {
         let signer = DelegationSigner::generate();
@@ -922,6 +1081,185 @@ mod tests {
             "Document::team-42",
             &serde_json::json!({"context": {"tenant": "team-a", "risk": "low"}}),
         ));
+    }
+
+    #[test]
+    fn child_grants_are_attenuated_and_bound_to_parent_lifetime() {
+        let signer = DelegationSigner::generate();
+        let parent_nbf = chrono::Utc::now().timestamp() + 30;
+        let parent_token = signer
+            .mint_with(
+                "Agent::root",
+                "Agent::parent",
+                "agentguard://prod/parent",
+                vec!["ToolCall::read_doc".into(), "ToolCall::write_doc".into()],
+                vec!["Document::team-*".into()],
+                DelegationConfig {
+                    ttl: Duration::from_secs(300),
+                },
+                |claims| claims.nbf = Some(parent_nbf),
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let parent = verifier
+            .verify(
+                parent_token.to_jws(),
+                "agentguard://prod/parent",
+                chrono::Utc::now().timestamp(),
+            )
+            .unwrap();
+
+        let child = signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "agentguard://prod/worker",
+                    vec!["ToolCall::read_doc".into()],
+                    vec!["Document::team-42".into()],
+                    60,
+                ),
+            )
+            .unwrap();
+        let verified_child = verifier
+            .verify(
+                child.to_jws(),
+                "agentguard://prod/worker",
+                chrono::Utc::now().timestamp(),
+            )
+            .unwrap();
+        assert!(verified_child.claims().exp <= parent.claims().exp);
+        assert!(verified_child.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &serde_json::json!({}),
+        ));
+        assert_eq!(verified_child.claims().nbf, Some(parent_nbf));
+        let actor = verified_child.claims().act.as_ref().unwrap();
+        assert_eq!(actor.sub, "Agent::parent");
+        assert_eq!(actor.iss.as_deref(), Some("Agent::root"));
+
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "aud",
+                    vec!["ToolCall::shell_exec".into()],
+                    vec!["Document::team-42".into()],
+                    60,
+                ),
+            )
+            .is_err());
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "aud",
+                    vec!["ToolCall::read_doc".into()],
+                    vec!["Document::*".into()],
+                    60,
+                ),
+            )
+            .is_err());
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "aud",
+                    vec!["ToolCall::read_doc".into()],
+                    vec!["Document::team-42".into()],
+                    600,
+                ),
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn child_grants_cannot_remove_or_change_parent_constraints() {
+        let signer = DelegationSigner::generate();
+        let parent_constraints = ConstraintSet::new(vec![ConstraintExpr::Equals {
+            path: "context.tenant".into(),
+            value: serde_json::json!("team-a"),
+        }]);
+        let parent_token = signer
+            .mint_with(
+                "Agent::root",
+                "Agent::parent",
+                "parent-aud",
+                vec!["ToolCall::read_doc".into()],
+                vec!["Document::team-*".into()],
+                DelegationConfig {
+                    ttl: Duration::from_secs(300),
+                },
+                |claims| claims.constraints = Some(parent_constraints.clone()),
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let parent = verifier
+            .verify(
+                parent_token.to_jws(),
+                "parent-aud",
+                chrono::Utc::now().timestamp(),
+            )
+            .unwrap();
+        let actions = vec!["ToolCall::read_doc".into()];
+        let resources = vec!["Document::team-42".into()];
+
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "child-aud",
+                    actions.clone(),
+                    resources.clone(),
+                    60,
+                ),
+            )
+            .is_err());
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "child-aud",
+                    actions.clone(),
+                    resources.clone(),
+                    60,
+                )
+                .with_constraints(ConstraintSet::new(vec![
+                    ConstraintExpr::Equals {
+                        path: "context.tenant".into(),
+                        value: serde_json::json!("team-b"),
+                    }
+                ])),
+            )
+            .is_err());
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec("Agent::worker", "child-aud", actions, resources, 60,)
+                    .with_constraints(parent_constraints),
+            )
+            .is_ok());
     }
 
     #[test]

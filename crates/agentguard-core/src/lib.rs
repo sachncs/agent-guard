@@ -25,8 +25,8 @@ pub use chain_secret::decode as decode_chain_secret;
 pub use context::AgentContext;
 pub use decision::{AuthenticatedActor, DecisionCache, DecisionLog, DecisionRecord};
 pub use delegation::{
-    DelegationClaims, DelegationConfig, DelegationSigner, DelegationToken, DelegationVerifier,
-    VerifiedDelegation,
+    DelegationClaims, DelegationConfig, DelegationSigner, DelegationSpec, DelegationToken,
+    DelegationVerifier, VerifiedDelegation,
 };
 pub use error::{Error, Result};
 pub use ids::{ActionId, PrincipalId, ResourceId};

@@ -199,8 +199,10 @@ Minting or signature verification alone does **not** authorize a tool call.
 The Rust library's `VerifiedDelegation::allows` provides a fail-closed
 subject/action/resource/constraint scope check, but the standalone PDP does not
 consume delegation tokens. The integration at the tool boundary must bind the
-trusted actor, establish parent authority, evaluate Cedar policy, and apply
-revocation where required. See
+trusted actor, authorize the original parent grant, evaluate Cedar policy, and
+apply revocation where required. `DelegationSigner::mint_attenuated` can
+constrain child grants to a verified parent's actions, resources, constraints,
+and remaining lifetime. See
 [identity and delegation](docs/identity.md) for the enforcement contract.
 
 ### Verify and audit
