@@ -59,8 +59,32 @@ jobs:
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
           fetch-depth: 0
+      - name: Inspect existing release state
+        id: release-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          releases="$(gh release list --limit 1000 --json tagName,isDraft)"
+          existing="$(jq -c --arg tag "$RELEASE_TAG" '[.[] | select(.tagName == $tag)] | first // empty' <<< "$releases")"
+          if [ -z "$existing" ]; then
+            echo "action=create" >> "$GITHUB_OUTPUT"
+          elif [ "$(jq -r '.isDraft' <<< "$existing")" = "true" ]; then
+            echo "action=resume" >> "$GITHUB_OUTPUT"
+          else
+            assets="$(gh release view "$RELEASE_TAG" --json assets)"
+            if ! jq -e '.assets | any(.name == "image-digests.txt")' <<< "$assets" >/dev/null; then
+              echo "Published release $RELEASE_TAG has no image-digests.txt; refusing to mutate a published release." >&2
+              exit 1
+            fi
+            # Published releases are treated as immutable. A successful rerun
+            # is a no-op; it must not rebuild and replace versioned image tags.
+            echo "action=done" >> "$GITHUB_OUTPUT"
+          fi
       - name: Set release image coordinates
         id: image
+        if: steps.release-state.outputs.action != 'done'
         env:
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
@@ -77,6 +101,7 @@ jobs:
           echo "console=ghcr.io/${owner}/${repository}-console" >> "$GITHUB_OUTPUT"
           echo "tag=${docker_tag}" >> "$GITHUB_OUTPUT"
       - name: Log in to GitHub Container Registry
+        if: steps.release-state.outputs.action != 'done'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_USER: ${{ github.actor }}
@@ -87,8 +112,10 @@ jobs:
           echo "DOCKER_CONFIG=$DOCKER_CONFIG" >> "$GITHUB_ENV"
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_USER" --password-stdin
       - name: Create Buildx builder
+        if: steps.release-state.outputs.action != 'done'
         run: docker buildx create --name agentguard-release --driver docker-container --use
       - name: Build and publish PDP image
+        if: steps.release-state.outputs.action != 'done'
         env:
           SERVER_IMAGE: ${{ steps.image.outputs.server }}
           RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
@@ -103,6 +130,7 @@ jobs:
             --push \
             .
       - name: Build and publish console image
+        if: steps.release-state.outputs.action != 'done'
         env:
           SERVER_IMAGE: ${{ steps.image.outputs.server }}
           CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
@@ -120,6 +148,7 @@ jobs:
             --push \
             .
       - name: Verify anonymous registry pulls
+        if: steps.release-state.outputs.action != 'done'
         env:
           SERVER_IMAGE: ${{ steps.image.outputs.server }}
           CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
@@ -133,6 +162,7 @@ jobs:
           docker --config "$anonymous_config" pull "${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}"
           docker --config "$anonymous_config" pull "${CONSOLE_IMAGE}:${RELEASE_IMAGE_TAG}"
       - name: Scan release PDP image
+        if: steps.release-state.outputs.action != 'done'
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/agentguard-docker-config
           SERVER_IMAGE: ${{ steps.image.outputs.server }}
@@ -148,6 +178,7 @@ jobs:
           --severity HIGH,CRITICAL
           "${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}"
       - name: Scan release console image
+        if: steps.release-state.outputs.action != 'done'
         env:
           DOCKER_CONFIG: ${{ runner.temp }}/agentguard-docker-config
           CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
@@ -163,6 +194,7 @@ jobs:
           --severity HIGH,CRITICAL
           "${CONSOLE_IMAGE}:${RELEASE_IMAGE_TAG}"
       - name: Record registry digests
+        if: steps.release-state.outputs.action != 'done'
         env:
           SERVER_IMAGE: ${{ steps.image.outputs.server }}
           CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
@@ -178,13 +210,23 @@ jobs:
             echo "Platform: linux/amd64"
           } > image-digests.txt
       - name: Create release from changelog
+        if: steps.release-state.outputs.action != 'done'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --verify-tag \
-            --title "AgentGuard $RELEASE_TAG" \
-            --generate-notes \
-            --notes-file CHANGELOG.md
-          gh release upload "$RELEASE_TAG" image-digests.txt --clobber
+          if [ "${{ steps.release-state.outputs.action }}" = "resume" ]; then
+            gh release edit "$RELEASE_TAG" \
+              --title "AgentGuard $RELEASE_TAG" \
+              --notes-file CHANGELOG.md
+            gh release upload "$RELEASE_TAG" image-digests.txt --clobber
+            gh release edit "$RELEASE_TAG" --draft=false --verify-tag
+          else
+            gh release create "$RELEASE_TAG" image-digests.txt \
+              --verify-tag \
+              --draft \
+              --title "AgentGuard $RELEASE_TAG" \
+              --generate-notes \
+              --notes-file CHANGELOG.md
+            gh release edit "$RELEASE_TAG" --draft=false --verify-tag
+          fi

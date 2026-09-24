@@ -131,7 +131,12 @@ for (const contract of [
   "${DOCKER_CONFIG}:/root/.docker:ro",
   "--build-arg \"AGENTGUARD_CLI_IMAGE=${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}\"",
   "containerimage.digest",
+  'gh release view "$RELEASE_TAG"',
+  'gh release edit "$RELEASE_TAG"',
   "gh release upload \"$RELEASE_TAG\" image-digests.txt",
+  "id: release-state",
+  'echo "action=done" >> "$GITHUB_OUTPUT"',
+  "image-digests.txt; refusing to mutate a published release",
 ]) {
   if (!release.includes(contract)) failures.push(`release workflow must publish verifiable container artifacts: missing ${contract}`);
 }

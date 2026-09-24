@@ -26,8 +26,12 @@ The `release.yml` workflow validates the tag, tests that exact revision, builds
 and publishes both `linux/amd64` images to GHCR, then attaches the registry
 digests to the GitHub release. SemVer build metadata `+` is mapped to `_` in
 Docker tags. Verify both packages are public before announcement so anonymous
-cluster pulls work. A manual dispatch can publish only an existing tested tag;
-it does not test the dispatch branch as a substitute. Pin the attached digests
-in the production overlay. Operators using another registry can follow
+cluster pulls work. New releases are assembled as drafts with the digest asset
+before publication. An interrupted draft can be resumed; rerunning a complete
+release is a no-op, and an incomplete already-published release is rejected
+rather than rebuilding and replacing version tags. A manual dispatch can
+publish only an existing tested tag; it does not test the dispatch branch as a
+substitute. Pin the attached digests in the production overlay. Operators
+using another registry can follow
 [Kubernetes operations](docs/kubernetes.md#build-and-publish). Never deploy
 mutable `latest` tags.
