@@ -31,6 +31,7 @@ components, but does not rewrite policy, audit, or user files.
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm audit:dependencies
 cargo test --workspace
 pnpm check
 pnpm build

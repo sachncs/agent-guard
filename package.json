@@ -7,6 +7,7 @@
     "build": "pnpm -r build && RUSTDOCFLAGS=\"-D warnings\" cargo doc --workspace --no-deps && cargo build --locked -p agentguard -p agentguard-server && mkdir -p target/api-reference && target/debug/agentguard --help > target/api-reference/agentguard-cli-help.txt && target/debug/agentguard-server --help > target/api-reference/agentguard-server-help.txt && protoc --descriptor_set_out=target/api-reference/agentguard.pb --include_imports crates/agentguard-server/proto/agentguard.proto && PUBLIC_AGENTGUARD_REFERENCE=true pnpm --dir site build && node scripts/stage-api-reference.mjs && node scripts/verify-site-links.mjs site/dist",
     "test": "node --test scripts/*.test.mjs && pnpm -r test",
     "check": "pnpm check:public && pnpm check:workspace && pnpm check:docs && node scripts/verify-k8s.mjs && pnpm --dir site check && pnpm --filter frontend lint && pnpm --filter frontend typecheck",
+    "audit:dependencies": "pnpm audit --audit-level=moderate && pnpm --dir site audit --audit-level=moderate",
     "check:public": "node scripts/verify-public-surface.mjs && node scripts/verify-design-tokens.mjs",
     "check:workspace": "node scripts/verify-workspace.mjs",
     "check:docs": "node scripts/verify-doc-links.mjs"

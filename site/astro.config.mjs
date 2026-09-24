@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
@@ -13,7 +14,7 @@ export default defineConfig({
   trailingSlash: 'always',
   integrations: [react(), sitemap()],
   markdown: {
-    remarkPlugins: [remarkDocLinks],
+    processor: unified({ remarkPlugins: [remarkDocLinks] }),
     shikiConfig: {
       langs: [cedarLanguage],
       langAlias: { cedarschema: 'cedar' },

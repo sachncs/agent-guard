@@ -1,7 +1,8 @@
 # Release checklist
 
 - [ ] Update workspace, crate, SDK, console, and site versions together.
-- [ ] Run Rust format, clippy, tests, doctests, build, and dependency audits.
+- [ ] Run Rust format, clippy, tests, doctests, and build.
+- [ ] Run `cargo deny check` and `pnpm audit:dependencies` against the release lockfiles.
 - [ ] Run TypeScript install, lint, typecheck, tests, frontend build, and e2e.
 - [ ] Run Astro check and site build.
 - [ ] Verify README and docs links and inspect public branding assets.
