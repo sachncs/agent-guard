@@ -140,8 +140,9 @@ For delegation chains, `DelegationSigner::mint_attenuated` accepts only a
 verified parent grant and requires the same signing key that verified it.
 Child actions must be a subset, resources must be
 parent-matched literals or identical parent patterns, inherited constraints
-cannot be removed or changed, and child lifetime cannot exceed the parent's
-remaining lifetime. Pattern containment is intentionally conservative; the
+cannot be removed or changed (new conjunctive constraints may be added), and
+child lifetime cannot exceed the parent's remaining lifetime. Pattern
+containment is intentionally conservative; the
 helper rejects broader child wildcard patterns instead of trying to infer
 arbitrary glob-language inclusion. The application must still authorize the
 parent's original grant and maintain revocation state where required.

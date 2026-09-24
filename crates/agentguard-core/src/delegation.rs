@@ -444,8 +444,8 @@ impl DelegationSigner {
     /// Actions must be present in the parent grant. Literal child resources
     /// must match a parent resource pattern; child patterns containing `*`
     /// are accepted only when identical to a parent pattern. If the parent
-    /// has constraints, the child must preserve them exactly. A child may add
-    /// constraints when the parent is unconstrained.
+    /// has constraints, the child must preserve all of them and may add
+    /// stricter conjunctive constraints.
     pub fn mint_attenuated(
         &self,
         parent: &VerifiedDelegation,
@@ -516,10 +516,22 @@ impl DelegationSigner {
             let child_constraints = constraints.as_ref().ok_or_else(|| {
                 Error::InvalidToken("child grant cannot remove parent constraints".into())
             })?;
-            if serde_json::to_value(parent_constraints)? != serde_json::to_value(child_constraints)?
+            let parent_expressions = parent_constraints
+                .expressions
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            let child_expressions = child_constraints
+                .expressions
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if parent_expressions
+                .iter()
+                .any(|parent_expr| !child_expressions.contains(parent_expr))
             {
                 return Err(Error::InvalidToken(
-                    "child grant cannot change parent constraints".into(),
+                    "child grant cannot remove or change parent constraints".into(),
                 ));
             }
         }
@@ -1277,8 +1289,26 @@ mod tests {
         assert!(signer
             .mint_attenuated(
                 &parent,
-                child_spec("Agent::worker", "child-aud", actions, resources, 60,)
-                    .with_constraints(parent_constraints),
+                child_spec(
+                    "Agent::worker",
+                    "child-aud",
+                    actions.clone(),
+                    resources.clone(),
+                    60,
+                )
+                .with_constraints(parent_constraints.clone()),
+            )
+            .is_ok());
+        let mut stricter_constraints = parent_constraints.expressions.clone();
+        stricter_constraints.push(ConstraintExpr::Equals {
+            path: "context.environment".into(),
+            value: serde_json::json!("production"),
+        });
+        assert!(signer
+            .mint_attenuated(
+                &parent,
+                child_spec("Agent::worker", "child-aud", actions, resources, 60)
+                    .with_constraints(ConstraintSet::new(stricter_constraints)),
             )
             .is_ok());
     }
