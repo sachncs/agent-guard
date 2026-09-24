@@ -97,7 +97,7 @@ pnpm install
 pnpm dev
 ```
 
-**Requirements:** Rust 1.89+, Node.js ≥ 20.9, and pnpm 11.22.x.
+**Requirements:** Rust 1.89+, Node.js ≥ 22.12 for the full repository setup (the standalone TypeScript SDK supports Node.js ≥ 20.9), and pnpm 11.22.x.
 
 For a pinned clean-checkout setup, run `./scripts/setup.sh`; it also installs
 the separate documentation-site workspace. Console configuration starts from
@@ -410,7 +410,7 @@ pnpm preview                       # local preview
 The repository bootstrap (`./scripts/setup.sh`) installs both the root
 workspace and this separately locked site workspace.
 
-Local development requires Node.js ≥ 20.9 and pnpm 11.22.x.
+The full repository setup requires Node.js ≥ 22.12 and pnpm 11.22.x. The standalone TypeScript SDK supports Node.js ≥ 20.9.
 
 ## Security
 

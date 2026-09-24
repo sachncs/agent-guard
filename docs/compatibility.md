@@ -5,7 +5,8 @@
 | Surface | Supported baseline |
 | --- | --- |
 | Rust libraries, CLI, and server | Rust 1.89 MSRV; CI tests 1.89.0. Stable Rust is recommended for deployments. |
-| TypeScript SDK, console, and site | Node.js 20.9 or newer is declared by package engines; CI builds and tests on Node 22.19.0. |
+| Full repository install/build and documentation site | Node.js 22.12 or newer; CI uses Node 22.19.0. Astro 7 requires Node 22.12+. |
+| TypeScript SDK and console | Node.js 20.9 or newer, as declared by their package engines. |
 | JavaScript package manager | pnpm 11.22.x; use the version pinned by the root `packageManager` field. |
 | Container runtime | Docker-compatible OCI runtime. CI builds the release images from the checked-in Dockerfiles. |
 | Kubernetes | Supported reference manifests target Kubernetes 1.28 or newer; the CI smoke cluster uses Kind with Kubernetes 1.31.4. Review cluster-specific admission and storage behavior before rollout. |

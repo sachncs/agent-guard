@@ -3,7 +3,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MINIMUM_NODE = { major: 20, minor: 9 };
+const MINIMUM_NODE = { major: 22, minor: 12 };
 
 export function isSupportedNodeVersion(value) {
   const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/.exec(value);

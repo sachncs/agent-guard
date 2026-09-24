@@ -13,6 +13,6 @@
     "check:docs": "node scripts/verify-doc-links.mjs"
   },
   "engines": {
-    "node": ">=20.9"
+    "node": ">=22.12"
   }
 }

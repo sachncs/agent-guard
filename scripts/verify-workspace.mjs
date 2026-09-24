@@ -17,6 +17,9 @@ if (rootPackage.packageManager !== "pnpm@11.22.0") {
 if (sitePackage.packageManager !== rootPackage.packageManager) {
   failures.push("site and root workspaces must use the same pinned pnpm");
 }
+if (rootPackage.engines?.node !== ">=22.12" || sitePackage.engines?.node !== ">=22.12") {
+  failures.push("the full repository and Astro site must declare the Astro 7 Node.js minimum");
+}
 
 const allowBuilds = siteWorkspace.match(/^allowBuilds:\s*\n((?:^[ \t]+[^\n]*\n?)+)/m)?.[1] ?? "";
 const approvedBuilds = [...allowBuilds.matchAll(/^\s+([^:\s]+):\s*(true|false)\s*$/gm)]
@@ -43,9 +46,9 @@ if (!setup.includes("npm exec --yes --package=pnpm@11.22.0 -- pnpm")) {
 }
 if (
   !setup.includes("node scripts/check-node-version.mjs") ||
-  !nodeVersionCheck.includes("MINIMUM_NODE = { major: 20, minor: 9 }")
+  !nodeVersionCheck.includes("MINIMUM_NODE = { major: 22, minor: 12 }")
 ) {
-  failures.push("bootstrap must reject Node.js versions older than the declared 20.9 minimum");
+  failures.push("bootstrap must reject Node.js versions older than the declared 22.12 minimum");
 }
 if (!ci.includes("node --test scripts/*.test.mjs")) {
   failures.push("CI must run the repository tooling test suites");
