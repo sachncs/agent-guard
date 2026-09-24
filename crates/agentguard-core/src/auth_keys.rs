@@ -87,15 +87,15 @@ struct KeyEntry {
 /// during the cutover.
 ///
 /// Bounded by [`DEFAULT_KEY_KID_CAP`] distinct kids. When the cap is
-/// reached, [`Self::add`] evicts the oldest kid before inserting the
-/// new one. This prevents a misbehaving IdP with thousands of distinct
-/// kids from growing the registry without bound.
+/// reached, [`Self::add`] and [`Self::rotate`] evict the oldest kid before
+/// inserting a new one. This prevents a misbehaving IdP with thousands of
+/// distinct kids from growing the registry without bound.
 #[derive(Debug)]
 pub struct KeyRegistry {
     inner: parking_lot::RwLock<HashMap<String, Vec<KeyEntry>>>,
-    /// Insertion order for LRU eviction. New kids are pushed to the
-    /// back; `add` evicts the front when over the cap. `VecDeque` so
-    /// the eviction is O(1) (the previous `Vec::remove(0)` was O(n)).
+    /// Insertion order for FIFO eviction. New kids are pushed to the
+    /// back; both `add` and `rotate` evict the front at capacity. `VecDeque`
+    /// keeps eviction O(1).
     order: parking_lot::Mutex<std::collections::VecDeque<String>>,
     cap: usize,
 }
@@ -130,35 +130,38 @@ impl KeyRegistry {
         self.cap
     }
 
+    fn reserve_kid_slot(&self, entries: &mut HashMap<String, Vec<KeyEntry>>, kid: &str) {
+        if entries.contains_key(kid) {
+            return;
+        }
+
+        let mut order = self.order.lock();
+        while entries.len() >= self.cap {
+            let Some(oldest) = order.pop_front() else {
+                break;
+            };
+            entries.remove(&oldest);
+            tracing::warn!(
+                kid = %oldest,
+                cap = self.cap,
+                "key registry at cap; evicted oldest kid"
+            );
+        }
+        order.push_back(kid.to_owned());
+    }
+
     /// Register a key. Replaces any existing active key with the same
     /// `kid` and `alg` (grace-window keys from a rotation are preserved).
     /// If the registry is at its cap, the oldest kid is evicted first.
     pub fn add(&self, kid: impl Into<String>, alg: Algorithm, key: KeyMaterial) {
         let kid = kid.into();
         let mut guard = self.inner.write();
+        self.reserve_kid_slot(&mut guard, &kid);
         // Drop a stale entry (if any) so a re-add counts as an update,
         // not a new insertion, when computing capacity.
-        if guard.contains_key(&kid) {
-            let entries = guard.get_mut(&kid).unwrap();
-            entries.retain(|e| !(e.alg == alg && e.grace_expires_at.is_none()));
-        } else {
-            // Cap check + evict before inserting a new kid.
-            let mut order = self.order.lock();
-            while order.len() >= self.cap {
-                if let Some(oldest) = order.pop_front() {
-                    guard.remove(&oldest);
-                    tracing::warn!(
-                        kid = %oldest,
-                        cap = self.cap,
-                        "key registry at cap; evicted oldest kid"
-                    );
-                } else {
-                    break;
-                }
-            }
-            order.push_back(kid.clone());
-        }
-        guard.entry(kid.clone()).or_default().push(KeyEntry {
+        let entries = guard.entry(kid.clone()).or_default();
+        entries.retain(|e| !(e.alg == alg && e.grace_expires_at.is_none()));
+        entries.push(KeyEntry {
             kid,
             alg,
             key,
@@ -177,6 +180,7 @@ impl KeyRegistry {
     ) {
         let kid = kid.into();
         let mut guard = self.inner.write();
+        self.reserve_kid_slot(&mut guard, &kid);
         let entries = guard.entry(kid.clone()).or_default();
         for entry in entries.iter_mut() {
             entry.grace_expires_at = Some(Instant::now() + grace);
@@ -321,11 +325,54 @@ mod tests {
     }
 
     #[test]
-    fn rotate_under_cap_does_not_evict() {
+    fn adding_existing_kid_does_not_evict() {
         let r = KeyRegistry::with_cap(4);
         r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![1; 32]));
         // Re-adding the same kid updates in place; no eviction.
         r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![2; 32]));
         assert_eq!(r.kid_count(), 1);
+    }
+
+    #[test]
+    fn rotate_new_kids_respects_cap_and_fifo_eviction_order() {
+        let r = KeyRegistry::with_cap(2);
+        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![1; 32]));
+        r.rotate(
+            "kid2",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![2; 32]),
+            Duration::from_secs(60),
+        );
+
+        assert_eq!(r.kid_count(), 2);
+        assert!(r.contains("kid1"));
+        assert!(r.contains("kid2"));
+
+        r.rotate(
+            "kid3",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![3; 32]),
+            Duration::from_secs(60),
+        );
+
+        assert_eq!(r.kid_count(), 2);
+        assert!(!r.contains("kid1"));
+        assert!(r.contains("kid2"));
+        assert!(r.contains("kid3"));
+    }
+
+    #[test]
+    fn rotating_an_existing_kid_preserves_grace_keys_without_consuming_capacity() {
+        let r = KeyRegistry::with_cap(1);
+        r.add("kid1", Algorithm::EdDSA, KeyMaterial::Ed25519(vec![1; 32]));
+        r.rotate(
+            "kid1",
+            Algorithm::EdDSA,
+            KeyMaterial::Ed25519(vec![2; 32]),
+            Duration::from_secs(60),
+        );
+
+        assert_eq!(r.kid_count(), 1);
+        assert_eq!(r.get("kid1", Algorithm::EdDSA).len(), 2);
     }
 }
