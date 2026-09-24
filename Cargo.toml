@@ -5,6 +5,7 @@ members = [
     "crates/agentguard-cli",
     "crates/agentguard-telemetry",
     "crates/agentguard-auth",
+    "crates/agentguard-redis-store",
     "crates/agentguard-policy",
     "crates/agentguard-server",
     "examples/rust-embedder",

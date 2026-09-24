@@ -130,13 +130,30 @@ Signature verification alone is not authorization. A consuming adapter must:
 4. evaluate the effective Cedar policy; and
 5. check revocation state on every authorization attempt.
 
-The core crate exposes the async `DelegationRevocationStore` port. Implement
-it with a shared, durable store for multi-process deployments. Call
-`DelegationVerifier::revoke` for revocation and
-`verify_with_revocation_store` before scope/policy evaluation. The port retains
-revocation through token expiry plus configured clock skew; storage failures
-propagate and must fail closed. No Redis/database adapter is bundled, so
-production deployments must provide and test their own store implementation.
+The core crate exposes the async `DelegationRevocationStore` port. The
+`agentguard-redis-store` crate provides a Redis-compatible HTTPS REST adapter
+for multi-process deployments; it hashes token ids into namespaced keys,
+retains revocation through token expiry plus configured clock skew, and fails
+closed on transport or protocol errors. Configure it with shared storage and a
+unique prefix per environment:
+
+```rust
+use agentguard_redis_store::RedisDelegationRevocationStore;
+use std::sync::Arc;
+
+let store = Arc::new(RedisDelegationRevocationStore::new(
+    &std::env::var("AGENTGUARD_DELEGATION_REDIS_URL")?,
+    std::env::var("AGENTGUARD_DELEGATION_REDIS_TOKEN")?,
+)?);
+// Pass `store.as_ref()` to `DelegationVerifier::revoke` and
+// `verify_with_revocation_store` at the protected tool boundary.
+# Ok::<(), agentguard_core::Error>(())
+```
+
+The standalone PDP does not consume delegation tokens or expose a revocation
+endpoint; this adapter is for applications enforcing delegation at their own
+tool boundary. Keep credentials in a secret manager and test store outage and
+recovery behavior in the consuming service.
 
 The Rust compact-JWS parser rejects delegation tokens larger than 64 KiB
 before base64 decoding or JSON parsing. Applications should retain their own

@@ -201,7 +201,10 @@ subject/action/resource/constraint scope check, but the standalone PDP does not
 consume delegation tokens. The integration at the tool boundary must bind the
 trusted actor, authorize the original parent grant, evaluate Cedar policy, and
 check revocation before each authorization. `DelegationRevocationStore` is an
-async storage port; deployments must provide a durable shared adapter.
+async storage port; deployments must configure a durable shared adapter. The
+`agentguard-redis-store` crate supplies a Redis-compatible HTTPS REST adapter.
+The standalone PDP still does not consume delegation tokens or expose a
+revocation endpoint.
 `DelegationSigner::mint_attenuated` uses the verified parent's signing key and
 constrains child grants to its actions, resources, constraints, and remaining
 lifetime. See

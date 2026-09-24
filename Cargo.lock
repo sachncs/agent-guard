@@ -106,6 +106,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentguard-redis-store"
+version = "0.2.0"
+dependencies = [
+ "agentguard-core",
+ "async-trait",
+ "hex",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "agentguard-server"
 version = "0.2.0"
 dependencies = [

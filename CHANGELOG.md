@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add the `agentguard-redis-store` crate with bounded, fail-closed Redis REST
+  storage for shared delegation revocation.
 - Handle early child-process stdin closure in the async TypeScript SDK as a
   fail-closed `CLIUnavailable` error instead of an unhandled stream `EPIPE`.
 - Add verified delegation-scope enforcement and child-grant attenuation for
@@ -16,7 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unsupported critical headers, empty identity claims, inconsistent time claims,
   and clock-skew arithmetic overflow.
 - Add the async `DelegationRevocationStore` port and store-aware verification;
-  storage failures fail closed, while production adapters remain operator-owned.
+  storage failures fail closed.
 - Add a visually reviewed 1200×630 PNG social card from the canonical SVG and
   test that its dimensions and page metadata stay in sync.
 - Add the explicit `authorize:any` API-key capability for trusted server-side
