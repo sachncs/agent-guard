@@ -82,10 +82,17 @@ pub struct Histogram {
 }
 
 impl Histogram {
+    /// Build a histogram with finite bucket boundaries, sorted ascending and
+    /// deduplicated. Non-finite values are ignored; the implicit `+Inf` bucket
+    /// is always appended by [`Self::bucket_counts`].
     pub fn new(name: impl Into<String>, buckets: &[f64]) -> Self {
-        let mut sorted = buckets.to_vec();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        sorted.dedup();
+        let mut sorted: Vec<_> = buckets
+            .iter()
+            .copied()
+            .filter(|bucket| bucket.is_finite())
+            .collect();
+        sorted.sort_by(f64::total_cmp);
+        sorted.dedup_by(|left, right| *left == *right);
         let bucket_counts = (0..sorted.len() + 1).map(|_| Counter::new()).collect();
         Self {
             name: name.into(),
@@ -544,6 +551,37 @@ mod tests {
         assert_eq!(bucket_1, 2);
         assert_eq!(bucket_10, 2);
         assert_eq!(bucket_inf, 3);
+    }
+
+    #[test]
+    fn histogram_ignores_non_finite_and_duplicate_boundaries() {
+        let h = Histogram::new(
+            "test",
+            &[
+                1.0,
+                f64::NAN,
+                f64::INFINITY,
+                0.1,
+                1.0,
+                f64::NEG_INFINITY,
+                -0.0,
+                0.0,
+            ],
+        );
+
+        h.observe(Duration::ZERO);
+        assert_eq!(
+            h.bucket_counts(),
+            vec![(-0.0, 1), (0.1, 1), (1.0, 1), (f64::INFINITY, 1)]
+        );
+    }
+
+    #[test]
+    fn histogram_with_only_non_finite_boundaries_keeps_implicit_infinity_bucket() {
+        let h = Histogram::new("test", &[f64::NAN, f64::INFINITY, f64::NEG_INFINITY]);
+
+        h.observe(Duration::from_secs(1));
+        assert_eq!(h.bucket_counts(), vec![(f64::INFINITY, 1)]);
     }
 
     #[test]
