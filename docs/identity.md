@@ -137,7 +137,8 @@ Never pass an untrusted request field as `subject` or rely on this scope check
 as a replacement for the PDP decision.
 
 For delegation chains, `DelegationSigner::mint_attenuated` accepts only a
-verified parent grant. Child actions must be a subset, resources must be
+verified parent grant and requires the same signing key that verified it.
+Child actions must be a subset, resources must be
 parent-matched literals or identical parent patterns, inherited constraints
 cannot be removed or changed, and child lifetime cannot exceed the parent's
 remaining lifetime. Pattern containment is intentionally conservative; the

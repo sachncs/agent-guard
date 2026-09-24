@@ -459,6 +459,12 @@ impl DelegationSigner {
             constraints,
             config,
         } = spec;
+        if self.key_id != parent.kid || self.key.verifying_key().to_bytes() != parent.verifying_key
+        {
+            return Err(Error::InvalidToken(
+                "child grant must be signed by the verified parent key".into(),
+            ));
+        }
         let now = chrono::Utc::now().timestamp();
         if parent.claims.exp <= now {
             return Err(Error::InvalidToken(
@@ -634,6 +640,7 @@ pub struct VerifiedDelegation {
     claims: DelegationClaims,
     kid: String,
     alg: Algorithm,
+    verifying_key: [u8; 32],
 }
 
 impl VerifiedDelegation {
@@ -889,6 +896,7 @@ impl DelegationVerifier {
             claims: parsed.claims,
             kid,
             alg,
+            verifying_key: verifying_key.to_bytes(),
         })
     }
 }
@@ -1180,6 +1188,19 @@ mod tests {
                     vec!["ToolCall::read_doc".into()],
                     vec!["Document::team-42".into()],
                     600,
+                ),
+            )
+            .is_err());
+        let unrelated_signer = DelegationSigner::generate();
+        assert!(unrelated_signer
+            .mint_attenuated(
+                &parent,
+                child_spec(
+                    "Agent::worker",
+                    "aud",
+                    vec!["ToolCall::read_doc".into()],
+                    vec!["Document::team-42".into()],
+                    60,
                 ),
             )
             .is_err());
