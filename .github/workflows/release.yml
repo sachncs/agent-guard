@@ -16,7 +16,7 @@ permissions:
 jobs:
   resolve-tag:
     name: resolve and validate release tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
@@ -50,7 +50,7 @@ jobs:
   publish:
     name: publish release images and GitHub release
     needs: [resolve-tag, release-gate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
