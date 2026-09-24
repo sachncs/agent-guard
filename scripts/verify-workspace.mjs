@@ -4,6 +4,7 @@ import { isValidReleaseTag } from "./validate-release-tag.mjs";
 
 const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
 const sitePackage = JSON.parse(readFileSync("site/package.json", "utf8"));
+const readme = readFileSync("README.md", "utf8");
 const siteWorkspace = readFileSync("site/pnpm-workspace.yaml", "utf8");
 const setup = readFileSync("scripts/setup.sh", "utf8");
 const nodeVersionCheck = readFileSync("scripts/check-node-version.mjs", "utf8");
@@ -46,6 +47,17 @@ if (sitePackage.packageManager !== rootPackage.packageManager) {
 }
 if (rootPackage.engines?.node !== ">=22.12" || sitePackage.engines?.node !== ">=22.12") {
   failures.push("the full repository and Astro site must declare the Astro 7 Node.js minimum");
+}
+const astroMajor = sitePackage.dependencies?.astro?.match(/^\^?(\d+)/)?.[1];
+const readmeAstroMajors = [...readme.matchAll(/\bAstro (\d+)/g)].map(([, major]) => major);
+if (!astroMajor || !readmeAstroMajors.length || readmeAstroMajors.some((major) => major !== astroMajor)) {
+  failures.push("README site documentation must match the Astro major in site/package.json");
+}
+if (!readme.includes("`agentguard-redis-store` (Rust)")) {
+  failures.push("README component map must include agentguard-redis-store");
+}
+if (!readme.includes("agentguard-redis-store/")) {
+  failures.push("README project tree must include agentguard-redis-store");
 }
 
 const allowBuilds = siteWorkspace.match(/^allowBuilds:\s*\n((?:^[ \t]+[^\n]*\n?)+)/m)?.[1] ?? "";

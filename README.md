@@ -51,6 +51,7 @@ Each request carries a principal (`User::"alice"` or `Agent::"research"`), an ac
 | `agentguard` CLI | `init`, `validate`, `authorize`, `sim`, `api-key`, `delegate`, `verify`, `audit`, `schema`, `log`, `gen`, `doctor` |
 | `agentguard-telemetry` (Rust) | Pluggable `Sink` trait, OTel/OTLP, Prometheus metrics |
 | `agentguard-auth` (Rust) | Library validators for JWT (RFC 7519 + RFC 8725), OIDC (RFC 8414), API keys, DPoP (RFC 9449), SPIFFE/SPIRE, and jti replay protection; not standalone PDP auth modes |
+| `agentguard-redis-store` (Rust) | Redis-compatible HTTPS REST adapter for shared delegation revocation state |
 | `agentguard-policy` (Rust) | Versioned bundles, policy change notifications, diff, blast radius, dry-run |
 | `agentguard-server` (Rust) | Standalone AuthZEN HTTP PDP, sidecar mode |
 | `agentguard` (TypeScript SDK) | In-process Node.js bindings via the CLI |
@@ -291,12 +292,13 @@ agent-guard/
 │   ├── agentguard-cli/          # `agentguard` CLI binary
 │   ├── agentguard-telemetry/    # OTel/OTLP sink trait + Prometheus metrics
 │   ├── agentguard-auth/         # JWT/OIDC/API-key/DPoP/SPIFFE
+│   ├── agentguard-redis-store/  # Shared Redis-compatible REST adapters
 │   ├── agentguard-policy/       # Versioned bundles, policy operations, blast radius
 │   └── agentguard-server/       # AuthZEN HTTP PDP
 ├── typescript/
 │   └── agentguard/              # TypeScript SDK
 ├── frontend/                    # Next.js 16 admin console (shadcn/ui)
-├── site/                        # Astro 5 product landing page (GitHub Pages)
+├── site/                        # Astro 7 product landing page (GitHub Pages)
 ├── examples/                    # Working examples (TS + Rust embedder)
 ├── schemas/                     # Cedar schema fragments
 └── docs/                        # Guides, architecture, API, and operations documentation
@@ -408,7 +410,7 @@ This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
 
 The product landing page is published at <https://sachncs.github.io/agent-guard/>.
 
-The site lives under [`site/`](site/) as a standalone Astro 5 + Tailwind v4
+The site lives under [`site/`](site/) as a standalone Astro 7 + Tailwind v4
 project. It is built and deployed by the
 [`.github/workflows/deploy-site.yml`](.github/workflows/deploy-site.yml) workflow
 on every push to `master`. The Pages source is configured to **GitHub Actions**,

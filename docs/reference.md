@@ -11,6 +11,7 @@ in the versioned guides linked below.
 | Rust engine | [`agentguard-core`](../crates/agentguard-core/src/lib.rs) | typed requests, decisions, caching, delegation primitives |
 | Rust policy | [`agentguard-policy`](../crates/agentguard-policy/src/lib.rs) | bundles, versions, diffs, blast-radius analysis |
 | Rust server | [`agentguard-server`](../crates/agentguard-server/src/lib.rs) | HTTP/gRPC adapters and configuration |
+| Rust shared stores | [`agentguard-redis-store`](../crates/agentguard-redis-store/src/lib.rs) | Redis-compatible shared delegation revocation adapter |
 | TypeScript SDK | [`typescript/agentguard`](../typescript/agentguard/src/index.ts) | CLI-backed Node.js client with synchronous and asynchronous methods |
 | CLI | [`agentguard-cli`](../crates/agentguard-cli/src/main.rs) | authoring, simulation, audit, delegation, diagnostics |
 | HTTP | [`authzen.rs`](../crates/agentguard-server/src/authzen.rs) | AuthZEN-compatible evaluation and batch evaluation |

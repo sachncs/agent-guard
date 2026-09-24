@@ -12,6 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   storage for shared delegation revocation.
 - Document Redis eviction, durability, and stale-restore hazards for delegation
   revocation state, including fail-safe recovery actions.
+- Add the Redis store crate to the public component and API reference maps, and
+  synchronize the README's Astro version with the site package manifest.
 - Handle early child-process stdin closure in the async TypeScript SDK as a
   fail-closed `CLIUnavailable` error instead of an unhandled stream `EPIPE`.
 - Add verified delegation-scope enforcement and child-grant attenuation for
