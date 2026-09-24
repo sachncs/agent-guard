@@ -16,8 +16,10 @@ import { freshTraceContext, parseTraceparent } from "../trace.js";
 const FAKE = `#!/bin/sh
 case "\$FAKE_AGENTGUARD_MODE" in
   deny)
+    cat >/dev/null
     echo '{"effect":"deny","policies":[],"reasons":["no matching policy"],"request":{}}' ;;
   stepup)
+    cat >/dev/null
     echo '{"effect":"deny","policies":[],"reasons":[],"step_up":{"acr_values":"mfa","amr_values":"otp"},"request":{}}' ;;
   envdump)
     printf '{"effect":"allow","policies":["p-env"],"reasons":["bearer=%s trace=%s"],"request":{}}' "\$AGENTGUARD_BEARER" "\$AGENTGUARD_TRACEPARENT" ;;
