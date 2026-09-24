@@ -661,9 +661,13 @@ mod tls_validation_tests {
             super::try_spawn_policy_watcher(dir.path().to_path_buf(), Arc::new(state.clone()))
                 .unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
-        store
-            .write_policy("second", "forbid(principal, action, resource);")
-            .unwrap();
+        let nested_policies = store.policies_dir().join("team");
+        std::fs::create_dir_all(&nested_policies).unwrap();
+        std::fs::write(
+            nested_policies.join("second.cedar"),
+            "forbid(principal, action, resource);",
+        )
+        .unwrap();
 
         tokio::time::timeout(Duration::from_secs(4), async {
             while state.authorizer().policy_count() != 2 {
@@ -671,7 +675,7 @@ mod tls_validation_tests {
             }
         })
         .await
-        .expect("nested policy edit should reload the complete policy snapshot");
+        .expect("nested subdirectory policy edit should reload the complete policy snapshot");
         watcher.abort();
     }
 

@@ -79,8 +79,8 @@ All `/access/v1/*` endpoints are protected by `auth_layer`:
 - `AuthConfig::ApiKey { path }` — `Authorization: Bearer <raw>` against a
   JSON `ApiKeyStore`. Argon2id is the verification path.
 
-A `PolicyWatcher` polls `store_root` every 500 ms, recursively observing
-`policies/*.cedar` and `schema.cedarschema`; on each relevant event the
+A `PolicyWatcher` polls `store_root` every 500 ms, recursively observing Cedar
+files under `policies/` and `schema.cedarschema`; on each relevant event the
 complete authorizer snapshots are atomically replaced and
 `policy_reload_total` is bumped on success. Runtime watcher errors are logged.
 The server also installs a

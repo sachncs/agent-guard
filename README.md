@@ -28,7 +28,7 @@ tool call ──► intercept (SDK / HTTP PDP) ──► evaluate Cedar policies
                         hash-chained audit log (CEF / LEEF / ECS / JSONL export)
 ```
 
-Each request carries a principal (`User::"alice"` or `Agent::"research"`), an action (`ToolCall::send_email`), a resource (`Mailbox::"alice@acme"`), and context (`session`, tool `args`). Policies in `.agentguard/policies/*.cedar` are evaluated against the schema plus per-request entities — allow runs the tool, deny raises `AuthorizationDenied` back to the model.
+Each request carries a principal (`User::"alice"` or `Agent::"research"`), an action (`ToolCall::send_email`), a resource (`Mailbox::"alice@acme"`), and context (`session`, tool `args`). Cedar policies stored recursively under `.agentguard/policies/` are evaluated against the schema plus per-request entities — allow runs the tool, deny raises `AuthorizationDenied` back to the model.
 
 ## Features
 

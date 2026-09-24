@@ -122,7 +122,8 @@ verified across the timestamped segments automatically.
 ### Hot reload policy
 
 The watcher polls `AGENTGUARD_STORE` every 500 ms and recursively observes the
-store root. Changes to `policies/*.cedar` and `schema.cedarschema` trigger a
+store root. Changes to Cedar files recursively under `policies/` and to
+`schema.cedarschema` trigger a
 complete replacement authorizer, atomically swapped only when valid;
 `policy_reload_total` increments on success. Verify changes first with
 `agentguard validate --store <path>`. Standalone startup fails if watcher

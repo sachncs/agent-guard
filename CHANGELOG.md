@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Reload changes to Cedar files in nested policy subdirectories as well as
+  files directly under the policy root.
 - Coalesce policy watcher notifications in bounded shared state so delayed
   reloads cannot accumulate an unbounded event queue or path list.
 - Fail policy loading closed when the store tree, Cedar-file count, or source

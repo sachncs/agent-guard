@@ -182,8 +182,8 @@ impl PolicyWatcher {
     }
 }
 
-/// Watch a policy store for changes to `policies/*.cedar` and
-/// `schema.cedarschema`. The returned watcher is debounced: events that
+/// Watch a policy store for changes to Cedar files anywhere under `policies/`
+/// and to `schema.cedarschema`. The returned watcher is debounced: events that
 /// arrive within `debounce` of each other are coalesced into a single batch.
 pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<PolicyWatcher> {
     let dir = std::fs::canonicalize(dir.as_ref())?;
@@ -199,9 +199,13 @@ pub fn watch<P: AsRef<Path>>(dir: P, debounce: Duration) -> std::io::Result<Poli
             match res {
                 Ok(ev) => {
                     let kind = WatchEventKind::from(&ev.kind);
+                    // Keep file matching aligned with `PolicyStore`'s
+                    // recursive Cedar load semantics.
                     let paths = ev.paths.into_iter().filter(|path| {
                         path == &schema_path
-                            || (path.parent() == Some(policies_dir.as_path())
+                            || (path
+                                .parent()
+                                .is_some_and(|parent| parent.starts_with(&policies_dir))
                                 && path.extension().is_some_and(|ext| ext == "cedar"))
                     });
                     let mut bounded_paths = Vec::new();
@@ -280,6 +284,33 @@ mod tests {
         assert!(
             paths.iter().any(|p| p.ends_with("policies/test.cedar")),
             "expected policies/test.cedar in events, got: {paths:?}"
+        );
+    }
+
+    #[test]
+    fn watcher_emits_event_for_policy_in_nested_subdirectory() {
+        let dir = tempdir().unwrap();
+        let policy_dir = dir.path().join("policies/team");
+        fs::create_dir_all(&policy_dir).unwrap();
+        let mut watcher = watch(dir.path(), Duration::from_millis(50)).unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        let path = policy_dir.join("read.cedar");
+        fs::write(&path, "permit(principal, action, resource);").unwrap();
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let events = loop {
+            let events = watcher.events();
+            if !events.is_empty() || std::time::Instant::now() >= deadline {
+                break events;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert!(
+            events
+                .iter()
+                .flat_map(|event| &event.paths)
+                .any(|changed| changed.ends_with("policies/team/read.cedar")),
+            "expected nested policy path {path:?} in events: {events:?}"
         );
     }
 
