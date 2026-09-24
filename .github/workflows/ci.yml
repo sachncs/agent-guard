@@ -87,6 +87,7 @@ jobs:
       # and all-feature coverage of the previous aggregate commands.
       - run: cargo test -p agentguard-core
       - run: cargo test -p agentguard-auth
+      - run: cargo test -p agentguard-redis-store
       - run: cargo test -p agentguard-policy
       - run: cargo test -p agentguard-telemetry
       - run: cargo test -p agentguard
@@ -112,6 +113,7 @@ jobs:
           test -s /tmp/agentguard.pb
       - run: cargo build -p agentguard-core --release
       - run: cargo build -p agentguard-auth --release
+      - run: cargo build -p agentguard-redis-store --release
       - run: cargo build -p agentguard-policy --release
       - run: cargo build -p agentguard-telemetry --release
       - run: cargo build -p agentguard --release
@@ -323,6 +325,7 @@ jobs:
       - run: cargo llvm-cov clean --workspace
       - run: cargo llvm-cov -p agentguard-core --summary-only
       - run: cargo llvm-cov --no-clean -p agentguard-auth --summary-only
+      - run: cargo llvm-cov --no-clean -p agentguard-redis-store --summary-only
       - run: cargo llvm-cov --no-clean -p agentguard-policy --summary-only
       - run: cargo llvm-cov --no-clean -p agentguard-telemetry --summary-only
       - run: cargo llvm-cov --no-clean -p agentguard --summary-only

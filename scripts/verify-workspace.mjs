@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { isValidReleaseTag } from "./validate-release-tag.mjs";
 
 const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
@@ -10,6 +11,32 @@ const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const release = readFileSync(".github/workflows/release.yml", "utf8");
 const consoleDockerfile = readFileSync("frontend/Dockerfile", "utf8");
 const failures = [];
+
+const cargoMetadata = JSON.parse(execFileSync(
+  "cargo",
+  ["metadata", "--no-deps", "--format-version", "1", "--locked"],
+  { encoding: "utf8" },
+));
+const workspaceMemberIds = new Set(cargoMetadata.workspace_members);
+const workspaceCrates = cargoMetadata.packages
+  .filter(({ id }) => workspaceMemberIds.has(id))
+  .map(({ name }) => name);
+const testedCrates = new Set(
+  [...ci.matchAll(/^\s*- run: cargo test -p ([\w-]+)(?:\s|$)/gm)].map(([, name]) => name),
+);
+const releaseBuiltCrates = new Set(
+  [...ci.matchAll(/^\s*- run: cargo build -p ([\w-]+) --release\s*$/gm)].map(([, name]) => name),
+);
+const coveredCrates = new Set(
+  [...ci.matchAll(/^\s*- run: cargo llvm-cov(?: --no-clean)? -p ([\w-]+) --summary-only\s*$/gm)]
+    .map(([, name]) => name),
+);
+
+for (const name of workspaceCrates) {
+  if (!testedCrates.has(name)) failures.push(`CI must run unit/integration tests for workspace crate ${name}`);
+  if (!releaseBuiltCrates.has(name)) failures.push(`CI must release-build workspace crate ${name}`);
+  if (!coveredCrates.has(name)) failures.push(`CI coverage must include workspace crate ${name}`);
+}
 
 if (rootPackage.packageManager !== "pnpm@11.22.0") {
   failures.push("root workspace must pin pnpm@11.22.0");
