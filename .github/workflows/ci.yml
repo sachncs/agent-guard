@@ -198,10 +198,13 @@ jobs:
           container=$(docker run --detach --publish 8443:8443 \
             agentguard-server:ci)
           trap 'docker rm --force "$container" >/dev/null' EXIT
-          for _ in $(seq 1 30); do
+          for attempt in $(seq 1 30); do
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
               http://127.0.0.1:8443/healthz || true)
-            if [ "$status" = "200" ]; then break; fi
+            if [ "$status" = "200" ]; then
+              echo "PDP became healthy after attempt $attempt"
+              break
+            fi
             sleep 1
           done
           sleep 35
@@ -221,9 +224,12 @@ jobs:
           docker run --rm --entrypoint /usr/local/bin/agentguard agentguard-console:ci --help
           container=$(docker run --detach --read-only --publish 3000:3000 agentguard-console:ci)
           trap 'docker rm --force "$container" >/dev/null' EXIT
-          for _ in $(seq 1 30); do
+          for attempt in $(seq 1 30); do
             live=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3000/api/health/live || true)
-            if [ "$live" = "200" ]; then break; fi
+            if [ "$live" = "200" ]; then
+              echo "Console became live after attempt $attempt"
+              break
+            fi
             sleep 1
           done
           test "$live" = "200"
