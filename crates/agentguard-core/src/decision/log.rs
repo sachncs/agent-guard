@@ -307,6 +307,9 @@ impl DecisionLog {
     }
 
     fn reopen_rotated(&self, rotated: &Path) -> Result<File> {
+        let rotated_sidecar = chain_id_sidecar_path(rotated);
+        let require_chain_id = matches!(&self.mode, LogMode::Chained { .. });
+        copy_chain_id_sidecar(&self.chain_id_path, &rotated_sidecar, require_chain_id)?;
         std::fs::rename(&self.path, rotated).map_err(|e| {
             Error::Io(format!(
                 "rotate {} -> {}: {}",
@@ -315,10 +318,6 @@ impl DecisionLog {
                 e
             ))
         })?;
-        if self.chain_id_path.exists() {
-            let rotated_sidecar = chain_id_sidecar_path(rotated);
-            let _ = std::fs::rename(&self.chain_id_path, rotated_sidecar);
-        }
         open_audit_file(&self.path).map_err(Error::from)
     }
 
@@ -644,6 +643,48 @@ fn chain_id_sidecar_path(log_path: &Path) -> PathBuf {
     parent.join(format!(".{}.chainid", name))
 }
 
+/// Persist the active chain identity beside a rotated segment before renaming
+/// the log itself. Keep the active sidecar in place so the new active segment
+/// can continue the same chain. Chained logs require this metadata; plain logs
+/// may not have a sidecar at all.
+fn copy_chain_id_sidecar(active: &Path, rotated: &Path, required: bool) -> Result<()> {
+    match std::fs::symlink_metadata(active) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => {
+            return Err(Error::Io(format!(
+                "chain identity sidecar must be a regular file: {}",
+                active.display()
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !required => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::Io(format!(
+                "required chain identity sidecar is missing: {}",
+                active.display()
+            )))
+        }
+        Err(error) => {
+            return Err(Error::Io(format!(
+                "inspect chain identity sidecar {}: {error}",
+                active.display()
+            )))
+        }
+    }
+
+    let id = read_chain_id_sidecar(active).ok_or_else(|| {
+        Error::Io(format!(
+            "chain identity sidecar is invalid: {}",
+            active.display()
+        ))
+    })?;
+    write_chain_id_sidecar(rotated, id).map_err(|error| {
+        Error::Io(format!(
+            "persist rotated chain identity sidecar {}: {error}",
+            rotated.display()
+        ))
+    })
+}
+
 /// List timestamped rotations for `log_path` in chronological order. Rotation
 /// timestamps are UTC and fixed-width; collision suffixes are sorted
 /// numerically so `-10` follows `-9`, not `-1`.
@@ -836,7 +877,10 @@ fn write_chain_id_sidecar(path: &Path, id: ChainId) -> std::io::Result<()> {
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         inner.sync_all()?;
     }
-    std::fs::rename(&tmp, path)?;
+    if let Err(error) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
     #[cfg(unix)]
     File::open(parent)?.sync_all()?;
     Ok(())
@@ -885,6 +929,39 @@ mod tests {
             result.is_err(),
             "a chained log must not open without durable chain identity"
         );
+    }
+
+    #[test]
+    fn rotation_sidecar_copy_fails_closed_and_cleans_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = dir.path().join(".audit.jsonl.chainid");
+        let rotated = dir.path().join(".audit-rotated.jsonl.chainid");
+        let id = ChainId::new();
+        write_chain_id_sidecar(&active, id).unwrap();
+        std::fs::create_dir(&rotated).unwrap();
+
+        assert!(copy_chain_id_sidecar(&active, &rotated, true).is_err());
+        assert_eq!(read_chain_id_sidecar(&active), Some(id));
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_name().to_string_lossy().ends_with(".new"))
+                .count(),
+            0,
+            "failed sidecar persistence should remove its temporary file"
+        );
+    }
+
+    #[test]
+    fn rotation_sidecar_copy_allows_missing_metadata_only_for_plain_logs() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = dir.path().join("missing.chainid");
+        let rotated = dir.path().join("rotated.chainid");
+
+        assert!(copy_chain_id_sidecar(&active, &rotated, false).is_ok());
+        assert!(copy_chain_id_sidecar(&active, &rotated, true).is_err());
+        assert!(!rotated.exists());
     }
 
     #[test]
@@ -1518,6 +1595,14 @@ mod tests {
         log.append(&rec).unwrap();
 
         let rotated = latest_rotated_log(&path).unwrap().unwrap();
+        assert_eq!(
+            read_chain_id_sidecar(&chain_id_sidecar_path(&rotated)),
+            Some(first_id)
+        );
+        assert_eq!(
+            read_chain_id_sidecar(&chain_id_sidecar_path(&path)),
+            Some(first_id)
+        );
         let before = DecisionLog::read_all_chained(&rotated).unwrap();
         let after = DecisionLog::read_all_chained(&path).unwrap();
         assert_eq!(before.len(), 1);
