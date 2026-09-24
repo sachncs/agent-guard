@@ -180,8 +180,9 @@ export async function rateLimit(key: string, limitPerMinute: number): Promise<Ra
 /**
  * Use a forwarded client address only when configuration confirms the
  * reverse proxy overwrites X-Forwarded-For with exactly one validated IP.
- * Otherwise use the request host; never trust a client-supplied header by
- * default.
+ * Next's Web Request API does not expose the peer socket address, so requests
+ * without a trustworthy forwarded address share one conservative bucket.
+ * Host is caller-controlled and must never be used as a client identity.
  */
 export function clientKey(request: Request, trustProxyHeaders = false): string {
   if (trustProxyHeaders) {
@@ -193,5 +194,5 @@ export function clientKey(request: Request, trustProxyHeaders = false): string {
       return `ip:${canonicalIp}`;
     }
   }
-  return new URL(request.url).host || "local";
+  return "ip:unattributed";
 }

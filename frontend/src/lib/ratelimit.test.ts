@@ -64,17 +64,19 @@ describe("rate limiter", () => {
   });
 
   it("does not trust spoofable forwarded headers", () => {
-    const req = new Request("http://x/", {
+    const req = new Request("http://attacker-host-a/", {
       headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" },
     });
-    assert.equal(clientKey(req), "x");
+    assert.equal(clientKey(req), "ip:unattributed");
+    const spoofedHost = new Request("http://attacker-host-b/");
+    assert.equal(clientKey(spoofedHost), "ip:unattributed");
   });
 
   it("uses a single validated proxy address only when proxy trust is enabled", () => {
     const forwarded = new Request("https://console.example/api", {
       headers: { "x-forwarded-for": "203.0.113.7" },
     });
-    assert.equal(clientKey(forwarded), "console.example");
+    assert.equal(clientKey(forwarded), "ip:unattributed");
     assert.equal(clientKey(forwarded, true), "ip:203.0.113.7");
 
     const ipv6 = new Request("https://console.example/api", {
@@ -87,11 +89,11 @@ describe("rate limiter", () => {
     const chained = new Request("https://console.example/api", {
       headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" },
     });
-    assert.equal(clientKey(chained, true), "console.example");
+    assert.equal(clientKey(chained, true), "ip:unattributed");
     const malformed = new Request("https://console.example/api", {
       headers: { "x-forwarded-for": "attacker-controlled" },
     });
-    assert.equal(clientKey(malformed, true), "console.example");
+    assert.equal(clientKey(malformed, true), "ip:unattributed");
   });
 
   it("uses an atomic Redis-compatible request", async () => {

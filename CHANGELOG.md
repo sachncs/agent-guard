@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Use a shared conservative rate-limit bucket when a trusted client IP cannot
+  be determined; caller-controlled hostnames can no longer partition limits.
 - Reload changes to Cedar files in nested policy subdirectories as well as
   files directly under the policy root.
 - Coalesce policy watcher notifications in bounded shared state so delayed
