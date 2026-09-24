@@ -108,6 +108,29 @@ pub enum ConstraintExpr {
 }
 
 impl ConstraintExpr {
+    /// Return false when evaluation would have to interpret missing or
+    /// wrongly typed input as a boolean false. This is especially important
+    /// beneath `Not`, where negating the ordinary fail-closed `false` result
+    /// would otherwise turn absent facts into permission.
+    fn has_typed_inputs(&self, root: &serde_json::Value) -> bool {
+        match self {
+            ConstraintExpr::Equals { path, .. } | ConstraintExpr::In { path, .. } => {
+                lookup(root, path).is_some()
+            }
+            ConstraintExpr::GreaterThan { path, .. } | ConstraintExpr::LessThan { path, .. } => {
+                lookup(root, path)
+                    .and_then(serde_json::Value::as_i64)
+                    .is_some()
+            }
+            ConstraintExpr::Glob { path, .. } => lookup(root, path)
+                .and_then(serde_json::Value::as_str)
+                .is_some(),
+            ConstraintExpr::And { all } => all.iter().all(|expr| expr.has_typed_inputs(root)),
+            ConstraintExpr::Or { any } => any.iter().all(|expr| expr.has_typed_inputs(root)),
+            ConstraintExpr::Not { inner } => inner.has_typed_inputs(root),
+        }
+    }
+
     /// Evaluate against a JSON value (the request context).
     pub fn evaluate(&self, root: &serde_json::Value) -> bool {
         match self {
@@ -516,10 +539,9 @@ impl VerifiedDelegation {
                 .iter()
                 .any(|pattern| glob_match(pattern, resource))
             && self.claims.constraints.as_ref().is_none_or(|constraints| {
-                constraints
-                    .expressions
-                    .iter()
-                    .all(|expression| expression.evaluate(request_facts))
+                constraints.expressions.iter().all(|expression| {
+                    expression.has_typed_inputs(request_facts) && expression.evaluate(request_facts)
+                })
             })
     }
 }
@@ -818,9 +840,19 @@ mod tests {
                 vec!["Document::team-*".into()],
                 DelegationConfig::default(),
                 |claims| {
-                    claims.constraints = Some(ConstraintSet::new(vec![ConstraintExpr::Equals {
-                        path: "context.tenant".into(),
-                        value: serde_json::json!("team-a"),
+                    claims.constraints = Some(ConstraintSet::new(vec![ConstraintExpr::And {
+                        all: vec![
+                            ConstraintExpr::Equals {
+                                path: "context.tenant".into(),
+                                value: serde_json::json!("team-a"),
+                            },
+                            ConstraintExpr::Not {
+                                inner: Box::new(ConstraintExpr::GreaterThan {
+                                    path: "context.risk".into(),
+                                    value: 10,
+                                }),
+                            },
+                        ],
                     }]));
                 },
             )
@@ -840,7 +872,7 @@ mod tests {
                 chrono::Utc::now().timestamp(),
             )
             .unwrap();
-        let facts = serde_json::json!({"context": {"tenant": "team-a"}});
+        let facts = serde_json::json!({"context": {"tenant": "team-a", "risk": 1}});
 
         assert!(verified.allows(
             "Agent::worker",
@@ -870,13 +902,25 @@ mod tests {
             "Agent::worker",
             "ToolCall::read_doc",
             "Document::team-42",
-            &serde_json::json!({"context": {"tenant": "team-b"}}),
+            &serde_json::json!({"context": {"tenant": "team-b", "risk": 1}}),
         ));
         assert!(!verified.allows(
             "Agent::worker",
             "ToolCall::read_doc",
             "Document::team-42",
             &serde_json::json!({}),
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &serde_json::json!({"context": {"tenant": "team-a"}}),
+        ));
+        assert!(!verified.allows(
+            "Agent::worker",
+            "ToolCall::read_doc",
+            "Document::team-42",
+            &serde_json::json!({"context": {"tenant": "team-a", "risk": "low"}}),
         ));
     }
 
