@@ -92,10 +92,11 @@ the embedding application supplies that lifecycle.
   `VerifiedDelegation::allows`; the application must supply the trusted acting
   identity and request facts. `DelegationSigner::mint_attenuated` constrains
   child grants to verified parent scopes and lifetime. Neither helper
-  authorizes the original parent grant, evaluates Cedar policy, nor provides
-  revocation. Applications must enforce those controls separately. The
-  verifier also requires the AgentGuard delegation JWS type, non-empty
-  identity claims, and consistent time claims.
+  authorizes the original parent grant or evaluates Cedar policy. The async
+  `DelegationRevocationStore` port enables shared revocation checks, but an
+  application must supply durable storage and use the store-aware verifier
+  before each authorization. The verifier also requires the AgentGuard
+  delegation JWS type, non-empty identity claims, and consistent time claims.
 - JWT, DPoP, and SPIFFE are library capabilities, not standalone server auth
   modes. Standalone API-key authentication is the supported PDP mode.
 - The standalone gRPC listener is plaintext and restricted to loopback; do not

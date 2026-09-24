@@ -61,6 +61,9 @@ pub enum Error {
     #[error("token expired at {0}")]
     TokenExpired(String),
 
+    #[error("delegation token revoked: {0}")]
+    TokenRevoked(String),
+
     #[error("token signature invalid: {reason}")]
     TokenSignature {
         /// Why the signature failed verification (bad signature, unknown kid, etc.).

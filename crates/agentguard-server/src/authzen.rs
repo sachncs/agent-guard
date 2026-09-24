@@ -541,6 +541,7 @@ fn summarize_authorize_error(e: &agentguard_core::Error) -> (&'static str, Strin
         // PDP, but be exhaustive just in case.
         Error::InvalidToken(_) => ("invalid_token", "invalid delegation token".to_string()),
         Error::TokenExpired(_) => ("token_expired", "delegation token expired".to_string()),
+        Error::TokenRevoked(_) => ("token_revoked", "delegation token revoked".to_string()),
         Error::TokenSignature { .. } => (
             "token_signature",
             "delegation signature invalid".to_string(),
@@ -1153,5 +1154,14 @@ mod summarize_tests {
             !summary.contains("column 7"),
             "summary leaked parse position: {summary}"
         );
+    }
+
+    #[test]
+    fn revoked_delegation_summary_is_stable_and_does_not_leak_token_id() {
+        let err = Error::TokenRevoked("sensitive-token-id".into());
+        let (code, summary) = summarize_authorize_error(&err);
+        assert_eq!(code, "token_revoked");
+        assert_eq!(summary, "delegation token revoked");
+        assert!(!summary.contains("sensitive-token-id"));
     }
 }

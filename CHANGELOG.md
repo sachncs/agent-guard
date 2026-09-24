@@ -13,6 +13,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bound compact delegation JWS parsing to 64 KiB and reject wrong token types,
   unsupported critical headers, empty identity claims, inconsistent time claims,
   and clock-skew arithmetic overflow.
+- Add the async `DelegationRevocationStore` port and store-aware verification;
+  storage failures fail closed, while production adapters remain operator-owned.
 - Add a visually reviewed 1200×630 PNG social card from the canonical SVG and
   test that its dimensions and page metadata stay in sync.
 - Add the explicit `authorize:any` API-key capability for trusted server-side

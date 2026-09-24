@@ -7,6 +7,7 @@
 pub use crate::auth_keys::parse_alg;
 use crate::auth_keys::Algorithm;
 use crate::error::{Error, Result};
+use async_trait::async_trait;
 use base64::Engine as _;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use indexmap::IndexMap;
@@ -15,6 +16,22 @@ use std::time::Duration;
 
 /// Maximum compact JWS size accepted by the delegation parser.
 pub const MAX_DELEGATION_TOKEN_BYTES: usize = 64 * 1024;
+
+/// Durable revocation-state port for delegated grants.
+///
+/// Implementations must share state across every verifier that accepts the
+/// token, retain revocations until `retain_until_unix`, and fail closed on
+/// storage errors. This async port allows Redis or database adapters to avoid
+/// blocking runtime workers. It does not provide storage itself.
+#[async_trait]
+pub trait DelegationRevocationStore: Send + Sync {
+    /// Mark a token id revoked until its signature can no longer be accepted.
+    async fn revoke(&self, token_id: &str, retain_until_unix: i64) -> Result<()>;
+
+    /// Check revocation state. Implementations may discard entries whose
+    /// retention deadline is at or before `now_unix`.
+    async fn is_revoked(&self, token_id: &str, now_unix: i64) -> Result<bool>;
+}
 
 /// Standard JWS compact serialization: `base64url(header).base64url(payload).base64url(signature)`.
 ///
@@ -952,6 +969,42 @@ impl DelegationVerifier {
             verifying_key: verifying_key.to_bytes(),
         })
     }
+
+    /// Verify a token and require a successful shared revocation-state check.
+    /// Storage errors propagate; callers must never continue with the
+    /// cryptographically verified grant when the revocation store is
+    /// unavailable.
+    pub async fn verify_with_revocation_store(
+        &self,
+        token: &str,
+        expected_aud: &str,
+        now_unix: i64,
+        store: &dyn DelegationRevocationStore,
+    ) -> Result<VerifiedDelegation> {
+        let verified = self.verify(token, expected_aud, now_unix)?;
+        if store.is_revoked(&verified.claims.jti, now_unix).await? {
+            return Err(Error::TokenRevoked(verified.claims.jti.clone()));
+        }
+        Ok(verified)
+    }
+
+    /// Revoke a verified grant in the supplied shared store. The retention
+    /// deadline includes this verifier's configured expiry clock skew.
+    pub async fn revoke(
+        &self,
+        verified: &VerifiedDelegation,
+        store: &dyn DelegationRevocationStore,
+    ) -> Result<()> {
+        store
+            .revoke(
+                &verified.claims.jti,
+                verified
+                    .claims
+                    .exp
+                    .saturating_add(self.clock_skew_seconds()),
+            )
+            .await
+    }
 }
 
 /// Verify an EdDSA signature over `signing_input` using `verifying_key`.
@@ -997,6 +1050,44 @@ impl DelegationSigner {
 // cryptographic behavior, not error plumbing.
 mod tests {
     use super::*;
+    use parking_lot::Mutex;
+    use std::collections::HashMap;
+
+    #[derive(Default)]
+    struct TestRevocationStore(Mutex<HashMap<String, i64>>);
+
+    #[async_trait]
+    impl DelegationRevocationStore for TestRevocationStore {
+        async fn revoke(&self, token_id: &str, retain_until_unix: i64) -> Result<()> {
+            self.0.lock().insert(token_id.to_owned(), retain_until_unix);
+            Ok(())
+        }
+
+        async fn is_revoked(&self, token_id: &str, now_unix: i64) -> Result<bool> {
+            let mut entries = self.0.lock();
+            match entries.get(token_id).copied() {
+                Some(retain_until) if retain_until > now_unix => Ok(true),
+                Some(_) => {
+                    entries.remove(token_id);
+                    Ok(false)
+                }
+                None => Ok(false),
+            }
+        }
+    }
+
+    struct FailingRevocationStore;
+
+    #[async_trait]
+    impl DelegationRevocationStore for FailingRevocationStore {
+        async fn revoke(&self, _token_id: &str, _retain_until_unix: i64) -> Result<()> {
+            Err(Error::Other("revocation storage unavailable".into()))
+        }
+
+        async fn is_revoked(&self, _token_id: &str, _now_unix: i64) -> Result<bool> {
+            Err(Error::Other("revocation storage unavailable".into()))
+        }
+    }
 
     fn child_spec(
         sub: &str,
@@ -1584,6 +1675,53 @@ mod tests {
         assert!(matches!(
             DelegationToken::parse(&oversized),
             Err(Error::InvalidToken(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn shared_revocation_is_checked_and_storage_failures_fail_closed() {
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint(
+                "issuer",
+                "subject",
+                "aud",
+                vec!["ToolCall::read".into()],
+                vec!["Document::*".into()],
+                DelegationConfig::default(),
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let store = TestRevocationStore::default();
+        let verified = verifier
+            .verify_with_revocation_store(token.to_jws(), "aud", now, &store)
+            .await
+            .unwrap();
+
+        verifier.revoke(&verified, &store).await.unwrap();
+        assert!(matches!(
+            verifier
+                .verify_with_revocation_store(token.to_jws(), "aud", now, &store)
+                .await,
+            Err(Error::TokenRevoked(_))
+        ));
+        assert_eq!(
+            store.0.lock().get(&verified.claims().jti),
+            Some(&(verified.claims().exp + verifier.clock_skew_seconds()))
+        );
+        assert!(matches!(
+            verifier
+                .verify_with_revocation_store(token.to_jws(), "aud", now, &FailingRevocationStore,)
+                .await,
+            Err(Error::Other(_))
         ));
     }
 

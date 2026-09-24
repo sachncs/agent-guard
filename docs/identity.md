@@ -128,7 +128,15 @@ Signature verification alone is not authorization. A consuming adapter must:
 3. bind the trusted acting identity to `VerifiedDelegation::allows` and enforce
    action/resource/constraint scope plus any sender binding;
 4. evaluate the effective Cedar policy; and
-5. apply revocation or replay state when the application requires it.
+5. check revocation state on every authorization attempt.
+
+The core crate exposes the async `DelegationRevocationStore` port. Implement
+it with a shared, durable store for multi-process deployments. Call
+`DelegationVerifier::revoke` for revocation and
+`verify_with_revocation_store` before scope/policy evaluation. The port retains
+revocation through token expiry plus configured clock skew; storage failures
+propagate and must fail closed. No Redis/database adapter is bundled, so
+production deployments must provide and test their own store implementation.
 
 The Rust compact-JWS parser rejects delegation tokens larger than 64 KiB
 before base64 decoding or JSON parsing. Applications should retain their own
@@ -138,9 +146,10 @@ for ingress limits.
 `VerifiedDelegation::allows(subject, action, resource, request_facts)` is a
 fail-closed scope check: the trusted subject, exact action, resource glob, and
 every declared constraint must match. It does not decide whether the issuer
-was authorized to delegate, evaluate Cedar policy, or provide revocation.
-Never pass an untrusted request field as `subject` or rely on this scope check
-as a replacement for the PDP decision.
+was authorized to delegate or evaluate Cedar policy. Never pass an untrusted
+request field as `subject` or rely on this scope check as a replacement for the
+PDP decision. Do not use plain `verify` where revocation is part of the
+deployment contract; use `verify_with_revocation_store` for each decision.
 
 For delegation chains, `DelegationSigner::mint_attenuated` accepts only a
 verified parent grant and requires the same signing key that verified it.
@@ -151,8 +160,9 @@ child lifetime cannot exceed the parent's remaining lifetime. Pattern
 containment is intentionally conservative; the
 helper rejects broader child wildcard patterns instead of trying to infer
 arbitrary glob-language inclusion. The application must still authorize the
-parent's original grant and maintain revocation state where required.
+parent's original grant.
 
-AgentGuard does not ship an OAuth token-exchange endpoint or a delegation-token
-revocation service. RFC 8693-style actor claims are primitives for an adapter,
-not a claim that the standalone PDP enforces parent authority automatically.
+AgentGuard does not ship an OAuth token-exchange endpoint, built-in revocation
+backend, or standalone PDP delegation enforcement. RFC 8693-style actor claims
+are primitives for an adapter, not a claim that the standalone PDP enforces
+parent authority automatically.

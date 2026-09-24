@@ -200,9 +200,11 @@ The Rust library's `VerifiedDelegation::allows` provides a fail-closed
 subject/action/resource/constraint scope check, but the standalone PDP does not
 consume delegation tokens. The integration at the tool boundary must bind the
 trusted actor, authorize the original parent grant, evaluate Cedar policy, and
-apply revocation where required. `DelegationSigner::mint_attenuated` uses the
-verified parent's signing key and constrains child grants to its actions,
-resources, constraints, and remaining lifetime. See
+check revocation before each authorization. `DelegationRevocationStore` is an
+async storage port; deployments must provide a durable shared adapter.
+`DelegationSigner::mint_attenuated` uses the verified parent's signing key and
+constrains child grants to its actions, resources, constraints, and remaining
+lifetime. See
 [identity and delegation](docs/identity.md) for the enforcement contract.
 
 ### Verify and audit
