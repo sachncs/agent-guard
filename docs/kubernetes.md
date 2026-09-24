@@ -148,10 +148,17 @@ metric, and run representative allow and deny requests.
 
 ## Deploy
 
-Create an operator-owned overlay at
-`deploy/k8s/overlays/production/kustomization.yaml`, pointing at the base and
-pinning the exact registry digests. Substitute the real image names and 64-hex
-digests from the registry; the placeholders below are not deployable:
+Create an operator-owned overlay from the checked-in template. It points at the
+base and pins exact registry digests. Copy it, then substitute the real image
+names and 64-hex digests from the registry; the placeholders are not
+deployable:
+
+```bash
+cp deploy/k8s/overlays/production/kustomization.yaml.example \
+  deploy/k8s/overlays/production/kustomization.yaml
+```
+
+Edit `deploy/k8s/overlays/production/kustomization.yaml`:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -161,10 +168,10 @@ resources:
 images:
   - name: agentguard-server
     newName: registry.example.com/security/agentguard-server
-    digest: sha256:<PDP_DIGEST>
+    digest: sha256:REPLACE_WITH_64_HEX_PDP_DIGEST
   - name: agentguard-console
     newName: registry.example.com/security/agentguard-console
-    digest: sha256:<CONSOLE_DIGEST>
+    digest: sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST
 ```
 
 Keep this overlay in the deployment configuration repository, review its diff,

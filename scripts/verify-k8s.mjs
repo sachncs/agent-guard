@@ -122,22 +122,38 @@ if (failures.length === 0) {
 
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   const productionGuide = readFileSync("docs/production.md", "utf8");
+  const productionOverlayTemplate = readFileSync(
+    "deploy/k8s/overlays/production/kustomization.yaml.example",
+    "utf8",
+  );
   for (const value of [
-    "production overlay is intentionally not checked in",
-    "Before using the",
-    "create that",
+    "kustomization.yaml.example",
+    "intentionally not directly deployable",
     "[Kubernetes deployment guide](kubernetes.md#deploy)",
   ]) if (!productionGuide.includes(value)) {
-    failures.push(`docs/production.md must explain the operator-owned overlay prerequisite: ${value}`);
+    failures.push(`docs/production.md must explain the production overlay template: ${value}`);
+  }
+  for (const value of [
+    "resources:\n  - ../../",
+    "name: agentguard-server",
+    "name: agentguard-console",
+    "newName: registry.example.com/security/agentguard-server",
+    "newName: registry.example.com/security/agentguard-console",
+    "digest: sha256:REPLACE_WITH_64_HEX_PDP_DIGEST",
+    "digest: sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST",
+  ]) if (!productionOverlayTemplate.includes(value)) {
+    failures.push(`production overlay template missing ${value}`);
   }
   for (const value of [
     "deploy/k8s/overlays/production/kustomization.yaml",
     "registry-reported",
-    "digest: sha256:<PDP_DIGEST>",
-    "digest: sha256:<CONSOLE_DIGEST>",
+    "kustomization.yaml.example",
+    "digest: sha256:REPLACE_WITH_64_HEX_PDP_DIGEST",
+    "digest: sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST",
+    "cp deploy/k8s/overlays/production/kustomization.yaml.example",
     "kubectl apply -k deploy/k8s/overlays/production",
   ]) if (!operationsGuide.includes(value)) {
-    failures.push(`docs/kubernetes.md must document production digest pinning: ${value}`);
+    failures.push(`docs/kubernetes.md must document the production overlay template: ${value}`);
   }
   for (const value of [
     "AGENTGUARD_TRUST_PROXY_HEADERS='1'",

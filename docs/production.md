@@ -18,9 +18,11 @@ guides alongside this overview.
    public network without authentication and encrypted transport.
 
 Before applying the commands below, create the operator-owned, digest-pinned
-production overlay as described in the [Kubernetes deployment guide](kubernetes.md#deploy).
-The overlay is not checked in because registry names, image digests, and
-network/ingress policy depend on the target environment.
+production overlay from the checked-in
+[`kustomization.yaml.example`](../deploy/k8s/overlays/production/kustomization.yaml.example)
+as described in the [Kubernetes deployment guide](kubernetes.md#deploy).
+Registry names, image digests, and network/ingress policy depend on the target
+environment, so the template is intentionally not directly deployable.
 
 The standalone PDP polls the API-key Secret content and reloads valid
 rotations/revocations without a process restart. After an update is visible at
@@ -43,13 +45,13 @@ append-only audit backend is deployed.
 ## Upgrade and rollback
 
 Build and tag both images with the same release version, capture their registry
-digests, and deploy those digests from an operator-owned Kustomize overlay. The
-production overlay is intentionally not checked in: registry names and digests,
-network policies, and ingress peers are environment-specific. Before using the
-`kubectl apply -k deploy/k8s/overlays/production` command above, create that
-directory and `kustomization.yaml` using the digest-pinning example in the
-[Kubernetes deployment guide](kubernetes.md#deploy). Do not deploy the checked-in
-base directly for production; it uses sample tags. Apply the completed overlay,
+digests, and deploy those digests from an operator-owned Kustomize overlay. Copy
+the checked-in production overlay template to
+`deploy/k8s/overlays/production/kustomization.yaml`, then replace its example
+registry names and digest placeholders and add environment-specific network
+policies. Do not deploy the template until all placeholders are replaced or
+deploy the checked-in base directly for production; the base uses sample tags.
+Apply the completed overlay,
 wait for readiness, then run an allow, deny, and audit verification smoke test.
 Roll back with `kubectl rollout undo` if readiness or audit checks fail.
 Keep the policy ConfigMap, secrets, and audit volume across application

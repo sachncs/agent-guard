@@ -9,7 +9,7 @@
 | JavaScript package manager | pnpm 11.22.x; use the version pinned by the root `packageManager` field. |
 | Container runtime | Docker-compatible OCI runtime. CI builds the release images from the checked-in Dockerfiles. |
 | Kubernetes | Supported reference manifests target Kubernetes 1.28 or newer; the CI smoke cluster uses Kind with Kubernetes 1.31.4. Review cluster-specific admission and storage behavior before rollout. |
-| Kubernetes packaging | Kustomize v5-compatible manifests. The repository base is a reference package, not a complete environment-specific production overlay. |
+| Kubernetes packaging | Kustomize v5-compatible base plus a production overlay template. Operators must supply registry names/digests and environment-specific network/ingress policy before deployment. |
 | Production topology | One PDP replica and one console replica. Console sessions and rate limits require a shared Redis-compatible store. Audit storage is operator-provided persistent storage. |
 | License | Apache-2.0 |
 
