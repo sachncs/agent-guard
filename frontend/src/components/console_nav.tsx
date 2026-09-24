@@ -18,7 +18,7 @@ export function ConsoleNav({ user }: { user: SessionClaims | null }) {
   const pathname = usePathname();
   return (
     <header className="console-header border-b">
-      <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-5 px-4 sm:px-6">
+      <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-3 px-4 sm:gap-5 sm:px-6">
         <Brand />
         <nav className="hidden items-center gap-1 text-sm sm:flex" aria-label="Console navigation">
           <NavigationLinks pathname={pathname} />

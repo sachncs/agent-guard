@@ -24,7 +24,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import https from "node:https";
 import http from "node:http";
 import net from "node:net";
@@ -605,6 +605,8 @@ async function main() {
     join(process.cwd(), "public/agentguard-mark.svg"),
     join(standalonePublic, "agentguard-mark.svg"),
   );
+  const standaloneStatic = join(process.cwd(), ".next/standalone/frontend/.next/static");
+  cpSync(join(process.cwd(), ".next/static"), standaloneStatic, { recursive: true });
 
   FRONTEND_PORT = await findAvailablePort();
   BASE = `http://127.0.0.1:${FRONTEND_PORT}`;
@@ -653,8 +655,18 @@ async function main() {
       viewport: { width: 1280, height: 900 },
     });
     browserPage = await browserContext.newPage();
+    const browserRuntimeErrors = [];
+    const staticAssetFailures = [];
+    browserPage.on("pageerror", (error) => browserRuntimeErrors.push(error.message));
+    browserPage.on("response", (response) => {
+      if (new URL(response.url()).pathname.startsWith("/_next/static/") && !response.ok()) {
+        staticAssetFailures.push(`${response.status()} ${response.url()}`);
+      }
+    });
     await browserPage.goto(`${BASE}/login`, { waitUntil: "networkidle" });
     assert.equal(await browserPage.title(), "AgentGuard Console");
+    assert.deepEqual(staticAssetFailures, [], "standalone static assets load successfully");
+    assert.deepEqual(browserRuntimeErrors, [], "login and theme hydration produce no browser runtime errors");
     await browserPage.waitForFunction(() => {
       const mark = [...document.images].find((image) => image.src.endsWith("/agentguard-mark.svg"));
       return mark?.complete && mark.naturalWidth > 0;
@@ -715,16 +727,35 @@ async function main() {
       secure: false,
       sameSite: "Lax",
     }]);
-    await browserPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await browserPage.goto(`${BASE}/`, { waitUntil: "networkidle" });
     await browserPage.getByRole("heading", { name: "Authorization overview" }).waitFor();
+    assert.deepEqual(browserRuntimeErrors, [], "dashboard hydration produces no browser runtime errors");
+    const themeToggle = browserPage.getByRole("button", { name: "Toggle color theme" });
+    await themeToggle.click();
+    await browserPage.waitForFunction(() => !document.documentElement.classList.contains("dark"));
+    await themeToggle.click();
+    await browserPage.waitForFunction(() => document.documentElement.classList.contains("dark"));
     for (const width of [320, 375, 768, 1280]) {
       await browserPage.setViewportSize({ width, height: 900 });
       const layout = await browserPage.evaluate(() => ({
         document: document.documentElement.scrollWidth,
         body: document.body.scrollWidth,
         dark: document.documentElement.classList.contains("dark"),
+        overflowers: [...document.querySelectorAll("body *")]
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              element: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}.${(typeof element.className === "string" ? element.className : "").split(" ").filter(Boolean).slice(0, 3).join(".")}`,
+              left: Math.round(rect.left),
+              right: Math.round(rect.right),
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth,
+            };
+          })
+          .filter((item) => item.left < -1 || item.right > window.innerWidth + 1 || item.scrollWidth > item.clientWidth + 1)
+          .slice(0, 8),
       }));
-      assert.ok(layout.document <= width, `document fits the ${width}px viewport`);
+      assert.ok(layout.document <= width, `document fits the ${width}px viewport: ${JSON.stringify(layout.overflowers)}`);
       assert.ok(layout.body <= width, `body fits the ${width}px viewport`);
       assert.equal(layout.dark, true, "the console keeps its branded dark theme");
       if (width < 640) {
