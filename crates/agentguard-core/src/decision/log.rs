@@ -994,6 +994,53 @@ mod tests {
     }
 
     #[test]
+    fn chained_log_recovers_identity_when_sidecar_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("recover-sidecar.jsonl");
+        let sidecar = chain_id_sidecar_path(&path);
+        let record = |id: &str| DecisionRecord {
+            id: id.into(),
+            timestamp: chrono::Utc::now(),
+            effect: "allow".into(),
+            policies: vec![],
+            request_id: None,
+            principal: "alice".into(),
+            action: "read".into(),
+            resource: "document".into(),
+            reasons: vec![],
+            session_id: None,
+            agent_chain: None,
+            trace_id: None,
+            span_id: None,
+            tenant_id: None,
+            subject_id: None,
+            authenticated_actor: None,
+        };
+
+        let original_id = {
+            let log = DecisionLog::open_with_chain(&path, b"root").unwrap();
+            log.append(&record("before-recovery")).unwrap();
+            log.chain_id().unwrap()
+        };
+        std::fs::remove_file(&sidecar).unwrap();
+
+        let recovered = DecisionLog::open_with_chain(&path, b"root").unwrap();
+        assert_eq!(recovered.chain_id(), Some(original_id));
+        assert!(
+            sidecar.exists(),
+            "recovery must persist the restored identity"
+        );
+        recovered.append(&record("after-recovery")).unwrap();
+        drop(recovered);
+
+        assert_eq!(
+            DecisionLog::verify_chain(&path, b"root").unwrap(),
+            original_id
+        );
+        assert_eq!(DecisionLog::read_all(&path).unwrap().len(), 2);
+    }
+
+    #[test]
     fn chained_append_advances_head() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("chained.jsonl");
