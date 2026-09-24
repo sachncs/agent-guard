@@ -4,6 +4,9 @@ import test from 'node:test';
 
 const homepage = await readFile(new URL('./src/pages/index.astro', import.meta.url), 'utf8');
 const concepts = await readFile(new URL('../docs/concepts.md', import.meta.url), 'utf8');
+const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+const footer = await readFile(new URL('./src/components/footer.astro', import.meta.url), 'utf8');
+const releaseWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
 
 test('homepage describes live policy reload behavior accurately', () => {
   assert.match(homepage, /watches policy and schema files/i);
@@ -18,4 +21,14 @@ test('canonical concepts guide documents the implemented fallible cache configur
   assert.match(concepts, /Invalid\s+values fail startup/);
   assert.match(concepts, /Authorizer::try_with_cache/);
   assert.doesNotMatch(concepts, /CacheConfig::from_env/);
+});
+
+test('public install and release claims match the source-only release workflow', () => {
+  assert.match(readme, /cargo install --path crates\/agentguard-cli/);
+  assert.match(readme, /does not publish Cargo crates, npm packages, or\s+OCI images/i);
+  assert.doesNotMatch(readme, /crates\.io\/crates\/agentguard-core|img\.shields\.io\/crates\/v\/agentguard-core/i);
+  assert.doesNotMatch(readme, /CI publishes Rust crates|publishes .*TypeScript package/i);
+  assert.match(footer, /\$\{site\.repo\}\/releases/);
+  assert.doesNotMatch(footer, /crates\.io\/crates\/agentguard-core/i);
+  assert.doesNotMatch(releaseWorkflow, /cargo publish|npm publish/);
 });

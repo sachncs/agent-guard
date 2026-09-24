@@ -6,7 +6,6 @@
     <a href="#installation"><img src="https://img.shields.io/badge/rust-1.89%2B-orange" alt="Rust"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
     <a href="https://github.com/sachncs/agent-guard/actions"><img src="https://img.shields.io/github/actions/workflow/status/sachncs/agent-guard/ci.yml?branch=master" alt="CI"></a>
-    <a href="https://crates.io/crates/agentguard-core"><img src="https://img.shields.io/crates/v/agentguard-core" alt="crates.io"></a>
     <a href="https://github.com/sachncs/agent-guard/stargazers"><img src="https://img.shields.io/github/stars/sachncs/agent-guard" alt="Stars"></a>
   </p>
 </p>
@@ -353,8 +352,14 @@ pnpm build                          # SDK, frontend, examples, and site
 ```bash
 # Bump workspace version in Cargo.toml, update CHANGELOG.md, then:
 git tag vX.Y.Z && git push origin vX.Y.Z
-# CI publishes Rust crates and the TypeScript package
+# CI validates the tag and creates a GitHub source release.
 ```
+
+The current release workflow does not publish Cargo crates, npm packages, or
+OCI images. Install the CLI/server from a checkout using the commands above;
+build and push production images using the
+[deployment guide](docs/kubernetes.md#build-and-publish). The Rust workspace
+crates are source-distributed and are not currently available from crates.io.
 
 ## Tech Stack
 

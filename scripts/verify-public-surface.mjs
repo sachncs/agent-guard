@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 
-const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "RELEASE.md", "BRAND.md", "frontend/README.md", "examples/README.md", "examples/strands-tool-authz/src/main.ts"];
+const files = ["README.md", "CONTRIBUTING.md", "SUPPORT.md", "SECURITY.md", "RELEASE.md", "BRAND.md", "frontend/README.md", "examples/README.md", "examples/strands-tool-authz/src/main.ts", "site/src/components/footer.astro"];
 const forbidden = ["agentguard_console", "agentguard_ console"];
-const forbiddenProductCopy = ["agent-guard docs", "Contributing to agent-guard", "interest in agent-guard", "agent-guard and its users"];
+const forbiddenProductCopy = ["agent-guard docs", "Contributing to agent-guard", "interest in agent-guard", "agent-guard and its users", "https://crates.io/crates/agentguard-core", "https://img.shields.io/crates/v/agentguard-core"];
 const failures = [];
 
 function requireFile(file) {
