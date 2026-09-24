@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add verified delegation-scope enforcement and child-grant attenuation for
+  action, resource, constraints, expiry, and parent signing-key identity.
+- Bound compact delegation JWS parsing to 64 KiB and reject wrong token types,
+  unsupported critical headers, empty identity claims, inconsistent time claims,
+  and clock-skew arithmetic overflow.
 - Add a visually reviewed 1200×630 PNG social card from the canonical SVG and
   test that its dimensions and page metadata stay in sync.
 - Add the explicit `authorize:any` API-key capability for trusted server-side
