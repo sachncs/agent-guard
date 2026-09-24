@@ -154,6 +154,8 @@ jobs:
         run: pnpm test && pnpm check && pnpm build
       - name: Verify built documentation links
         run: node scripts/verify-site-links.mjs site/dist
+      - name: Verify published site behavior in Chromium
+        run: pnpm --filter frontend test:site
       # Build the SDK first so dependents (frontend, examples) can resolve it.
       - run: pnpm --filter agentguard build
       - name: Verify TypeScript API declarations

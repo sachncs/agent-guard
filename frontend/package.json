@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --conditions=react-server --import tsx --test \"src/**/*.test.ts\""
+    "test": "node --conditions=react-server --import tsx --test \"src/**/*.test.ts\"",
+    "test:site": "node scripts/site-e2e.mjs"
   },
   "dependencies": {
     "@agentguard/design-tokens": "workspace:*",

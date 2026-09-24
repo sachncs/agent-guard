@@ -47,8 +47,11 @@ pnpm --filter frontend exec node scripts/e2e.mjs
 ```
 
 Use `pnpm --dir site check && pnpm --dir site build` when changing the
-documentation site. The root `pnpm check` also verifies public names,
-repository links, and Kubernetes manifests.
+documentation site. After building it, `pnpm --filter frontend test:site`
+serves the static output locally and browser-checks theme preference,
+persistence, reduced motion, docs navigation, and mobile overflow. The root
+`pnpm check` also verifies public names, repository links, and Kubernetes
+manifests.
 
 ## Working safely
 

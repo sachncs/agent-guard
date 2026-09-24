@@ -91,3 +91,9 @@ test("published layouts expose the theme control and light-mode design tokens", 
   assert.match(css, /\[data-theme="light"\][^{]*\{[^}]*color-scheme:light/);
   assert.match(css, /prefers-reduced-motion:reduce/);
 });
+
+test("CI browser-tests the built canonical site", () => {
+  const workflow = read("../.github/workflows/ci.yml");
+  assert.match(workflow, /name: Verify published site behavior in Chromium\s+run: pnpm --filter frontend test:site/);
+  assert.match(read("../frontend/package.json"), /"test:site": "node scripts\/site-e2e\.mjs"/);
+});
