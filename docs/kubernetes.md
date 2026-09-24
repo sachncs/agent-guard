@@ -87,6 +87,12 @@ The scope is privileged: it lets the trusted console evaluate selected
 subjects. Keep the raw key server-side and limit console access with OIDC/RBAC.
 Materialize the one-time secret through your secret manager as a private
 `pdp-bearer` file (mode `0600`) for the Kubernetes Secret command below.
+Likewise, materialize the OIDC client secret, session signing secret, and Redis
+tokens as mode-`0600` files from your secret manager or CSI provider. Keep
+these files outside the repository and in a private temporary directory; do
+not place credential values in shell variables, command text, or source
+control. The files should contain the exact secret bytes without an unintended
+trailing newline.
 
 ```bash
 kubectl -n agentguard create secret generic agentguard-secrets \
@@ -98,11 +104,11 @@ kubectl -n agentguard create secret generic agentguard-delegation-key \
 kubectl -n agentguard create secret generic agentguard-console-env \
   --from-literal=AGENTGUARD_OIDC_ISSUER='https://idp.example.com/realms/acme' \
   --from-literal=AGENTGUARD_OIDC_CLIENT_ID='agentguard-console' \
-  --from-literal=AGENTGUARD_OIDC_CLIENT_SECRET='replace-me' \
-  --from-literal=AGENTGUARD_SESSION_SECRET='replace-with-at-least-32-random-chars' \
+  --from-file=AGENTGUARD_OIDC_CLIENT_SECRET=./oidc-client-secret \
+  --from-file=AGENTGUARD_SESSION_SECRET=./session-secret \
   --from-literal=AGENTGUARD_SESSION_STORE='redis' \
   --from-literal=AGENTGUARD_SESSION_REDIS_URL='https://redis.example.com' \
-  --from-literal=AGENTGUARD_SESSION_REDIS_TOKEN='replace-me' \
+  --from-file=AGENTGUARD_SESSION_REDIS_TOKEN=./session-redis-token \
   --from-literal=AGENTGUARD_SESSION_REDIS_PREFIX='production:agentguard:session:' \
   --from-literal=AGENTGUARD_TRUST_PROXY_HEADERS='1' \
   --from-literal=AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL='1' \
@@ -110,12 +116,12 @@ kubectl -n agentguard create secret generic agentguard-console-env \
   --from-file=AGENTGUARD_PDP_BEARER=./pdp-bearer \
   --from-literal=AGENTGUARD_RATE_LIMIT_STORE='redis' \
   --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_URL='https://redis.example.com' \
-  --from-literal=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN='replace-me'
+  --from-file=AGENTGUARD_RATE_LIMIT_REDIS_TOKEN=./rate-limit-redis-token
 ```
 
-Do not put the raw key in shell history, process arguments, or source control.
-The console manifest requires this key and production startup fails
-closed when it is absent. Use a tenant-bound service key where applicable. See
+The console manifest requires the PDP key and production startup fails closed
+when it is absent. The console reads it from this mounted Secret. Use a
+tenant-bound service key where applicable. See
 [identity and API-key scopes](identity.md).
 The in-cluster PDP URL uses HTTP in the reference manifest, so the explicit
 `AGENTGUARD_PDP_ALLOW_INSECURE_INTERNAL=1` opt-in is also required. It accepts
