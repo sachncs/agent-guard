@@ -225,6 +225,13 @@ mod tests {
     async fn mock_endpoint(
         response_body: &'static str,
     ) -> (String, tokio::task::JoinHandle<(String, Vec<u8>)>) {
+        mock_endpoint_with_status(200, response_body).await
+    }
+
+    async fn mock_endpoint_with_status(
+        status: u16,
+        response_body: &'static str,
+    ) -> (String, tokio::task::JoinHandle<(String, Vec<u8>)>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
@@ -254,7 +261,7 @@ mod tests {
                 request.extend_from_slice(&buf[..read]);
             }
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response_body.len(),
                 response_body
             );
@@ -339,9 +346,20 @@ mod tests {
             ])
         );
 
-        let (endpoint, task) = mock_endpoint(r#"{"result":"redis error"}"#).await;
-        let store = RedisDelegationRevocationStore::new(&endpoint, "unit-secret").unwrap();
-        assert!(store.is_revoked("jti", 0).await.is_err());
-        let _ = task.await.unwrap();
+        for (status, payload) in [
+            (200, r#"{"error":"command rejected"}"#),
+            (200, r#"{"result":"not a boolean"}"#),
+            (200, r#"{"result":2}"#),
+            (200, "not json"),
+            (503, r#"{"result":0}"#),
+        ] {
+            let (endpoint, task) = mock_endpoint_with_status(status, payload).await;
+            let store = RedisDelegationRevocationStore::new(&endpoint, "unit-secret").unwrap();
+            assert!(
+                store.is_revoked("jti", 0).await.is_err(),
+                "status={status}, payload={payload} must fail closed"
+            );
+            let _ = task.await.unwrap();
+        }
     }
 }
