@@ -87,19 +87,21 @@ jobs:
         if: steps.release-state.outputs.action != 'done'
         env:
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
-          REPOSITORY: ${{ github.repository }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          owner="${REPOSITORY%%/*}"
-          repository="${REPOSITORY#*/}"
+          owner="${GH_REPOSITORY%%/*}"
+          repository="${GH_REPOSITORY#*/}"
           owner="$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')"
           repository="$(printf '%s' "$repository" | tr '[:upper:]' '[:lower:]')"
           # Docker tags do not allow SemVer build-metadata '+'. Preserve a
           # unique, reversible-enough release alias by replacing it with '_'.
           docker_tag="${RELEASE_TAG//+/_}"
-          echo "server=ghcr.io/${owner}/${repository}-server" >> "$GITHUB_OUTPUT"
-          echo "console=ghcr.io/${owner}/${repository}-console" >> "$GITHUB_OUTPUT"
-          echo "tag=${docker_tag}" >> "$GITHUB_OUTPUT"
+          {
+            echo "server=ghcr.io/${owner}/${repository}-server"
+            echo "console=ghcr.io/${owner}/${repository}-console"
+            echo "tag=${docker_tag}"
+          } >> "$GITHUB_OUTPUT"
       - name: Log in to GitHub Container Registry
         if: steps.release-state.outputs.action != 'done'
         env:
