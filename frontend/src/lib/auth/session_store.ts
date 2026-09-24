@@ -1,5 +1,8 @@
 import type { SessionClaims } from "./session";
 import { RedisRestClient } from "../redis_rest.ts";
+import { assertRedisKeyPrefix } from "../redis_key_prefix.ts";
+
+export const DEFAULT_SESSION_REDIS_PREFIX = "agentguard:session:";
 
 /** Shared session state used to support revocation and horizontal scaling. */
 export interface SessionStore {
@@ -94,9 +97,10 @@ export class RedisSessionStore implements SessionStore {
     url: string,
     token: string,
     fetchImpl: typeof fetch = fetch,
-    prefix = "agentguard:session:",
+    prefix = DEFAULT_SESSION_REDIS_PREFIX,
     timeoutMs = 3_000,
   ) {
+    assertRedisKeyPrefix(prefix, "session Redis key prefix");
     this.prefix = prefix;
     this.redis = new RedisRestClient(url, token, fetchImpl, timeoutMs);
   }

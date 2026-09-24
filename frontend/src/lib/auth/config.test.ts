@@ -117,6 +117,42 @@ describe("auth config", () => {
     }
   });
 
+  it("validates and applies the configured Redis session namespace", async () => {
+    for (const [key, value] of Object.entries(BASE_ENV)) process.env[key] = value;
+    process.env.AGENTGUARD_SESSION_STORE = "redis";
+    process.env.AGENTGUARD_SESSION_REDIS_URL = "https://redis.example";
+    process.env.AGENTGUARD_SESSION_REDIS_TOKEN = "secret";
+    process.env.AGENTGUARD_SESSION_REDIS_PREFIX = "staging:console:session:";
+    const env = process.env as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    env.NODE_ENV = "development";
+    const originalFetch = globalThis.fetch;
+    let command: string[] = [];
+    globalThis.fetch = async (_input, init) => {
+      command = JSON.parse(String(init?.body)) as string[];
+      return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+    };
+
+    try {
+      const cfg = authConfig();
+      assert.equal(cfg.valid, true);
+      if (!cfg.valid) return;
+      await cfg.config.sessionStore?.put("sid", { sub: "viewer", admin: false }, 60);
+      assert.equal(command[1], "staging:console:session:sid");
+
+      process.env.AGENTGUARD_SESSION_REDIS_PREFIX = "bad prefix/";
+      resetAuthConfigCache();
+      const invalid = authConfig();
+      assert.equal(invalid.valid, false);
+      if (!invalid.valid) assert.match(invalid.reason, /SESSION_REDIS_PREFIX/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousNodeEnv === undefined) delete env.NODE_ENV;
+      else env.NODE_ENV = previousNodeEnv;
+      resetAuthConfigCache();
+    }
+  });
+
   it("requires explicitly trusted proxy headers in production", () => {
     for (const [k, v] of Object.entries(BASE_ENV)) process.env[k] = v;
     const env = process.env as Record<string, string | undefined>;

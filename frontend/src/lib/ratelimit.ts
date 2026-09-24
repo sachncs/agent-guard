@@ -9,6 +9,7 @@
 
 import { isIP } from "node:net";
 import { RedisRestClient } from "./redis_rest.ts";
+import { assertRedisKeyPrefix, isValidRedisKeyPrefix } from "./redis_key_prefix.ts";
 import { validateSharedStoreUrl } from "./shared_store_url.ts";
 
 const WINDOW_SECONDS = 60;
@@ -91,9 +92,7 @@ export class RedisRateLimitStore implements RateLimitStore {
     timeoutMs = 3_000,
     private readonly keyPrefix = "agentguard:ratelimit:",
   ) {
-    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(keyPrefix)) {
-      throw new Error("rate-limit Redis key prefix must contain 1-128 safe characters");
-    }
+    assertRedisKeyPrefix(keyPrefix, "rate-limit Redis key prefix");
     this.redis = new RedisRestClient(url, token, fetchImpl, timeoutMs);
   }
 
@@ -149,7 +148,7 @@ function activeStore(): RateLimitStore {
   const token = process.env.AGENTGUARD_RATE_LIMIT_REDIS_TOKEN;
   const keyPrefix = process.env.AGENTGUARD_RATE_LIMIT_REDIS_PREFIX || "agentguard:ratelimit:";
   if (!url || !token) throw new Error("Redis rate limiting is not configured");
-  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(keyPrefix)) {
+  if (!isValidRedisKeyPrefix(keyPrefix)) {
     throw new Error("AGENTGUARD_RATE_LIMIT_REDIS_PREFIX must contain 1-128 safe characters");
   }
   const issue = validateSharedStoreUrl(url);

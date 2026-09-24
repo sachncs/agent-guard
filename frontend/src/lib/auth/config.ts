@@ -1,5 +1,6 @@
-import { RedisSessionStore } from "./session_store.ts";
+import { DEFAULT_SESSION_REDIS_PREFIX, RedisSessionStore } from "./session_store.ts";
 import type { SessionStore } from "./session_store.ts";
+import { isValidRedisKeyPrefix } from "../redis_key_prefix.ts";
 import { validateSharedStoreUrl } from "../shared_store_url.ts";
 import { validateOidcEndpoint, validatePdpEndpoint } from "./endpoint_url.ts";
 
@@ -60,6 +61,7 @@ function readEnv(): AuthConfigResult {
     (process.env.NODE_ENV === "production" ? "redis" : "memory");
   const sessionRedisUrl = process.env.AGENTGUARD_SESSION_REDIS_URL;
   const sessionRedisToken = process.env.AGENTGUARD_SESSION_REDIS_TOKEN;
+  const sessionRedisPrefix = process.env.AGENTGUARD_SESSION_REDIS_PREFIX || DEFAULT_SESSION_REDIS_PREFIX;
   const trustProxyHeaders = process.env.AGENTGUARD_TRUST_PROXY_HEADERS === "1";
   const configuredPdpUrl = process.env.AGENTGUARD_PDP_URL;
   const pdpUrl = stripSlash(configuredPdpUrl ?? "http://127.0.0.1:8443");
@@ -116,6 +118,12 @@ function readEnv(): AuthConfigResult {
         "production console sessions require AGENTGUARD_SESSION_REDIS_URL and AGENTGUARD_SESSION_REDIS_TOKEN",
     };
   }
+  if (sessionStoreMode === "redis" && !isValidRedisKeyPrefix(sessionRedisPrefix)) {
+    return {
+      valid: false,
+      reason: "AGENTGUARD_SESSION_REDIS_PREFIX must contain 1-128 safe characters",
+    };
+  }
   if (sessionStoreMode === "redis" && sessionRedisUrl) {
     const issue = validateSharedStoreUrl(sessionRedisUrl);
     if (issue) {
@@ -165,7 +173,7 @@ function readEnv(): AuthConfigResult {
       // fallback; production is rejected above unless Redis is configured.
       sessionStore:
         sessionStoreMode === "redis"
-          ? new RedisSessionStore(sessionRedisUrl!, sessionRedisToken!)
+          ? new RedisSessionStore(sessionRedisUrl!, sessionRedisToken!, fetch, sessionRedisPrefix)
           : undefined,
       adminClaim,
       adminValues,

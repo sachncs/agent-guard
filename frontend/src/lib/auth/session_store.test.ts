@@ -73,6 +73,25 @@ describe("session stores", () => {
     assert.ok(signal, "shared-store requests have a bounded timeout");
   });
 
+  it("namespaces Redis session keys and rejects unsafe prefixes", async () => {
+    let command: string[] = [];
+    const store = new RedisSessionStore(
+      "https://redis.example",
+      "secret",
+      async (_url, init) => {
+        command = JSON.parse(String(init?.body)) as string[];
+        return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+      },
+      "staging:console:session:",
+    );
+    await store.put("sid", claims, 60);
+    assert.equal(command[1], "staging:console:session:sid");
+    assert.throws(
+      () => new RedisSessionStore("https://redis.example", "secret", fetch, "bad prefix/"),
+      /session Redis key prefix/,
+    );
+  });
+
   it("bounds a stalled Redis request", async () => {
     const store = new RedisSessionStore(
       "https://redis.example",

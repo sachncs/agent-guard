@@ -78,6 +78,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |
 | `AGENTGUARD_SESSION_STORE` | `memory` in development, `redis` in production | Shared session backend mode |
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
+| `AGENTGUARD_SESSION_REDIS_PREFIX` | `agentguard:session:` | Optional 1–128 character Redis key namespace; use a distinct prefix when environments share one Redis database |
 | `AGENTGUARD_RATE_LIMIT_STORE` | `memory` in development, `redis` in production | Shared rate-limit backend mode |
 | `AGENTGUARD_RATE_LIMIT_REDIS_URL` / `AGENTGUARD_RATE_LIMIT_REDIS_TOKEN` | *(required for Redis rate limiting)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_RATE_LIMIT_REDIS_PREFIX` | `agentguard:ratelimit:` | Optional 1–128 character Redis key namespace; use a distinct prefix when environments share one Redis database |
