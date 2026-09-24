@@ -92,6 +92,9 @@ if (
 if (!ci.includes("node --test scripts/*.test.mjs")) {
   failures.push("CI must run the repository tooling test suites");
 }
+if (!ci.includes("go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/*.yml")) {
+  failures.push("CI must lint every GitHub Actions workflow, including release automation");
+}
 if (
   !consoleDockerfile.includes("ARG AGENTGUARD_CLI_IMAGE") ||
   !consoleDockerfile.includes("COPY --from=cli-source") ||
