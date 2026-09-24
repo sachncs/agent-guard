@@ -122,6 +122,7 @@ if (failures.length === 0) {
 
   const operationsGuide = readFileSync("docs/kubernetes.md", "utf8");
   const productionGuide = readFileSync("docs/production.md", "utf8");
+  const upgradesGuide = readFileSync("docs/upgrades.md", "utf8");
   const productionOverlayTemplate = readFileSync(
     "deploy/k8s/overlays/production/kustomization.yaml.example",
     "utf8",
@@ -132,6 +133,13 @@ if (failures.length === 0) {
     "[Kubernetes deployment guide](kubernetes.md#deploy)",
   ]) if (!productionGuide.includes(value)) {
     failures.push(`docs/production.md must explain the production overlay template: ${value}`);
+  }
+  for (const value of [
+    "deploy/k8s/overlays/production/kustomization.yaml.example",
+    "replace its registry",
+    "kubectl -n agentguard apply -k deploy/k8s/overlays/production",
+  ]) if (!upgradesGuide.includes(value)) {
+    failures.push(`docs/upgrades.md must explain how to use the production overlay template: ${value}`);
   }
   for (const value of [
     "resources:\n  - ../../",

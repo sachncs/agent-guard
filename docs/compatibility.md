@@ -26,7 +26,8 @@ cluster. Validate any materially different environment before relying on it.
   TLS terminated by a trusted ingress or service mesh. Do not expose the PDP's
   plaintext listener directly to an untrusted network.
 - The checked-in Kustomize base contains sample image tags and policy material.
-  Build an operator-owned overlay with immutable image digests, reviewed
+  Start from `deploy/k8s/overlays/production/kustomization.yaml.example` and
+  build an operator-owned overlay with immutable image digests, reviewed
   policies, secret references, ingress/network controls, and storage settings.
 - The supplied audit volume and append path are single-writer. Do not scale
   the PDP horizontally against one shared audit file. A coordinated,

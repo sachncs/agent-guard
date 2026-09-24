@@ -49,8 +49,8 @@ digests, and deploy those digests from an operator-owned Kustomize overlay. Copy
 the checked-in production overlay template to
 `deploy/k8s/overlays/production/kustomization.yaml`, then replace its example
 registry names and digest placeholders and add environment-specific network
-policies. Do not deploy the template until all placeholders are replaced or
-deploy the checked-in base directly for production; the base uses sample tags.
+policies. Do not deploy the template while placeholders remain, and never
+deploy the checked-in base directly for production because it uses sample tags.
 Apply the completed overlay,
 wait for readiness, then run an allow, deny, and audit verification smoke test.
 Roll back with `kubectl rollout undo` if readiness or audit checks fail.
