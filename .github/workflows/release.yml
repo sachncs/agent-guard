@@ -48,14 +48,135 @@ jobs:
       contents: read
 
   publish:
-    name: publish GitHub release
+    name: publish release images and GitHub release
     needs: [resolve-tag, release-gate]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.resolve-tag.outputs.tag }}
           fetch-depth: 0
+      - name: Set release image coordinates
+        id: image
+        env:
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          owner="${REPOSITORY%%/*}"
+          repository="${REPOSITORY#*/}"
+          owner="$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')"
+          repository="$(printf '%s' "$repository" | tr '[:upper:]' '[:lower:]')"
+          # Docker tags do not allow SemVer build-metadata '+'. Preserve a
+          # unique, reversible-enough release alias by replacing it with '_'.
+          docker_tag="${RELEASE_TAG//+/_}"
+          echo "server=ghcr.io/${owner}/${repository}-server" >> "$GITHUB_OUTPUT"
+          echo "console=ghcr.io/${owner}/${repository}-console" >> "$GITHUB_OUTPUT"
+          echo "tag=${docker_tag}" >> "$GITHUB_OUTPUT"
+      - name: Log in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="${RUNNER_TEMP}/agentguard-docker-config"
+          mkdir -p "$DOCKER_CONFIG"
+          echo "DOCKER_CONFIG=$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_USER" --password-stdin
+      - name: Create Buildx builder
+        run: docker buildx create --name agentguard-release --driver docker-container --use
+      - name: Build and publish PDP image
+        env:
+          SERVER_IMAGE: ${{ steps.image.outputs.server }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          docker buildx build \
+            --pull \
+            --platform linux/amd64 \
+            --provenance=true \
+            --sbom=true \
+            --tag "${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}" \
+            --metadata-file /tmp/agentguard-server-metadata.json \
+            --push \
+            .
+      - name: Build and publish console image
+        env:
+          SERVER_IMAGE: ${{ steps.image.outputs.server }}
+          CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          docker buildx build \
+            --pull \
+            --platform linux/amd64 \
+            --provenance=true \
+            --sbom=true \
+            --build-arg "AGENTGUARD_CLI_IMAGE=${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}" \
+            --tag "${CONSOLE_IMAGE}:${RELEASE_IMAGE_TAG}" \
+            --metadata-file /tmp/agentguard-console-metadata.json \
+            --file frontend/Dockerfile \
+            --push \
+            .
+      - name: Verify anonymous registry pulls
+        env:
+          SERVER_IMAGE: ${{ steps.image.outputs.server }}
+          CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          anonymous_config="${RUNNER_TEMP}/agentguard-anonymous-docker-config"
+          mkdir -p "$anonymous_config"
+          # No credentials are present in this isolated Docker config. The
+          # release cannot be announced until both images are publicly pullable.
+          docker --config "$anonymous_config" pull "${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}"
+          docker --config "$anonymous_config" pull "${CONSOLE_IMAGE}:${RELEASE_IMAGE_TAG}"
+      - name: Scan release PDP image
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/agentguard-docker-config
+          SERVER_IMAGE: ${{ steps.image.outputs.server }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: >-
+          docker run --rm
+          -e DOCKER_CONFIG=/root/.docker
+          -v "${DOCKER_CONFIG}:/root/.docker:ro"
+          aquasec/trivy:0.66.0 image
+          --image-src remote
+          --exit-code 1
+          --ignore-unfixed
+          --severity HIGH,CRITICAL
+          "${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}"
+      - name: Scan release console image
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/agentguard-docker-config
+          CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: >-
+          docker run --rm
+          -e DOCKER_CONFIG=/root/.docker
+          -v "${DOCKER_CONFIG}:/root/.docker:ro"
+          aquasec/trivy:0.66.0 image
+          --image-src remote
+          --exit-code 1
+          --ignore-unfixed
+          --severity HIGH,CRITICAL
+          "${CONSOLE_IMAGE}:${RELEASE_IMAGE_TAG}"
+      - name: Record registry digests
+        env:
+          SERVER_IMAGE: ${{ steps.image.outputs.server }}
+          CONSOLE_IMAGE: ${{ steps.image.outputs.console }}
+          RELEASE_IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          server_digest="$(jq -er '.["containerimage.digest"] | select(test("^sha256:[0-9a-f]{64}$"))' /tmp/agentguard-server-metadata.json)"
+          console_digest="$(jq -er '.["containerimage.digest"] | select(test("^sha256:[0-9a-f]{64}$"))' /tmp/agentguard-console-metadata.json)"
+          {
+            echo "# AgentGuard ${RELEASE_IMAGE_TAG} release image digests"
+            echo "PDP: ${SERVER_IMAGE}@${server_digest}"
+            echo "Console: ${CONSOLE_IMAGE}@${console_digest}"
+            echo "Platform: linux/amd64"
+          } > image-digests.txt
       - name: Create release from changelog
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,3 +187,4 @@ jobs:
             --title "AgentGuard $RELEASE_TAG" \
             --generate-notes \
             --notes-file CHANGELOG.md
+          gh release upload "$RELEASE_TAG" image-digests.txt --clobber

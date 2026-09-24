@@ -363,14 +363,17 @@ pnpm build                          # SDK, frontend, examples, and site
 ```bash
 # Bump workspace version in Cargo.toml, update CHANGELOG.md, then:
 git tag vX.Y.Z && git push origin vX.Y.Z
-# CI validates the tag and creates a GitHub source release.
+# CI validates the tag, publishes versioned GHCR images, and attaches their
+# immutable digests to the GitHub release.
 ```
 
-The current release workflow does not publish Cargo crates, npm packages, or
-OCI images. Install the CLI/server from a checkout using the commands above;
-build and push production images using the
-[deployment guide](docs/kubernetes.md#build-and-publish). The Rust workspace
-crates are source-distributed and are not currently available from crates.io.
+The release workflow publishes `linux/amd64` images to GitHub Container
+Registry as `ghcr.io/<owner>/<repo>-server` and
+`ghcr.io/<owner>/<repo>-console`. Confirm both packages are public before
+announcing a release, then deploy their recorded digests rather than mutable
+tags. Operators may build and push to another registry using the
+[deployment guide](docs/kubernetes.md#build-and-publish). Rust workspace
+crates remain source-distributed and are not published to crates.io.
 
 ## Tech Stack
 

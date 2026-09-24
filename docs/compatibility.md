@@ -13,7 +13,7 @@
 | Kubernetes packaging | Kustomize v5-compatible base plus a production overlay template. Operators must supply registry names/digests and environment-specific network/ingress policy before deployment. |
 | Production topology | One PDP replica and one console replica. Console sessions and rate limits require a shared Redis-compatible store. Audit storage is operator-provided persistent storage. |
 | License | Apache-2.0 |
-| Distribution | Rust crates are source-distributed from this repository and are not currently published to crates.io. The release workflow publishes GitHub source releases only; it does not publish npm packages or OCI images. |
+| Distribution | Rust crates are source-distributed and are not published to crates.io. Semantic-version releases publish `linux/amd64` PDP and console images to GHCR; verify registry visibility before release announcement. |
 
 The matrix is intentionally narrower than the set of platforms that may happen
 to work. CI coverage is not a promise that every operating system, architecture,

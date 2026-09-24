@@ -10,8 +10,9 @@
 - [ ] Apply the Kubernetes manifests in a disposable cluster and verify an
       allow, deny, audit append, graceful shutdown, and rollback.
 - [ ] Run `./scripts/k8s-smoke.sh` (or confirm the CI `Kubernetes PDP smoke`
-      job) against the exact release image artifacts; record published digests
-      and ensure the production overlay pins those digests before promotion.
+      job) against the release source. The release workflow builds, publishes,
+      and records `linux/amd64` image digests after this gate passes; verify
+      both GHCR packages are public and pin those digests before promotion.
 - [ ] Run `pnpm check && pnpm build` from the repository root so the SDK,
       console, examples, and canonical documentation site are checked together.
 - [ ] Review SECURITY.md, CHANGELOG.md, compatibility policy, and migration
@@ -21,14 +22,12 @@
 ## Automated path
 
 Push a semantic-version tag such as `v0.3.0` after the checklist is reviewed.
-The `release.yml` workflow validates that the tag exists before starting the
-release gate, checks out that exact tag in every CI job, and publishes the same
-tag only after the gate succeeds. A manual dispatch can validate and publish an
-existing tag by supplying its exact value; the workflow does not test the
-dispatch branch as a substitute. CI builds and scans the Docker images as test
-artifacts but does not publish container images to a registry. Build and push
-both release images to the operator-selected registry using the procedure in
-[Kubernetes operations](docs/kubernetes.md#build-and-publish), then record the
-registry-reported image digests in the deployment change. The GitHub release
-workflow publishes source release notes only; it does not build, sign, or
-publish OCI images. Never deploy mutable `latest` tags.
+The `release.yml` workflow validates the tag, tests that exact revision, builds
+and publishes both `linux/amd64` images to GHCR, then attaches the registry
+digests to the GitHub release. SemVer build metadata `+` is mapped to `_` in
+Docker tags. Verify both packages are public before announcement so anonymous
+cluster pulls work. A manual dispatch can publish only an existing tested tag;
+it does not test the dispatch branch as a substitute. Pin the attached digests
+in the production overlay. Operators using another registry can follow
+[Kubernetes operations](docs/kubernetes.md#build-and-publish). Never deploy
+mutable `latest` tags.

@@ -26,8 +26,11 @@ trusted ingress, and operate policy and audit storage as managed state.
 
 ## Build and publish
 
-Build both images with one version tag, but deploy the registry-reported
-digests rather than relying on tags to remain immutable. Never deploy `latest`:
+The release workflow publishes `linux/amd64` PDP and console images to GHCR and
+attaches `image-digests.txt` to the GitHub release. Confirm the packages are
+public and deploy the attached digests. For another registry or a local build,
+build both images with one version tag, but deploy registry-reported digests
+rather than relying on tags to remain immutable. Never deploy `latest`:
 
 ```bash
 export VERSION=0.2.0

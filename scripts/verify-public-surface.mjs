@@ -118,16 +118,15 @@ requireText("frontend/src/app/globals.css", "prefers-reduced-motion");
 requireText("README.md", "not standardized AuthZEN gRPC");
 requireText("docs/architecture.md", "repository-defined gRPC mirror");
 requireText("site/src/lib/content.ts", "repository-defined plaintext gRPC mirror");
-requireText("RELEASE.md", "CI builds and scans the Docker images as test");
-requireText("RELEASE.md", "does not publish container images to a registry");
-requireText("RELEASE.md", "registry-reported image digests");
-if (readFileSync(".github/workflows/ci.yml", "utf8").includes("docker push") &&
-    !readFileSync("RELEASE.md", "utf8").includes("CI publishes the release images")) {
-  failures.push("RELEASE.md: document registry publishing when CI starts publishing images");
-}
-if (readFileSync("RELEASE.md", "utf8").includes("digest produced by the container pipeline")) {
-  failures.push("RELEASE.md: container CI does not publish registry digests");
-}
+requireText("RELEASE.md", "publishes both `linux/amd64` images to GHCR");
+requireText("RELEASE.md", "attaches the registry\ndigests to the GitHub release");
+requireText(".github/workflows/release.yml", "packages: write");
+requireText(".github/workflows/release.yml", "--platform linux/amd64");
+requireText(".github/workflows/release.yml", "--provenance=true");
+requireText(".github/workflows/release.yml", "--sbom=true");
+requireText(".github/workflows/release.yml", "Scan release PDP image");
+requireText(".github/workflows/release.yml", "Scan release console image");
+requireText(".github/workflows/release.yml", "gh release upload");
 if (readFileSync("deploy/k8s/pdp.yaml", "utf8").includes("AGENTGUARD_AUTH_KEY_FILE")) {
   failures.push("deploy/k8s/pdp.yaml: uses unsupported AGENTGUARD_AUTH_KEY_FILE environment contract");
 }

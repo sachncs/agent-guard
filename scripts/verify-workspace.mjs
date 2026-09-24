@@ -121,6 +121,20 @@ if (
 ) {
   failures.push("release gate, tested checkout, and publication must use the same existing tag");
 }
+for (const contract of [
+  "packages: write",
+  "docker login ghcr.io",
+  "--platform linux/amd64",
+  "Verify anonymous registry pulls",
+  "docker --config \"$anonymous_config\" pull",
+  "--image-src remote",
+  "${DOCKER_CONFIG}:/root/.docker:ro",
+  "--build-arg \"AGENTGUARD_CLI_IMAGE=${SERVER_IMAGE}:${RELEASE_IMAGE_TAG}\"",
+  "containerimage.digest",
+  "gh release upload \"$RELEASE_TAG\" image-digests.txt",
+]) {
+  if (!release.includes(contract)) failures.push(`release workflow must publish verifiable container artifacts: missing ${contract}`);
+}
 
 for (const tag of ["v0.3.0", "v1.2.3-rc.1", "v2.0.0+build.7", "v1.2.3-0A", "v1.2.3-alpha+build.01"]) {
   if (!isValidReleaseTag(tag)) failures.push(`release tag validator rejected valid tag ${tag}`);
