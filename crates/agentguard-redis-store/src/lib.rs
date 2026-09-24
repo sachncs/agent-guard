@@ -232,6 +232,14 @@ mod tests {
         status: u16,
         response_body: &'static str,
     ) -> (String, tokio::task::JoinHandle<(String, Vec<u8>)>) {
+        mock_endpoint_body(status, true, response_body.to_owned()).await
+    }
+
+    async fn mock_endpoint_body(
+        status: u16,
+        include_content_length: bool,
+        response_body: String,
+    ) -> (String, tokio::task::JoinHandle<(String, Vec<u8>)>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let task = tokio::spawn(async move {
@@ -260,12 +268,18 @@ mod tests {
                 assert_ne!(read, 0, "client closed before sending body");
                 request.extend_from_slice(&buf[..read]);
             }
+            let response_content_length = if include_content_length {
+                format!("Content-Length: {}\r\n", response_body.len())
+            } else {
+                String::new()
+            };
             let response = format!(
-                "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                response_body.len(),
+                "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\n{response_content_length}Connection: close\r\n\r\n{}",
                 response_body
             );
-            stream.write_all(response.as_bytes()).await.unwrap();
+            // The client deliberately cancels oversized bodies; a closed
+            // socket is therefore an expected outcome in those tests.
+            let _ = stream.write_all(response.as_bytes()).await;
             (
                 headers,
                 request[body_offset..body_offset + content_length].to_vec(),
@@ -359,6 +373,18 @@ mod tests {
                 store.is_revoked("jti", 0).await.is_err(),
                 "status={status}, payload={payload} must fail closed"
             );
+            let _ = task.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_declared_and_streamed_responses_fail_closed() {
+        let oversized = format!("{{\"result\":\"{}\"}}", "x".repeat(MAX_RESPONSE_BYTES));
+        for include_content_length in [true, false] {
+            let (endpoint, task) =
+                mock_endpoint_body(200, include_content_length, oversized.clone()).await;
+            let store = RedisDelegationRevocationStore::new(&endpoint, "unit-secret").unwrap();
+            assert!(store.is_revoked("jti", 0).await.is_err());
             let _ = task.await.unwrap();
         }
     }
