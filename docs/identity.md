@@ -123,7 +123,8 @@ agentguard delegate \
 Signature verification alone is not authorization. A consuming adapter must:
 
 1. authorize the parent before it issues a grant;
-2. verify the signature, audience, key identity, and time claims;
+2. verify the signature, token type, audience, key identity, non-empty issuer,
+   subject and token id, and consistent `iat`/`nbf`/`exp` claims;
 3. bind the trusted acting identity to `VerifiedDelegation::allows` and enforce
    action/resource/constraint scope plus any sender binding;
 4. evaluate the effective Cedar policy; and

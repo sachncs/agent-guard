@@ -789,13 +789,14 @@ impl DelegationVerifier {
     /// Returns the verified claims on success.
     ///
     /// This is the secure entry point — unlike [`DelegationToken::parse`],
-    /// it actually verifies the EdDSA signature.
+    /// it actually verifies the EdDSA signature, AgentGuard token type, and
+    /// standard identity/time claims.
     ///
     /// # Errors
     /// Returns `Error::TokenSignature` if the signature is invalid
     /// or the kid is unknown. Returns `Error::TokenExpired` if `now_unix`
     /// is past `exp + clock_skew_seconds`. Returns `Error::TokenNotYetValid`
-    /// if `nbf` is in the future. Returns `Error::InvalidToken` for any
+    /// if `iat` or `nbf` is in the future beyond the configured skew. Returns `Error::InvalidToken` for any
     /// JWS parse / base64 / signature-format error or audience mismatch.
     ///
     /// # Examples
@@ -813,7 +814,7 @@ impl DelegationVerifier {
     ///     vec!["ToolCall::send".into()],
     ///     vec!["Mailbox::*".into()],
     ///     DelegationConfig::default()).unwrap();
-    /// let verified = verifier.verify(&token.jws, "aud", 0).unwrap();
+    /// let verified = verifier.verify(&token.jws, "aud", chrono::Utc::now().timestamp()).unwrap();
     /// assert_eq!(verified.claims().iss, "alice");
     /// assert_eq!(verified.claims().aud, "aud");
     /// ```
@@ -844,6 +845,19 @@ impl DelegationVerifier {
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::InvalidToken("missing kid in header".into()))?
             .to_string();
+        if kid.trim().is_empty() {
+            return Err(Error::InvalidToken("empty kid in header".into()));
+        }
+        if header.get("typ").and_then(|v| v.as_str()) != Some("agentguard-delegation+jwt") {
+            return Err(Error::InvalidToken(
+                "unexpected or missing delegation token typ".into(),
+            ));
+        }
+        if header.get("crit").is_some() || header.get("b64").is_some_and(|v| v != true) {
+            return Err(Error::InvalidToken(
+                "unsupported critical or unencoded JWS header parameter".into(),
+            ));
+        }
         let alg = parse_alg(alg_str)
             .ok_or_else(|| Error::InvalidToken(format!("unsupported alg: {}", alg_str)))?;
 
@@ -885,21 +899,40 @@ impl DelegationVerifier {
 
         // Step 6: validate time-based claims with clock skew.
         let skew = self.clock_skew_seconds();
-        if parsed.claims.exp + skew <= now_unix {
-            return Err(Error::TokenExpired(parsed.claims.exp.to_string()));
+        let claims = &parsed.claims;
+        if claims.iss.trim().is_empty()
+            || claims.sub.trim().is_empty()
+            || claims.aud.trim().is_empty()
+            || claims.jti.trim().is_empty()
+        {
+            return Err(Error::InvalidToken(
+                "iss, sub, aud, and jti must be non-empty".into(),
+            ));
         }
-        if let Some(nbf) = parsed.claims.nbf {
-            if nbf > now_unix + skew {
+        if claims.exp <= claims.iat || claims.nbf.is_some_and(|nbf| nbf >= claims.exp) {
+            return Err(Error::InvalidToken(
+                "time claims must satisfy iat < exp and nbf < exp".into(),
+            ));
+        }
+        let latest_issued_at = now_unix.saturating_add(skew);
+        if claims.iat > latest_issued_at {
+            return Err(Error::TokenNotYetValid(claims.iat.to_string()));
+        }
+        if claims.exp.saturating_add(skew) <= now_unix {
+            return Err(Error::TokenExpired(claims.exp.to_string()));
+        }
+        if let Some(nbf) = claims.nbf {
+            if nbf > latest_issued_at {
                 return Err(Error::TokenNotYetValid(nbf.to_string()));
             }
         }
 
         // Step 7: validate the audience.
-        if parsed.claims.aud != expected_aud {
+        if claims.aud != expected_aud {
             return Err(Error::TokenSignature {
                 reason: format!(
                     "audience mismatch: expected {}, got {}",
-                    expected_aud, parsed.claims.aud
+                    expected_aud, claims.aud
                 ),
             });
         }
@@ -1402,6 +1435,127 @@ mod tests {
         );
         let res = verifier.verify(token.to_jws(), "aud2", chrono::Utc::now().timestamp());
         assert!(matches!(res, Err(Error::TokenSignature { .. })));
+    }
+
+    fn verify_mutated_claims(
+        mutate: impl FnOnce(&mut DelegationClaims),
+    ) -> Result<VerifiedDelegation> {
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint_with(
+                "issuer",
+                "subject",
+                "aud",
+                vec!["ToolCall::read".into()],
+                vec!["Document::*".into()],
+                DelegationConfig::default(),
+                mutate,
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier.add_key(
+            signer.key_id(),
+            Algorithm::EdDSA,
+            &signer.public_key_b64_bytes(),
+        )?;
+        verifier.verify(token.to_jws(), "aud", chrono::Utc::now().timestamp())
+    }
+
+    fn sign_with_header(
+        signer: &DelegationSigner,
+        claims: &DelegationClaims,
+        header: serde_json::Value,
+    ) -> String {
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header).unwrap());
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(claims).unwrap());
+        let signing_input = format!("{header}.{payload}");
+        let signature = signer.key.sign(signing_input.as_bytes());
+        format!(
+            "{signing_input}.{}",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes())
+        )
+    }
+
+    #[test]
+    fn verifier_rejects_wrong_type_and_unsupported_jws_headers() {
+        let signer = DelegationSigner::generate();
+        let token = signer
+            .mint(
+                "issuer",
+                "subject",
+                "aud",
+                vec![],
+                vec![],
+                DelegationConfig::default(),
+            )
+            .unwrap();
+        let verifier = DelegationVerifier::new();
+        verifier
+            .add_key(
+                signer.key_id(),
+                Algorithm::EdDSA,
+                &signer.public_key_b64_bytes(),
+            )
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        for header in [
+            serde_json::json!({"alg":"EdDSA","typ":"JWT","kid":signer.key_id()}),
+            serde_json::json!({
+                "alg":"EdDSA",
+                "typ":"agentguard-delegation+jwt",
+                "kid":signer.key_id(),
+                "crit":["exp"]
+            }),
+            serde_json::json!({
+                "alg":"EdDSA",
+                "typ":"agentguard-delegation+jwt",
+                "kid":signer.key_id(),
+                "b64":false
+            }),
+        ] {
+            let jws = sign_with_header(&signer, &token.claims, header);
+            assert!(matches!(
+                verifier.verify(&jws, "aud", now),
+                Err(Error::InvalidToken(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn verified_claims_must_have_identity_and_consistent_times() {
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.iss.clear()),
+            Err(Error::InvalidToken(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.sub.clear()),
+            Err(Error::InvalidToken(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.jti.clear()),
+            Err(Error::InvalidToken(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.exp = claims.iat),
+            Err(Error::InvalidToken(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.iat = chrono::Utc::now().timestamp() + 120),
+            Err(Error::TokenNotYetValid(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| claims.nbf = Some(i64::MAX)),
+            Err(Error::InvalidToken(_))
+        ));
+        assert!(matches!(
+            verify_mutated_claims(|claims| {
+                claims.nbf = Some(chrono::Utc::now().timestamp() + 120)
+            }),
+            Err(Error::TokenNotYetValid(_))
+        ));
     }
 
     #[test]
