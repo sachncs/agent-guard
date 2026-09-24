@@ -91,6 +91,7 @@ Console fails to start serving unless the first four variables are set.
 | `AGENTGUARD_OIDC_CLIENT_ID` | *(required)* | Confidential OIDC client id |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | *(required)* | Client secret (`client_secret_post`) |
 | `AGENTGUARD_SESSION_SECRET` | *(required)* | ≥32 chars; signs session/state cookies |
+| `AGENTGUARD_SESSION_TTL_SECONDS` | `28800` | Session lifetime, 300–28800 seconds; role changes from OIDC apply at next login |
 | `AGENTGUARD_SESSION_STORE` | `memory` in development, `redis` in production | Shared session backend mode |
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | *(required for Redis sessions)* | Redis-compatible REST endpoint and credential; HTTPS is required in production (HTTP is allowed only outside production) |
 | `AGENTGUARD_SESSION_REDIS_PREFIX` | `agentguard:session:` | Optional 1–128 character Redis key namespace; use a distinct prefix when environments share one Redis database |

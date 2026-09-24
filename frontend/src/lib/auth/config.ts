@@ -1,5 +1,6 @@
 import { DEFAULT_SESSION_REDIS_PREFIX, RedisSessionStore } from "./session_store.ts";
 import type { SessionStore } from "./session_store.ts";
+import { SESSION_TTL_SECONDS } from "./session.ts";
 import { isValidRedisKeyPrefix } from "../redis_key_prefix.ts";
 import { validateSharedStoreUrl } from "../shared_store_url.ts";
 import { validateOidcEndpoint, validatePdpEndpoint } from "./endpoint_url.ts";
@@ -24,6 +25,8 @@ export interface AuthConfig {
   oidc: OidcConfig;
   /** Signing key for console-issued session/state JWTs. */
   sessionSecret: Uint8Array;
+  /** Session maximum lifetime; roles are resolved from OIDC again at next login. */
+  sessionTtlSeconds: number;
   /** Shared session state; memory is development-only. */
   sessionStore?: SessionStore;
   /** ID-token claim that carries admin group membership. */
@@ -57,6 +60,10 @@ function readEnv(): AuthConfigResult {
   const clientId = need("AGENTGUARD_OIDC_CLIENT_ID");
   const clientSecret = need("AGENTGUARD_OIDC_CLIENT_SECRET");
   const secret = need("AGENTGUARD_SESSION_SECRET");
+  const sessionTtlRaw = process.env.AGENTGUARD_SESSION_TTL_SECONDS;
+  const sessionTtlSeconds = sessionTtlRaw === undefined
+    ? SESSION_TTL_SECONDS
+    : /^\d+$/.test(sessionTtlRaw) ? Number(sessionTtlRaw) : Number.NaN;
   const sessionStoreMode = process.env.AGENTGUARD_SESSION_STORE ||
     (process.env.NODE_ENV === "production" ? "redis" : "memory");
   const sessionRedisUrl = process.env.AGENTGUARD_SESSION_REDIS_URL;
@@ -100,6 +107,16 @@ function readEnv(): AuthConfigResult {
     return {
       valid: false,
       reason: "AGENTGUARD_SESSION_SECRET must be at least 32 characters",
+    };
+  }
+  if (
+    !Number.isSafeInteger(sessionTtlSeconds) ||
+    sessionTtlSeconds < 300 ||
+    sessionTtlSeconds > SESSION_TTL_SECONDS
+  ) {
+    return {
+      valid: false,
+      reason: `AGENTGUARD_SESSION_TTL_SECONDS must be an integer from 300 to ${SESSION_TTL_SECONDS}`,
     };
   }
   if (sessionStoreMode !== "memory" && sessionStoreMode !== "redis") {
@@ -168,6 +185,7 @@ function readEnv(): AuthConfigResult {
     config: {
       oidc: { issuer, clientId, clientSecret },
       sessionSecret: new TextEncoder().encode(secret),
+      sessionTtlSeconds,
       // Next's edge proxy and Node route handlers do not share an in-memory
       // module instance. Development therefore keeps the signed-cookie
       // fallback; production is rejected above unless Redis is configured.

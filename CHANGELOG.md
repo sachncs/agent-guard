@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Make console session lifetime configurable within a safe range so operators
+  can bound how long OIDC role changes remain stale in existing sessions.
 - Use a shared conservative rate-limit bucket when a trusted client IP cannot
   be determined; caller-controlled hostnames can no longer partition limits.
 - Reload changes to Cedar files in nested policy subdirectories as well as

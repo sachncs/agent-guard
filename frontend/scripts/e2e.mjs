@@ -618,6 +618,7 @@ async function main() {
     AGENTGUARD_OIDC_CLIENT_ID: "agentguard-console",
     AGENTGUARD_OIDC_CLIENT_SECRET: "e2e-client-secret",
     AGENTGUARD_SESSION_SECRET: "s".repeat(48),
+    AGENTGUARD_SESSION_TTL_SECONDS: "900",
     AGENTGUARD_SESSION_STORE: "redis",
     AGENTGUARD_SESSION_REDIS_URL: REDIS_URL,
     AGENTGUARD_SESSION_REDIS_TOKEN: REDIS_TOKEN,
@@ -715,7 +716,10 @@ async function main() {
 
     // --- 2. viewer login -------------------------------------------------
     const viewer = new Jar();
-    await login(null, viewer, tls.cert);
+    const viewerLogin = await login(null, viewer, tls.cert);
+    const sessionCookie = viewerLogin.headers.getSetCookie()
+      .find((cookie) => cookie.startsWith("ag_session="));
+    assert.match(sessionCookie ?? "", /Max-Age=900(?:;|$)/, "configured session lifetime is applied to the cookie");
     const browserSession = viewer.cookies.get("ag_session");
     assert.ok(browserSession, "the API OIDC flow issues a browser session for the visual smoke");
     await browserContext.addCookies([{

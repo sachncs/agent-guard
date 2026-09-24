@@ -54,8 +54,25 @@ describe("auth config", () => {
     assert.equal(cfg.config.adminClaim, "roles");
     assert.deepEqual(cfg.config.adminValues, ["a", "b"]);
     assert.equal(cfg.config.pdpUrl, "http://pdp:8443");
+    assert.equal(cfg.config.sessionTtlSeconds, 8 * 60 * 60);
     assert.equal(cfg.config.insecureCookie, false);
     assert.equal(cfg.config.trustProxyHeaders, false);
+  });
+
+  it("allows a bounded shorter session lifetime and rejects unsafe values", () => {
+    for (const [key, value] of Object.entries(BASE_ENV)) process.env[key] = value;
+    process.env.AGENTGUARD_SESSION_TTL_SECONDS = "900";
+    let cfg = authConfig();
+    assert.equal(cfg.valid, true);
+    if (cfg.valid) assert.equal(cfg.config.sessionTtlSeconds, 900);
+
+    for (const value of ["0", "299", "28801", "900.5", "1e3", "-1"]) {
+      process.env.AGENTGUARD_SESSION_TTL_SECONDS = value;
+      resetAuthConfigCache();
+      cfg = authConfig();
+      assert.equal(cfg.valid, false, `expected session lifetime ${value} to be rejected`);
+      if (!cfg.valid) assert.match(cfg.reason, /SESSION_TTL_SECONDS/);
+    }
   });
 
   it("requires an HTTPS OIDC issuer in production", () => {

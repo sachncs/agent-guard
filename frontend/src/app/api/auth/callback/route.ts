@@ -39,7 +39,7 @@ export async function GET(request: Request) {
       email: login.email,
       name: login.name,
       admin: login.role === "admin",
-    }, 8 * 60 * 60, cfg.config.sessionStore);
+    }, cfg.config.sessionTtlSeconds, cfg.config.sessionStore);
 
     return new Response(null, {
       status: 302,
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
         [
           "Set-Cookie",
           serializeSetCookie(SESSION_COOKIE, sessionJwt, {
-            maxAge: 8 * 60 * 60,
+            maxAge: cfg.config.sessionTtlSeconds,
             secure: !cfg.config.insecureCookie,
           }),
         ],

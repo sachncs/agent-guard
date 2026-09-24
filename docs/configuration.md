@@ -76,6 +76,7 @@ and tests only.
 | `AGENTGUARD_OIDC_CLIENT_ID` | required | Confidential OIDC client identifier. |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | required | Confidential client secret; provide through a secret manager. |
 | `AGENTGUARD_SESSION_SECRET` | required, at least 32 characters | Signs console session and OIDC state cookies. |
+| `AGENTGUARD_SESSION_TTL_SECONDS` | `28800` | Console session lifetime, integer from 300 to 28800 seconds; OIDC role changes take effect on next login. |
 | `AGENTGUARD_SESSION_STORE` | memory in development; `redis` in production | Shared session backend. Production refuses memory fallback. |
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | required for Redis | Redis-compatible REST endpoint and credential. Production requires HTTPS; provide credentials separately. |
 | `AGENTGUARD_SESSION_REDIS_PREFIX` | `agentguard:session:` | Optional 1–128 character key namespace. Use a distinct prefix for each environment sharing a database. |

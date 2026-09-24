@@ -51,6 +51,7 @@ Set these values through a secret manager or Kubernetes Secret:
 | `AGENTGUARD_OIDC_CLIENT_ID` | Confidential client registered with the issuer |
 | `AGENTGUARD_OIDC_CLIENT_SECRET` | Never commit or bake into the image |
 | `AGENTGUARD_SESSION_SECRET` | At least 32 random characters; rotate deliberately |
+| `AGENTGUARD_SESSION_TTL_SECONDS` | Optional integer from 300 to 28800; defaults to 28800 seconds (8 hours). Admin/viewer membership is resolved at login; shorten the lifetime to bound stale-role duration. |
 | `AGENTGUARD_SESSION_STORE` | `redis` in production; `memory` only for development |
 | `AGENTGUARD_SESSION_REDIS_URL` / `AGENTGUARD_SESSION_REDIS_TOKEN` | Required for production session state; endpoint must use HTTPS and credentials must be supplied separately |
 | `AGENTGUARD_SESSION_REDIS_PREFIX` | Optional namespace, default `agentguard:session:`; use a distinct prefix for each environment sharing one Redis database |
@@ -100,6 +101,12 @@ session cookie, and allows the user to retry after storage recovers. Missing
 OIDC configuration, unavailable PDP responses, CLI failures, malformed
 upstream payloads, and audit failures are surfaced as errors; they never
 become an allow decision.
+
+Admin membership is resolved from the validated OIDC ID token at login and is
+then fixed in the signed console session. IdP group changes do not alter
+existing sessions; configure a shorter `AGENTGUARD_SESSION_TTL_SECONDS` when
+role changes need to take effect sooner. For emergency revocation of all
+sessions, rotate `AGENTGUARD_SESSION_SECRET` and restart the console replicas.
 
 Use Redis-compatible shared sessions and rate limiting for horizontally scaled
 console replicas. Login, delegation, verification, and simulator requests are

@@ -18,6 +18,7 @@ const config: AuthConfig = {
     clientSecret: "not-used",
   },
   sessionSecret: new Uint8Array(32),
+  sessionTtlSeconds: 8 * 60 * 60,
   adminClaim: "groups",
   adminValues: [],
   pdpUrl: "http://127.0.0.1:8443",
