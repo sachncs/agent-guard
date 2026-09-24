@@ -82,6 +82,7 @@ requireText(".github/workflows/deploy-site.yml", '- "docs/**"');
 requireText(".github/workflows/ci.yml", "runtime: node@22.19.0");
 requireText(".github/workflows/ci.yml", "Swatinem/rust-cache@v2");
 requireText(".github/workflows/ci.yml", "cargo test -p agentguard-server --all-features");
+requireText(".github/workflows/ci.yml", "node scripts/verify-rust-package-metadata.mjs");
 requireText(".github/workflows/ci.yml", "cargo llvm-cov report --summary-only --fail-under-lines 80");
 requireText(".github/workflows/ci.yml", "pnpm audit:dependencies");
 requireText("package.json", "pnpm --dir site audit --audit-level=moderate");

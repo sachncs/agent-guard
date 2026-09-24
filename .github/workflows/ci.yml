@@ -163,6 +163,8 @@ jobs:
       - run: pnpm --filter frontend exec node scripts/e2e.mjs
       # Exercise the console against the real Rust PDP, Cedar schema and durable audit log.
       - uses: dtolnay/rust-toolchain@1.89.0
+      - name: Verify published Rust package metadata
+        run: node scripts/verify-rust-package-metadata.mjs
       - name: Install protobuf compiler for the PDP build
         run: sudo apt-get update && sudo apt-get install --yes protobuf-compiler
       - run: cargo build -p agentguard-server

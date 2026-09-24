@@ -2,7 +2,10 @@
 name = "rust-embedder"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
 publish = false
 description = "Embed the AuthZEN PDP router inside an existing axum app"
 
