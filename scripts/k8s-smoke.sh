@@ -14,6 +14,7 @@ rollback_image=${AGENTGUARD_K8S_ROLLBACK_IMAGE:-agentguard-server:smoke-rollback
 port=${AGENTGUARD_K8S_PORT:-18443}
 kind_cluster=${AGENTGUARD_KIND_CLUSTER:-kind}
 confirm_cluster=${AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER:-}
+repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
 command -v kind >/dev/null || { echo "kind is required" >&2; exit 1; }
@@ -40,6 +41,10 @@ if [[ "$confirm_cluster" != "$kind_cluster" ]]; then
   echo "refusing to mutate disposable cluster; set AGENTGUARD_K8S_CONFIRM_DISPOSABLE_CLUSTER=$kind_cluster to confirm" >&2
   exit 1
 fi
+
+# Validate the production overlay only after all cluster-scope guards, but
+# before creating temporary credentials or mutating any Kubernetes resource.
+node "$repo_root/scripts/verify-k8s-overlay.mjs"
 
 key_dir=$(mktemp -d "$PWD/.k8s-smoke.XXXXXX")
 key_store="$key_dir/keys.json"

@@ -154,17 +154,17 @@ names and 64-hex digests from the registry; the placeholders are not
 deployable:
 
 ```bash
-cp deploy/k8s/overlays/production/kustomization.yaml.example \
-  deploy/k8s/overlays/production/kustomization.yaml
+cp deploy/overlays/production/kustomization.yaml.example \
+  deploy/overlays/production/kustomization.yaml
 ```
 
-Edit `deploy/k8s/overlays/production/kustomization.yaml`:
+Edit `deploy/overlays/production/kustomization.yaml`:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../
+  - ../../k8s
 images:
   - name: agentguard-server
     newName: registry.example.com/security/agentguard-server
@@ -178,7 +178,7 @@ Keep this overlay in the deployment configuration repository, review its diff,
 and promote the same digest values between environments. Apply and verify it:
 
 ```bash
-kubectl apply -k deploy/k8s/overlays/production
+kubectl apply -k deploy/overlays/production
 kubectl -n agentguard rollout status deployment/agentguard-pdp
 kubectl -n agentguard rollout status deployment/agentguard-console
 kubectl -n agentguard get pods,svc,pvc

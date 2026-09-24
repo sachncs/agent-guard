@@ -61,6 +61,7 @@ if (failures.length === 0) {
     'current_context=$(kubectl config current-context)',
     'kind_clusters=$(kind get clusters)',
     '[[ "$confirm_cluster" != "$kind_cluster" ]]',
+    'node "$repo_root/scripts/verify-k8s-overlay.mjs"',
   ]) {
     if (!smoke.includes(value)) failures.push(`k8s-smoke.sh must guard disposable-cluster mutations (${value})`);
   }
@@ -124,7 +125,7 @@ if (failures.length === 0) {
   const productionGuide = readFileSync("docs/production.md", "utf8");
   const upgradesGuide = readFileSync("docs/upgrades.md", "utf8");
   const productionOverlayTemplate = readFileSync(
-    "deploy/k8s/overlays/production/kustomization.yaml.example",
+    "deploy/overlays/production/kustomization.yaml.example",
     "utf8",
   );
   for (const value of [
@@ -135,14 +136,14 @@ if (failures.length === 0) {
     failures.push(`docs/production.md must explain the production overlay template: ${value}`);
   }
   for (const value of [
-    "deploy/k8s/overlays/production/kustomization.yaml.example",
+    "deploy/overlays/production/kustomization.yaml.example",
     "replace its registry",
-    "kubectl -n agentguard apply -k deploy/k8s/overlays/production",
+    "kubectl -n agentguard apply -k deploy/overlays/production",
   ]) if (!upgradesGuide.includes(value)) {
     failures.push(`docs/upgrades.md must explain how to use the production overlay template: ${value}`);
   }
   for (const value of [
-    "resources:\n  - ../../",
+    "resources:\n  - ../../k8s",
     "name: agentguard-server",
     "name: agentguard-console",
     "newName: registry.example.com/security/agentguard-server",
@@ -153,13 +154,13 @@ if (failures.length === 0) {
     failures.push(`production overlay template missing ${value}`);
   }
   for (const value of [
-    "deploy/k8s/overlays/production/kustomization.yaml",
+    "deploy/overlays/production/kustomization.yaml",
     "registry-reported",
     "kustomization.yaml.example",
     "digest: sha256:REPLACE_WITH_64_HEX_PDP_DIGEST",
     "digest: sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST",
-    "cp deploy/k8s/overlays/production/kustomization.yaml.example",
-    "kubectl apply -k deploy/k8s/overlays/production",
+    "cp deploy/overlays/production/kustomization.yaml.example",
+    "kubectl apply -k deploy/overlays/production",
   ]) if (!operationsGuide.includes(value)) {
     failures.push(`docs/kubernetes.md must document the production overlay template: ${value}`);
   }

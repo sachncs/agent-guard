@@ -26,6 +26,15 @@ if [ "$1" = config ] && [ "$2" = current-context ]; then
   printf '%s\\n' "$TEST_KUBE_CONTEXT"
   exit 0
 fi
+if [ "$1" = kustomize ]; then
+  printf '%s\\n' \
+    'image: registry.example.com/security/agentguard-server@sha256:REPLACE_WITH_64_HEX_PDP_DIGEST' \
+    'image: registry.example.com/security/agentguard-console@sha256:REPLACE_WITH_64_HEX_CONSOLE_DIGEST' \
+    'kind: PersistentVolumeClaim' \
+    'name: agentguard-pdp' \
+    'name: agentguard-console'
+  exit 0
+fi
 printf '%s\\n' "$*" >> "$TEST_KUBECTL_CALLS"
 exit 42`);
   script("kind", `
@@ -94,6 +103,6 @@ test("Kubernetes smoke reaches its first mutation only for the confirmed disposa
   const result = harness.run({ confirmation: "agentguard-test" });
   assert.notEqual(result.status, 0, "stub kubectl intentionally stops at the first mutation");
   const calls = recordedCalls(harness.calls);
-  assert.match(calls, /create namespace agentguard /);
+  assert.match(calls, /create namespace agentguard /, `${result.stdout}\n${result.stderr}`);
   assert.doesNotMatch(calls, /apply -k|create secret/);
 });

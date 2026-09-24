@@ -17,14 +17,14 @@ bundle version, schema, configuration, and migration notes together.
 ## Kubernetes rollout
 
 If this is a new environment, first copy
-`deploy/k8s/overlays/production/kustomization.yaml.example` to
-`deploy/k8s/overlays/production/kustomization.yaml` and replace its registry
+`deploy/overlays/production/kustomization.yaml.example` to
+`deploy/overlays/production/kustomization.yaml` and replace its registry
 names and digest placeholders. For an existing environment, update both image
 digests in that production Kustomize overlay. Review the resulting diff, then
 wait for readiness:
 
 ```sh
-kubectl -n agentguard apply -k deploy/k8s/overlays/production
+kubectl -n agentguard apply -k deploy/overlays/production
 kubectl -n agentguard rollout status deployment/agentguard-pdp
 kubectl -n agentguard rollout status deployment/agentguard-console
 ```

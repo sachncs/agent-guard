@@ -19,7 +19,7 @@ guides alongside this overview.
 
 Before applying the commands below, create the operator-owned, digest-pinned
 production overlay from the checked-in
-[`kustomization.yaml.example`](../deploy/k8s/overlays/production/kustomization.yaml.example)
+[`kustomization.yaml.example`](../deploy/overlays/production/kustomization.yaml.example)
 as described in the [Kubernetes deployment guide](kubernetes.md#deploy).
 Registry names, image digests, and network/ingress policy depend on the target
 environment, so the template is intentionally not directly deployable.
@@ -31,7 +31,7 @@ itself is eventually consistent and depends on kubelet sync/cache settings.
 Invalid intermediate store content retains the last-known-good key set and is
 logged; check the server logs after credential updates.
 
-kubectl apply -k deploy/k8s/overlays/production
+kubectl apply -k deploy/overlays/production
 kubectl -n agentguard rollout status deploy/agentguard-pdp
 kubectl -n agentguard rollout status deploy/agentguard-console
 
@@ -47,7 +47,7 @@ append-only audit backend is deployed.
 Build and tag both images with the same release version, capture their registry
 digests, and deploy those digests from an operator-owned Kustomize overlay. Copy
 the checked-in production overlay template to
-`deploy/k8s/overlays/production/kustomization.yaml`, then replace its example
+`deploy/overlays/production/kustomization.yaml`, then replace its example
 registry names and digest placeholders and add environment-specific network
 policies. Do not deploy the template while placeholders remain, and never
 deploy the checked-in base directly for production because it uses sample tags.
