@@ -23,6 +23,14 @@ test("CI bounds the Kubernetes smoke and captures failure diagnostics", () => {
   );
 });
 
+test("CI uses a Node 24 Kind action with tool versions aligned to the smoke cluster", () => {
+  const workflow = readFileSync(ciWorkflow, "utf8");
+  assert.match(
+    workflow,
+    /uses: helm\/kind-action@v1\.14\.0\s+with:\s+version: v0\.26\.0\s+kubectl_version: v1\.31\.4\s+node_image: kindest\/node:v1\.31\.4\s+cluster_name: agentguard-smoke/,
+  );
+});
+
 function makeHarness({ context = "kind-agentguard-test", clusters = "agentguard-test" } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agentguard-k8s-guard-"));
   const bin = join(directory, "bin");
